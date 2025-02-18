@@ -1,0 +1,8 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 125 # Hz
+    rt_prio: 0
+    use_real_time: false
+    thread_priority: 0
+    lock_memory: true
+

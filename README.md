@@ -1,7 +1,7 @@
 # AERA
-## Autonomous Experimental Robots 
+## Autonomous Experimental Robotic Arm
 
-Building robots controlled by natural language.
+Building robotic arm controlled by natural language.
 
 [![YouTube](http://i.ytimg.com/vi/ndCuwOP6PO8/hqdefault.jpg)](https://www.youtube.com/watch?v=ndCuwOP6PO8)
 

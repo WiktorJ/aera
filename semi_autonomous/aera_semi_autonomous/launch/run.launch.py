@@ -16,21 +16,16 @@ def load_yaml(package_name, file_name):
 
 
 def generate_launch_description():
-    # realsense_args = {
-    #     "enable_rgbd": "true",
-    #     "enable_sync": "true",
-    #     "align_depth.enable": "true",
-    #     "enable_color": "true",
-    #     "enable_depth": "true",
-    #     "depth_module.depth_profile": "640x480x30",
-    #     "depth_module.infra_profile": "640x480x30",
-    # }
-    # realsense = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource([
-    #         os.path.join(get_package_share_directory("realsense2_camera"),
-    #                      "launch", "rs_launch.py")
-    #     ]),
-    #     launch_arguments=realsense_args.items())
+    launch_args = {
+        'rs_compat': 'true',
+        'pointcloud.enable': 'true',
+    }
+    depthai = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory("depthai_ros_driver"),
+                         "launch", "camera.launch.py")
+        ]),
+        launch_arguments=launch_args.items())
 
     calibration_tf_publisher = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -64,5 +59,5 @@ def generate_launch_description():
 
 
     return LaunchDescription([
-        delay_calibration_tf_publisher, ar_moveit, tabletop_handybot_node
+        depthai, delay_calibration_tf_publisher, ar_moveit, tabletop_handybot_node
     ])

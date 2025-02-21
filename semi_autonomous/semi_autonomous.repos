@@ -4,7 +4,7 @@ repositories:
     url: https://github.com/IDEA-Research/Grounded-Segment-Anything
   easy_handeye2:
     type: git
-    url: https://github.com/marcoesposito1988/easy_handeye2
+    url: https://github.com/WiktorJ/easy_handeye2
   ros2_aruco:
     type: git
     url: https://github.com/JMU-ROBOTICS-VIVA/ros2_aruco.git

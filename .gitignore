@@ -230,5 +230,9 @@ fabric.properties
 **/easy_handeye2/
 **/Grounded-Segment-Anything/
 **/ros2_aruco
+**/pymoveit2
+**/log
+**/install
+semi_autonomous/**/ar4_mk3_drivers
 
 

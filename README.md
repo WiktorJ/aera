@@ -36,6 +36,8 @@ https://github.com/ycheng517/pymoveit2.git
 
 https://github.com/wiktorj/ar4_ros_driver.git
 
+https://github.com/wiktorj/sim-robotic-arm-rl/
+
 # Credits
 
 https://www.anninrobotics.com/ - For arm design

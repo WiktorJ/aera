@@ -1,11 +1,35 @@
 # AERA
+
 ## Autonomous Experimental Robotic Arm
 
 Building robotic arm controlled by natural language.
 
 [![YouTube](http://i.ytimg.com/vi/ndCuwOP6PO8/hqdefault.jpg)](https://www.youtube.com/watch?v=ndCuwOP6PO8)
 
+
+
+## Autonomous
+
+RL and VLA models to convert vision and language into actions.
+
+## Semi Autonomous
+
+Using object detection (e.g. [Grounding Dino](https://huggingface.co/docs/transformers/en/model_doc/grounding-dino))
+and image segmentation (e.g. [Segment Anything](https://github.com/facebookresearch/segment-anything)) SOTA zero-shot 
+models to prepare input to algorithmic manipulation methods.
+
+## Relevant Repos
+
+https://github.com/WiktorJ/easy_handeye2
+
+https://github.com/wiktorj/ros2_aruco.git
+
+https://github.com/ycheng517/pymoveit2.git
+
+https://github.com/wiktorj/ar4_ros_driver.git
+
 # Credits
+
 https://www.anninrobotics.com/ - For arm design
 
-https://github.com/ycheng517/ar4_ros_driver - for AR4 MK3 arm drivers
+https://github.com/ycheng517 - for AR4 MK3 arm drivers and calibration software

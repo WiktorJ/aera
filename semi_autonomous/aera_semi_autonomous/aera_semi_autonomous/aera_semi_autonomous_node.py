@@ -49,6 +49,16 @@ SAM_CHECKPOINT_PATH = os.path.join(GSA_PATH, "sam_vit_h_4b8939.pth")
 BOX_THRESHOLD = 0.4
 TEXT_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.8
+_PICK_OBJECT = 'pick_object'
+_DETECT_OBJECT = 'detect_object'
+_MOVE_ABOVE_OBJECT_AND_RELEASE = 'move_above_object_and_release'
+_RELEASE_GRIPPER = 'release_gripper'
+_FLICK_WRIST_WHILE_RELEASE = 'flick_wrist_while_release'
+
+AVAILABLE_ACTIONS = (
+    _PICK_OBJECT, _DETECT_OBJECT, _MOVE_ABOVE_OBJECT_AND_RELEASE,
+    _RELEASE_GRIPPER,
+    _FLICK_WRIST_WHILE_RELEASE)
 
 
 # Prompting SAM with detected boxes
@@ -69,7 +79,6 @@ class AeraSemiAutonomous(Node):
             self,
             annotate: bool = False,
             publish_point_cloud: bool = False,
-            assistant_id: str = "",
             # Adjust these offsets to your needs:
             offset_x: float = 0.015,
             offset_y: float = -0.015,
@@ -159,10 +168,9 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
-
     def handle_tool_call(self, tool_call: str, args: dict,
                          rgb_image: np.ndarray, depth_image: np.ndarray):
-        if tool_call == "detect_objects":
+        if tool_call == _DETECT_OBJECT:
             classes_str = args["object_classes"]
             classes = classes_str.split(",")
             self._last_detections = self.detect_objects(rgb_image, classes)
@@ -173,7 +181,7 @@ class AeraSemiAutonomous(Node):
             self.logger.info(f"Detected {detected_classes}.")
             self.logger.info(
                 f"detection confidence: {self._last_detections.confidence}")
-        elif tool_call == "pick_object":
+        elif tool_call == _PICK_OBJECT:
             if self._last_detections is None:
                 logging.error("No detection available")
                 return
@@ -192,7 +200,7 @@ class AeraSemiAutonomous(Node):
                 f"done picking object. Joint states: {self.arm_joint_state.position}"
             )
             self._object_in_gripper = True
-        elif tool_call == "move_above_object_and_release":
+        elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
             if self._last_detections is None:
                 logging.error("No detection available")
                 return
@@ -204,16 +212,19 @@ class AeraSemiAutonomous(Node):
             self.release_above(args["object_index"], self._last_detections,
                                depth_image)
             self._object_in_gripper = False
-        elif tool_call == "release_gripper":
+        elif tool_call == _RELEASE_GRIPPER:
             self.release_gripper()
             self._object_in_gripper = False
-        elif tool_call == "flick_wrist_while_release":
+        elif tool_call == _FLICK_WRIST_WHILE_RELEASE:
             self.flick_wrist_while_release()
             self._object_in_gripper = False
 
     def start(self, msg: String):
         if not self._last_rgb_msg or not self._last_depth_msg:
             return
+        if msg not in AVAILABLE_ACTIONS:
+            self.logger.warn(
+                f"Action: {msg} is not valid. Valid actions: {AVAILABLE_ACTIONS}")
 
         rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
         depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
@@ -222,10 +233,9 @@ class AeraSemiAutonomous(Node):
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(
             f"Initial Joint states: {self.arm_joint_state.position}")
-        tool_call = "detect_objects"
         done = False
         while not done:
-            self.handle_tool_call(tool_call, rgb_image, depth_image)
+            self.handle_tool_call(msg, rgb_image, depth_image)
 
         self.go_home()
         self.logger.info("Task completed.")

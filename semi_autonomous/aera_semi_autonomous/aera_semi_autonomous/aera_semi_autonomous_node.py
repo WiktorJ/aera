@@ -174,7 +174,7 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
-    def handle_tool_call(self, tool_call: str, object_to_detect: str,
+    def handle_tool_call(self, tool_call: String, object_to_detect: str,
                          rgb_image: np.ndarray, depth_image: np.ndarray):
         if tool_call == _DETECT_OBJECT:
             self._last_detections = self.detect_objects(rgb_image,

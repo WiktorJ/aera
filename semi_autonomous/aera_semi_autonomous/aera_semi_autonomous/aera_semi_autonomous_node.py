@@ -145,7 +145,7 @@ class AeraSemiAutonomous(Node):
         self.offset_z = offset_z
 
         self.image_sub = self.create_subscription(Image,
-                                                  "/camera/color/image_raw",
+                                                  "/camera/camera/color/image_raw",
                                                   self.image_callback, 10)
         self.depth_sub = self.create_subscription(
             Image, "/camera/aligned_depth_to_color/image_raw",
@@ -174,7 +174,7 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
-    def handle_tool_call(self, tool_call: String, object_to_detect: str,
+    def handle_tool_call(self, tool_call: str, object_to_detect: str,
                          rgb_image: np.ndarray, depth_image: np.ndarray):
         if tool_call == _DETECT_OBJECT:
             self._last_detections = self.detect_objects(rgb_image,
@@ -220,8 +220,10 @@ class AeraSemiAutonomous(Node):
 
     def start(self, msg: String):
         if not self._last_rgb_msg or not self._last_depth_msg:
+            self.logger.warn(
+                f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}")
             return
-        if msg not in _AVAILABLE_ACTIONS:
+        if msg.data not in _AVAILABLE_ACTIONS:
             self.logger.warn(
                 f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}")
 
@@ -236,7 +238,7 @@ class AeraSemiAutonomous(Node):
         # Hardcoded for now
         object_to_detect = 'pen'
         while not done:
-            self.handle_tool_call(msg, object_to_detect, rgb_image, depth_image)
+            self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
 
         self.go_home()
         self.logger.info("Task completed.")

@@ -63,6 +63,7 @@ _AVAILABLE_ACTIONS = (
 # For only single object supported.
 _OBJECT_DETECTION_INDEX = 0
 _TF_PREFIX = 'camera'
+BASE_LINK_NAME = f'{_TF_PREFIX}base_link'
 
 
 # Prompting SAM with detected boxes
@@ -104,15 +105,15 @@ class AeraSemiAutonomous(Node):
         self.moveit2 = MoveIt2(
             node=self,
             joint_names=self.arm_joint_names,
-            base_link_name="base_link",
-            end_effector_name="link_6",
+            base_link_name=BASE_LINK_NAME,
+            end_effector_name=f"{_TF_PREFIX}link_6",
             group_name="ar_manipulator",
             callback_group=callback_group,
         )
         self.moveit2.planner_id = "RRTConnectkConfigDefault"
         self.gripper_interface = GripperInterface(
             node=self,
-            gripper_joint_names=["gripper_jaw1_joint"],
+            gripper_joint_names=[f"{_TF_PREFIX}gripper_jaw1_joint"],
             open_gripper_joint_positions=[-0.012],
             closed_gripper_joint_positions=[0.0],
             gripper_group_name="ar_gripper",
@@ -125,6 +126,7 @@ class AeraSemiAutonomous(Node):
         self.grounding_dino_model = Model(
             model_config_path=GROUNDING_DINO_CONFIG_PATH,
             model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH,
+            device="cuda" if torch.cuda.is_available() else "cpu",
         )
         self.sam = sam_model_registry[SAM_ENCODER_VERSION](
             checkpoint=SAM_CHECKPOINT_PATH)
@@ -234,11 +236,11 @@ class AeraSemiAutonomous(Node):
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(
             f"Initial Joint states: {self.arm_joint_state.position}")
-        done = False
+        # done = False
         # Hardcoded for now
         object_to_detect = 'pen'
-        while not done:
-            self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
+        # while not done:
+        self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
 
         self.go_home()
         self.logger.info("Task completed.")
@@ -447,7 +449,7 @@ class AeraSemiAutonomous(Node):
     @cached_property
     def cam_to_base_affine(self):
         cam_to_base_link_tf = self.tf_buffer.lookup_transform(
-            target_frame="base_link",
+            target_frame=BASE_LINK_NAME,
             source_frame="camera_color_frame",
             time=Time(),
             timeout=Duration(seconds=5))
@@ -469,7 +471,7 @@ class AeraSemiAutonomous(Node):
 
     def move_to(self, msg: Pose):
         pose_goal = PoseStamped()
-        pose_goal.header.frame_id = "base_link"
+        pose_goal.header.frame_id = BASE_LINK_NAME
         pose_goal.pose = msg
 
         self.moveit2.move_to_pose(pose=pose_goal)

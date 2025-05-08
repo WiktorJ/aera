@@ -149,8 +149,11 @@ class AeraSemiAutonomous(Node):
         self.image_sub = self.create_subscription(Image,
                                                   "/camera/camera/color/image_raw",
                                                   self.image_callback, 10)
+        # self.depth_sub = self.create_subscription(
+        #     Image, "/camera/aligned_depth_to_color/image_raw",
+        #     self.depth_callback, 10)
         self.depth_sub = self.create_subscription(
-            Image, "/camera/aligned_depth_to_color/image_raw",
+            Image, "/camera/camera/depth/image_rect_raw",
             self.depth_callback, 10)
         self.joint_states_sub = self.create_subscription(
             JointState, "/joint_states", self.joint_states_callback, 10)
@@ -308,7 +311,8 @@ class AeraSemiAutonomous(Node):
 
             # convert it to a ROS PointCloud2 message
             points = np.asarray(pcd.points)
-            pc_msg = point_cloud_to_msg(points, "/camera_color_frame")
+            # pc_msg = point_cloud_to_msg(points, "/camera_color_frame")
+            pc_msg = point_cloud_to_msg(points, "/camera_color_optical_frame")
             self.point_cloud_pub.publish(pc_msg)
 
         self.n_frames_processed += 1
@@ -450,7 +454,8 @@ class AeraSemiAutonomous(Node):
     def cam_to_base_affine(self):
         cam_to_base_link_tf = self.tf_buffer.lookup_transform(
             target_frame=BASE_LINK_NAME,
-            source_frame="camera_color_frame",
+            source_frame="camera_color_optical_frame",
+            # source_frame="camera_color_frame",
             time=Time(),
             timeout=Duration(seconds=5))
         cam_to_base_rot = Rotation.from_quat([

@@ -16,9 +16,17 @@ def load_yaml(package_name, file_name):
 
 
 def generate_launch_description():
+    custom_camera_params_file = os.path.join(
+        get_package_share_directory('aera_semi_autonomous'),
+        # <-- Change 'my_robot_bringup' to YOUR package name
+        'config',
+        'camera.yaml'  # <-- Your custom YAML file name
+    )
+
     launch_args = {
         'rs_compat': 'true',
         'pointcloud.enable': 'true',
+        'params_file': custom_camera_params_file
     }
     depthai = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -40,7 +48,8 @@ def generate_launch_description():
     )
 
     ar_moveit_launch = PythonLaunchDescriptionSource([
-        os.path.join(get_package_share_directory("annin_ar4_moveit_config"), "launch",
+        os.path.join(get_package_share_directory("annin_ar4_moveit_config"),
+                     "launch",
                      "moveit.launch.py")
     ])
     ar_moveit_args = {
@@ -57,7 +66,14 @@ def generate_launch_description():
         output="screen",
     )
 
+    static_tf_publisher = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=["0", "0", "0", "0", "0", "0", "world", "camera_link"],
+        output="screen",
+    )
 
     return LaunchDescription([
-        depthai, delay_calibration_tf_publisher, ar_moveit, tabletop_handybot_node
+        depthai, delay_calibration_tf_publisher, ar_moveit,
+        tabletop_handybot_node, static_tf_publisher
     ])

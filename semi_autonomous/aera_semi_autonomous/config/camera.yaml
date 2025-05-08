@@ -1,0 +1,59 @@
+camera:
+  # This is a common parameter to enable alignment of depth to the color camera
+  i_align_depth: true
+  # For some OAK-D models, especially Pro, you might need to specify which camera to align to,
+  # especially if the RGB sensor is not the default (CAM_A).
+  # i_board_socket_alloc: ["CAM_A", "CAM_B", "CAM_C"] # Example if CAM_A is RGB
+  # The type of pipeline can also influence this. 'RGBD' often implies alignment.
+  i_pipeline_type: "RGBD"
+
+
+# Parameters for the stereo depth node (often named 'stereo' internally by the driver)
+# These settings might also be under a top-level 'stereo:' key or similar.
+stereo:
+  # Ensure depth output is enabled
+  i_publish_topic: true
+  # This explicitly tells the stereo processing to align to the RGB camera.
+  # Common values are "rgb", "color", or the specific camera socket like "CAM_A".
+  i_align_to: "rgb" # or "color", or sometimes "CAM_A" (if RGB is CAM_A)
+
+  # Sometimes also related:
+  # i_set_input_size: [640, 400] # Example, set to your desired stereo resolution
+  # i_set_output_size: [640, 400] # Might be needed
+  # i_set_confidence_threshold: 200 # Example
+
+# Other parameters might be relevant, like resolution and FPS for RGB and depth.
+# It's best to start by copying the default camera.yaml from the
+# depthai_ros_driver package and then modifying it.
+
+# Example from a common depthai_ros_driver configuration:
+# ---
+# /oak: # Or /camera: if rs_compat renames it
+#   ros__parameters:
+#     camera:
+#       i_pipeline_type: "RGBD"
+#       i_enable_imu: true
+#       i_enable_sync: true
+#       i_align_depth: true # <--- IMPORTANT
+#     rgb:
+#       i_max_fps: 30.0
+#       i_publish_topic: true
+#       i_resolution: "1080p"
+#       i_enable_preview: false
+#       i_board_socket_id: 0 # Or CAM_A
+#       i_set_isp_scale: "1,3" # Example
+#       i_output_isp: true
+#     stereo:
+#       i_publish_topic: true
+#       i_max_fps: 30.0
+#       i_left_ σκοcket_id: 1 # Or CAM_B
+#       i_right_socket_id: 2 # Or CAM_C
+#       i_board_socket_id: 0 # This might be unused if left/right are specified
+#       i_resolution: "400p"
+#       i_align_to_output: "rgb" # <--- IMPORTANT if i_align_depth is not enough
+#       i_width: 640
+#       i_height: 400
+#       i_depth_filter_size: 5
+#       i_stereo_conf_threshold: 240
+#       # ... other stereo params ...
+# ---

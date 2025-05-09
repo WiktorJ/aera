@@ -24,7 +24,7 @@ from rclpy.node import Node
 from rclpy.time import Time
 from scipy.spatial.transform import Rotation
 from segment_anything import SamPredictor, sam_model_registry
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from std_msgs.msg import Int64, String
 from sensor_msgs.msg import JointState
 
@@ -145,6 +145,9 @@ class AeraSemiAutonomous(Node):
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.offset_z = offset_z
+        self.camera_intrinsics = None
+        self.image_width = None
+        self.image_height = None
 
         self.image_sub = self.create_subscription(Image,
                                                   "/camera/camera/color/image_raw",
@@ -152,6 +155,12 @@ class AeraSemiAutonomous(Node):
         # self.depth_sub = self.create_subscription(
         #     Image, "/camera/aligned_depth_to_color/image_raw",
         #     self.depth_callback, 10)
+        self.camera_info_sub = self.create_subscription(
+            CameraInfo,
+            '/camera/camera/color/camera_info',
+            self.camera_info_callback,
+            10
+        )
         self.depth_sub = self.create_subscription(
             Image, "/camera/camera/depth/image_rect_raw",
             self.depth_callback, 10)
@@ -179,8 +188,32 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
+    def camera_info_callback(self, msg: CameraInfo):
+        if self.camera_intrinsics is None:
+            self.logger.info("Received camera intrinsics.")
+            self.image_width = msg.width
+            self.image_height = msg.height
+            # K is a 3x3 matrix (row-major order in a list of 9)
+            # K = [fx, 0,  cx,
+            #      0,  fy, cy,
+            #      0,  0,  1]
+            self.camera_intrinsics = o3d.camera.PinholeCameraIntrinsic(
+                width=msg.width,
+                height=msg.height,
+                fx=msg.k[0],
+                fy=msg.k[4],
+                cx=msg.k[2],
+                cy=msg.k[5]
+            )
+            # Unsubscribe after getting the info because it's static
+            self.destroy_subscription(self.camera_info_sub)
+
     def handle_tool_call(self, tool_call: str, object_to_detect: str,
                          rgb_image: np.ndarray, depth_image: np.ndarray):
+        if self.camera_intrinsics is None:
+            self.logger.error(
+                "Camera intrinsics not yet received. Cannot create point cloud.")
+            return
         if tool_call == _DETECT_OBJECT:
             self._last_detections = self.detect_objects(rgb_image,
                                                         [object_to_detect])
@@ -293,20 +326,20 @@ class AeraSemiAutonomous(Node):
             cv2.imwrite(f"annotated_image_masks_{self.n_frames_processed}.jpg",
                         annotated_frame)
 
-        if self.publish_point_cloud:
+        if self.publish_point_cloud and self.camera_intrinsics is not None:
             depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
             # mask out the depth image except for the detected objects
             masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
             for mask in detections.mask:
                 masked_depth_image[mask] = depth_image[mask]
-            masked_depth_image /= 1000.0
+            # masked_depth_image /= 1000.0
 
-            # convert the masked depth image to a point cloud
             pcd = o3d.geometry.PointCloud.create_from_depth_image(
-                o3d.geometry.Image(masked_depth_image),
-                o3d.camera.PinholeCameraIntrinsic(
-                    o3d.camera.PinholeCameraIntrinsicParameters.
-                    PrimeSenseDefault),
+                o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
+                self.camera_intrinsics,
+                depth_scale=1000.0,
+                depth_trunc=3.0,  # Max depth to consider, adjust as needed
+                stride=1
             )
 
             # convert it to a ROS PointCloud2 message
@@ -325,14 +358,16 @@ class AeraSemiAutonomous(Node):
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image[mask] = depth_image[mask]
-        masked_depth_image /= 1000.0
+        # masked_depth_image /= 1000.0
 
-        # convert the masked depth image to a point cloud
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
-            o3d.geometry.Image(masked_depth_image),
-            o3d.camera.PinholeCameraIntrinsic(
-                o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+            o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
+            self.camera_intrinsics,
+            depth_scale=1000.0,
+            depth_trunc=3.0,  # Max depth to consider, adjust as needed
+            stride=1
         )
+        # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
         points = np.asarray(pcd.points)
         grasp_z = points[:, 2].max()
@@ -396,13 +431,15 @@ class AeraSemiAutonomous(Node):
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image[mask] = depth_image[mask]
-        masked_depth_image /= 1000.0
+        # masked_depth_image /= 1000.0
 
         # convert the masked depth image to a point cloud
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
-            o3d.geometry.Image(masked_depth_image),
-            o3d.camera.PinholeCameraIntrinsic(
-                o3d.camera.PinholeCameraIntrinsicParameters.PrimeSenseDefault),
+            o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
+            self.camera_intrinsics,
+            depth_scale=1000.0,
+            depth_trunc=3.0,  # Max depth to consider, adjust as needed
+            stride=1
         )
         pcd.transform(self.cam_to_base_affine)
 

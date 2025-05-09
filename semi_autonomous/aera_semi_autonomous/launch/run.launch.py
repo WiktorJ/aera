@@ -18,9 +18,8 @@ def load_yaml(package_name, file_name):
 def generate_launch_description():
     custom_camera_params_file = os.path.join(
         get_package_share_directory('aera_semi_autonomous'),
-        # <-- Change 'my_robot_bringup' to YOUR package name
         'config',
-        'camera.yaml'  # <-- Your custom YAML file name
+        'camera.yaml'
     )
 
     launch_args = {

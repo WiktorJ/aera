@@ -356,28 +356,39 @@ class AeraSemiAutonomous(Node):
 
             # Annotate DINO boxes
             box_annotator = sv.BoxAnnotator()
-            # Prepare labels carefully, ensuring class_id is valid index for object_classes
-            labels = []
-            for i in range(len(detections.xyxy)):
-                class_id_val = detections.class_id[i]
-                confidence_val = detections.confidence[i]
-                if 0 <= class_id_val < len(object_classes):
-                    labels.append(
-                        f"{object_classes[class_id_val]} {confidence_val:0.2f}")
-                else:
-                    labels.append(
-                        f"ID:{class_id_val} C:{confidence_val:0.2f}")  # Fallback label
-
             annotated_dino_frame = box_annotator.annotate(
                 scene=bgr_image_annotated.copy(),
-                detections=detections,
-                labels=labels)
-            cv2.imwrite(
-                f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
-                annotated_dino_frame)
-            if self.debug_visualizations:
-                cv2.imshow("DINO BBoxes", annotated_dino_frame)
-                # cv2.waitKey(0) # Press any key to continue, or a short delay
+                detections=detections)
+
+            # Prepare labels carefully, ensuring class_id is valid index for object_classes
+            custom_labels = []
+            if detections.class_id is not None and len(detections.class_id) > 0:
+                for i in range(len(detections.xyxy)):
+                    class_id_val = detections.class_id[i]
+                    confidence_val = detections.confidence[i]
+                    if 0 <= class_id_val < len(object_classes):
+                        custom_labels.append(f"{object_classes[class_id_val]} {confidence_val:0.2f}")
+                    else: # Fallback if class_id is out of bounds for object_classes
+                        custom_labels.append(f"ID:{class_id_val} C:{confidence_val:0.2f}")
+            else: # If no class_ids (e.g. all detections filtered out by NMS on class_id)
+                for i in range(len(detections.xyxy)): # Make generic labels if no class_ids
+                     custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
+
+
+            if custom_labels: # Only annotate labels if we have some
+                label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, text_padding=3, text_position=sv.Position.TOP_CENTER)
+                # LabelAnnotator annotates ON TOP of the image passed to it.
+                # So, we pass the image already annotated with boxes.
+                annotated_dino_frame_with_labels = label_annotator.annotate(scene=annotated_dino_frame.copy(), # Use copy to avoid modifying prev
+                                                                            detections=detections,
+                                                                            labels=custom_labels)
+                cv2.imwrite(f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg", annotated_dino_frame_with_labels)
+                if self.debug_visualizations:
+                    cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
+            else: # If no labels, just show the boxes
+                cv2.imwrite(f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg", annotated_dino_frame)
+                if self.debug_visualizations:
+                    cv2.imshow("DINO BBoxes", annotated_dino_frame)
 
             # Annotate SAM masks
             if detections.mask is not None and len(detections.mask) > 0:

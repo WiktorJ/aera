@@ -355,7 +355,7 @@ class AeraSemiAutonomous(Node):
             bgr_image_annotated = image.copy()
 
             # Annotate DINO boxes
-            box_annotator = sv.BoxAnnotator(text_scale=0.7, text_padding=3)
+            box_annotator = sv.BoxAnnotator()
             # Prepare labels carefully, ensuring class_id is valid index for object_classes
             labels = []
             for i in range(len(detections.xyxy)):
@@ -596,8 +596,7 @@ class AeraSemiAutonomous(Node):
             # Reconstruct the rotated rectangle from minAreaRect output
             box = cv2.boxPoints(
                 ((center[0], center[1]), (dimensions[0], dimensions[1]), theta))
-            box = np.int0(
-                box)  # This conversion might not be needed if just plotting lines
+            # box = np.int0(box)  # This conversion might not be needed if just plotting lines
             # For plotting, better to keep it float and close the loop
             box_plot = np.vstack(
                 [box, box[0]])  # Close the rectangle for plotting

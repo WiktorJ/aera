@@ -228,8 +228,17 @@ class AeraSemiAutonomous(Node):
         elif tool_call == _PICK_OBJECT:
             if self._last_detections is None or len(
                     self._last_detections.mask) == 0:
-                logging.error("No detection available")
-                return
+                # logging.error("No detection available")
+                # return
+                self._last_detections = self.detect_objects(rgb_image,
+                                                            [object_to_detect])
+                if len(self._last_detections.class_id) == 0:
+                    self.logger.info(
+                        f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}")
+                    return
+                self.logger.info(f"Detected {object_to_detect}.")
+                self.logger.info(
+                    f"detection confidence: {self._last_detections.confidence}")
 
             if self._object_in_gripper:
                 logging.error("Object in gripper")

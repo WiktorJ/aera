@@ -93,7 +93,8 @@ class AeraSemiAutonomous(Node):
         super().__init__("aera_semi_autonomous_node")
 
         self.logger = self.get_logger()
-        self.debug_visualizations = True
+        self.debug_visualizations = False  # Temporarily disable for now
+        self.save_debug_images = True  # Keep this to save images
         self.cv_bridge = CvBridge()
         self.gripper_joint_name = "gripper_joint"
         callback_group = ReentrantCallbackGroup()
@@ -350,7 +351,7 @@ class AeraSemiAutonomous(Node):
             xyxy=detections.xyxy,
         )
 
-        if self.annotate or self.debug_visualizations:  # Also trigger for debug
+        if self.annotate or self.debug_visualizations or self.save_debug_images:
             # Create a BGR copy for OpenCV annotations
             bgr_image_annotated = image.copy()
 
@@ -367,26 +368,41 @@ class AeraSemiAutonomous(Node):
                     class_id_val = detections.class_id[i]
                     confidence_val = detections.confidence[i]
                     if 0 <= class_id_val < len(object_classes):
-                        custom_labels.append(f"{object_classes[class_id_val]} {confidence_val:0.2f}")
-                    else: # Fallback if class_id is out of bounds for object_classes
-                        custom_labels.append(f"ID:{class_id_val} C:{confidence_val:0.2f}")
-            else: # If no class_ids (e.g. all detections filtered out by NMS on class_id)
-                for i in range(len(detections.xyxy)): # Make generic labels if no class_ids
-                     custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
+                        custom_labels.append(
+                            f"{object_classes[class_id_val]} {confidence_val:0.2f}")
+                    else:  # Fallback if class_id is out of bounds for object_classes
+                        custom_labels.append(
+                            f"ID:{class_id_val} C:{confidence_val:0.2f}")
+            else:  # If no class_ids (e.g. all detections filtered out by NMS on class_id)
+                for i in range(
+                        len(detections.xyxy)):  # Make generic labels if no class_ids
+                    custom_labels.append(
+                        f"Det {i} C:{detections.confidence[i]:0.2f}")
 
-
-            if custom_labels: # Only annotate labels if we have some
-                label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1, text_padding=3, text_position=sv.Position.TOP_CENTER)
+            if custom_labels:  # Only annotate labels if we have some
+                label_annotator = sv.LabelAnnotator(text_scale=0.5,
+                                                    text_thickness=1,
+                                                    text_padding=3,
+                                                    text_position=sv.Position.TOP_CENTER)
                 # LabelAnnotator annotates ON TOP of the image passed to it.
                 # So, we pass the image already annotated with boxes.
-                annotated_dino_frame_with_labels = label_annotator.annotate(scene=annotated_dino_frame.copy(), # Use copy to avoid modifying prev
-                                                                            detections=detections,
-                                                                            labels=custom_labels)
-                cv2.imwrite(f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg", annotated_dino_frame_with_labels)
+                annotated_dino_frame_with_labels = label_annotator.annotate(
+                    scene=annotated_dino_frame.copy(),
+                    # Use copy to avoid modifying prev
+                    detections=detections,
+                    labels=custom_labels)
+                if self.save_debug_images:
+                    cv2.imwrite(
+                        f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
+                        annotated_dino_frame_with_labels)
                 if self.debug_visualizations:
-                    cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
-            else: # If no labels, just show the boxes
-                cv2.imwrite(f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg", annotated_dino_frame)
+                    cv2.imshow("DINO BBoxes & Labels",
+                               annotated_dino_frame_with_labels)
+            else:  # If no labels, just show the boxes
+                if self.save_debug_images:
+                    cv2.imwrite(
+                        f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
+                        annotated_dino_frame)
                 if self.debug_visualizations:
                     cv2.imshow("DINO BBoxes", annotated_dino_frame)
 
@@ -397,9 +413,10 @@ class AeraSemiAutonomous(Node):
                 annotated_sam_frame = mask_annotator.annotate(
                     scene=bgr_image_annotated.copy(),
                     detections=detections)  # Detections obj should have .mask
-                cv2.imwrite(
-                    f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
-                    annotated_sam_frame)
+                if self.save_debug_images:
+                    cv2.imwrite(
+                        f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
+                        annotated_sam_frame)
                 if self.debug_visualizations:
                     cv2.imshow("SAM Masks", annotated_sam_frame)
                     # cv2.waitKey(0)
@@ -462,7 +479,8 @@ class AeraSemiAutonomous(Node):
                 f"Invalid detections or object_index for pick_object. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}")
             return
 
-        if self.debug_visualizations and self._last_rgb_msg:
+        if (
+                self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
             rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg,
                                                              "bgr8")
             single_mask_viz = rgb_image_for_viz.copy()
@@ -474,11 +492,13 @@ class AeraSemiAutonomous(Node):
                                         0]  # Green for the selected mask
             single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask,
                                               0.3, 0)
-            cv2.imshow(f"Selected Mask (Index {object_index}) for Pick",
-                       single_mask_viz)
-            cv2.imwrite(
-                f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
-                single_mask_viz)
+            if self.debug_visualizations:
+                cv2.imshow(f"Selected Mask (Index {object_index}) for Pick",
+                           single_mask_viz)
+            if self.save_debug_images:
+                cv2.imwrite(
+                    f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
+                    single_mask_viz)
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects
@@ -490,7 +510,7 @@ class AeraSemiAutonomous(Node):
         mask = detections.mask[object_index]
         masked_depth_image_mm[mask] = depth_image[mask]  # Apply mask
 
-        if self.debug_visualizations:
+        if self.debug_visualizations or self.save_debug_images:
             # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
             display_depth = masked_depth_image_mm.copy()
             if np.any(
@@ -504,10 +524,12 @@ class AeraSemiAutonomous(Node):
                 display_depth_norm = np.zeros_like(display_depth,
                                                    dtype=np.uint8)
 
-            cv2.imshow("Masked Depth (for pick)", display_depth_norm)
-            cv2.imwrite(
-                f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
-                display_depth_norm)
+            if self.save_debug_images:
+                cv2.imwrite(
+                    f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
+                    display_depth_norm)
+            if self.debug_visualizations:
+                cv2.imshow("Masked Depth (for pick)", display_depth_norm)
             # cv2.waitKey(0)
 
         # pcd = o3d.geometry.PointCloud.create_from_depth_image(
@@ -525,7 +547,7 @@ class AeraSemiAutonomous(Node):
             project_valid_depth_only=True
         )
 
-        if self.debug_visualizations:
+        if self.debug_visualizations or self.save_debug_images:
             if not hasattr(self, 'pcd_cam_frame_pub'):
                 self.pcd_cam_frame_pub = self.create_publisher(PointCloud2,
                                                                "/debug/pcd_camera_frame",
@@ -556,7 +578,7 @@ class AeraSemiAutonomous(Node):
                 "No points in point cloud after transform to base frame for pick_object. Check TF or if mask resulted in empty depth.")
             return
 
-        if self.debug_visualizations:
+        if self.debug_visualizations or self.save_debug_images:
             if not hasattr(self, 'pcd_base_frame_pub'):
                 self.pcd_base_frame_pub = self.create_publisher(PointCloud2,
                                                                 "/debug/pcd_base_frame",
@@ -597,7 +619,7 @@ class AeraSemiAutonomous(Node):
         # xy_points = xy_points.astype(np.float32)
         # center, dimensions, theta = cv2.minAreaRect(xy_points)
 
-        if self.debug_visualizations and len(
+        if (self.debug_visualizations or self.save_debug_images) and len(
                 near_grasp_z_points) >= 3:  # Only if minAreaRect was used
             plt.figure("XY points for minAreaRect (Base Frame)")
             plt.clf()  # Clear previous plot
@@ -647,7 +669,7 @@ class AeraSemiAutonomous(Node):
         grasp_pose.orientation.z = grasp_quat[2]
         grasp_pose.orientation.w = grasp_quat[3]
 
-        if self.debug_visualizations:
+        if self.debug_visualizations or self.save_debug_images:
             if not hasattr(self, 'grasp_pose_pub_pick'):
                 self.grasp_pose_pub_pick = self.create_publisher(PoseStamped,
                                                                  "/debug/pick_grasp_pose",

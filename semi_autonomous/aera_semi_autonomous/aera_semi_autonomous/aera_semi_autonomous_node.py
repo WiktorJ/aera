@@ -479,26 +479,55 @@ class AeraSemiAutonomous(Node):
                 f"Invalid detections or object_index for pick_object. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}")
             return
 
-        if (
-                self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
-            rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg,
-                                                             "bgr8")
-            single_mask_viz = rgb_image_for_viz.copy()
-            # Create a colored overlay for the mask
-            color_mask = np.zeros_like(single_mask_viz)
-            current_mask = detections.mask[
-                object_index]  # This is a boolean mask
-            color_mask[current_mask] = [0, 255,
-                                        0]  # Green for the selected mask
-            single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask,
-                                              0.3, 0)
-            if self.debug_visualizations:
-                cv2.imshow(f"Selected Mask (Index {object_index}) for Pick",
-                           single_mask_viz)
-            if self.save_debug_images:
-                cv2.imwrite(
-                    f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
-                    single_mask_viz)
+        if (self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
+            current_rgb_msg_to_use = self._last_rgb_msg  # Use a local variable
+
+            # --- DETAILED CHECK OF THE RGB MESSAGE ---
+            if current_rgb_msg_to_use is None:
+                self.logger.error(
+                    "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!")
+
+            self.logger.info(
+                f"PICK_OBJECT: self._last_rgb_msg timestamp: {current_rgb_msg_to_use.header.stamp.sec}.{current_rgb_msg_to_use.header.stamp.nanosec}")
+            self.logger.info(
+                f"PICK_OBJECT: self._last_rgb_msg encoding: {current_rgb_msg_to_use.encoding}")
+            self.logger.info(
+                f"PICK_OBJECT: self._last_rgb_msg height: {current_rgb_msg_to_use.height}, width: {current_rgb_msg_to_use.width}, step: {current_rgb_msg_to_use.step}")
+            self.logger.info(
+                f"PICK_OBJECT: self._last_rgb_msg data length: {len(current_rgb_msg_to_use.data)}")
+            expected_data_len = current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
+            if len(current_rgb_msg_to_use.data) != expected_data_len:
+                self.logger.error(
+                    f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}")
+
+            try:
+                rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg,
+                                                                 "bgr8")
+                single_mask_viz = rgb_image_for_viz.copy()
+                # Create a colored overlay for the mask
+                color_mask = np.zeros_like(single_mask_viz)
+                current_mask = detections.mask[
+                    object_index]  # This is a boolean mask
+                color_mask[current_mask] = [0, 255,
+                                            0]  # Green for the selected mask
+                single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask,
+                                                  0.3, 0)
+                if self.debug_visualizations:
+                    cv2.imshow(f"Selected Mask (Index {object_index}) for Pick",
+                               single_mask_viz)
+                if self.save_debug_images:
+                    cv2.imwrite(
+                        f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
+                        single_mask_viz)
+            except Exception as e:
+                self.logger.error(
+                    f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}")
+                self.logger.error(
+                    f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}")
+                # Also log the exception traceback fully
+                import traceback
+                self.logger.error(
+                    f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects

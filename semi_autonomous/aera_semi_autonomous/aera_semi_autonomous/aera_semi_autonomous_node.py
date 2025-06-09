@@ -538,6 +538,7 @@ class AeraSemiAutonomous(Node):
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image_mm[mask] = depth_image[mask]  # Apply mask
+        masked_depth_image_mm /= 1000.0
 
         if self.debug_visualizations or self.save_debug_images:
             # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
@@ -648,8 +649,7 @@ class AeraSemiAutonomous(Node):
         # xy_points = xy_points.astype(np.float32)
         # center, dimensions, theta = cv2.minAreaRect(xy_points)
 
-        if (self.debug_visualizations or self.save_debug_images) and len(
-                near_grasp_z_points) >= 3:  # Only if minAreaRect was used
+        if self.debug_visualizations and len(near_grasp_z_points) >= 3:  # Only if minAreaRect was used
             plt.figure("XY points for minAreaRect (Base Frame)")
             plt.clf()  # Clear previous plot
             plt.scatter(xy_points[:, 0], xy_points[:, 1], s=5,

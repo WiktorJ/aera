@@ -143,6 +143,7 @@ class AeraSemiAutonomous(Node):
         self.arm_joint_state: JointState | None = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
+        self.new_arm_joint_state_available = False
         self.gripper_squeeze_factor = 0.5
         self.offset_x = offset_x
         self.offset_y = offset_y
@@ -726,12 +727,12 @@ class AeraSemiAutonomous(Node):
         # move 5cm above the item first
         msg.position.z += 0.05
         self.move_to(msg)
-        time.sleep(0.05)
+        self.wait_for_new_joint_state()
 
         # grasp the item
         msg.position.z -= 0.05
         self.move_to(msg)
-        time.sleep(0.05)
+        self.wait_for_new_joint_state()
 
         gripper_pos = -gripper_opening / 2. * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
@@ -741,7 +742,7 @@ class AeraSemiAutonomous(Node):
         # lift the item
         msg.position.z += 0.12
         self.move_to(msg)
-        time.sleep(0.05)
+        self.wait_for_new_joint_state()
 
     def release_above(self, object_index: int, detections: sv.Detections,
                       depth_image: np.ndarray):
@@ -804,9 +805,25 @@ class AeraSemiAutonomous(Node):
 
         self.moveit2.execute(trajectory)
         self.moveit2.wait_until_executed()
+        self.wait_for_new_joint_state()
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
+
+    def wait_for_new_joint_state(self, timeout_s: float = 2.0):
+        """Wait for a new joint state to be received."""
+        self.new_arm_joint_state_available = False
+        rate = self.create_rate(100)  # 100 Hz
+        start_time = self.get_clock().now()
+        while rclpy.ok() and (
+                self.get_clock().now() - start_time).nanoseconds / 1e9 < timeout_s:
+            if self.new_arm_joint_state_available:
+                self.logger.info("New joint state received.")
+                return True
+            rate.sleep()
+        self.logger.warn(
+            f"Timed out waiting for new joint state after {timeout_s}s.")
+        return False
 
     def go_home(self):
         if self.arm_joint_state is None:
@@ -871,6 +888,7 @@ class AeraSemiAutonomous(Node):
         # good pose is 0, -0.3, 0.35
         self.logger.info(f"Releasing at: {msg}")
         self.move_to(msg)
+        self.wait_for_new_joint_state()
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
@@ -941,6 +959,7 @@ class AeraSemiAutonomous(Node):
                 joint_state.effort[i] = msg.effort[idx]
 
         self.arm_joint_state = joint_state
+        self.new_arm_joint_state_available = True
 
     def save_images(self, msg):
         if not self._last_rgb_msg or not self._last_depth_msg:

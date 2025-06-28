@@ -787,23 +787,43 @@ class AeraSemiAutonomous(Node):
         self.gripper_interface.wait_until_executed()
 
     def flick_wrist_while_release(self):
+        if self.arm_joint_state is None:
+            self.logger.error(
+                "Cannot flick wrist, arm joint state is not available.")
+            return
         joint_positions = self.arm_joint_state.position
         joint_positions[4] -= np.deg2rad(25)
-        self.moveit2.move_to_configuration(joint_positions,
-                                           self.arm_joint_names,
-                                           tolerance=0.005)
-        time.sleep(3)
+        trajectory = self.moveit2.plan(
+            joint_positions=joint_positions,
+            joint_names=self.arm_joint_names,
+            tolerance_joint_position=0.005,
+            start_joint_state=self.arm_joint_state)
+        if not trajectory:
+            self.logger.error("Failed to plan for flick_wrist_while_release")
+            return
+
+        self.moveit2.execute(trajectory)
+        self.moveit2.wait_until_executed()
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
-        self.moveit2.wait_until_executed()
 
     def go_home(self):
+        if self.arm_joint_state is None:
+            self.logger.error(
+                "Cannot go home, arm joint state is not available.")
+            return
         joint_positions = [0., 0., 0., 0., 0., 0.]
-        self.moveit2.move_to_configuration(joint_positions,
-                                           self.arm_joint_names,
-                                           tolerance=0.005)
-        self.moveit2.wait_until_executed()
+        trajectory = self.moveit2.plan(
+            joint_positions=joint_positions,
+            joint_names=self.arm_joint_names,
+            tolerance_joint_position=0.005,
+            start_joint_state=self.arm_joint_state)
+        if trajectory:
+            self.moveit2.execute(trajectory)
+            self.moveit2.wait_until_executed()
+        else:
+            self.logger.error("Failed to plan trajectory for go_home.")
 
     @cached_property
     def cam_to_base_affine(self):
@@ -830,12 +850,21 @@ class AeraSemiAutonomous(Node):
         return affine
 
     def move_to(self, msg: Pose):
+        if self.arm_joint_state is None:
+            self.logger.error("Cannot move, arm joint state is not available.")
+            return
+
         pose_goal = PoseStamped()
         pose_goal.header.frame_id = BASE_LINK_NAME
         pose_goal.pose = msg
 
-        self.moveit2.move_to_pose(pose=pose_goal)
-        self.moveit2.wait_until_executed()
+        trajectory = self.moveit2.plan(pose=pose_goal,
+                                       start_joint_state=self.arm_joint_state)
+        if trajectory:
+            self.moveit2.execute(trajectory)
+            self.moveit2.wait_until_executed()
+        else:
+            self.logger.error("Failed to plan trajectory for move_to.")
 
     def release_at(self, msg: Pose):
         # NOTE: straight down is wxyz 0, 0, 1, 0

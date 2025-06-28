@@ -146,6 +146,7 @@ class AeraSemiAutonomous(Node):
         self._object_in_gripper: bool = False
         self.joint_state_event = threading.Event()
         self.gripper_squeeze_factor = 0.5
+        self.processing_lock = threading.Lock()
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.offset_z = offset_z
@@ -274,30 +275,42 @@ class AeraSemiAutonomous(Node):
             self._object_in_gripper = False
 
     def start(self, msg: String):
-        if not self._last_rgb_msg or not self._last_depth_msg:
-            self.logger.warn(
-                f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}")
+        if self.processing_lock.locked():
+            self.logger.warn("Already processing a command. Ignoring new prompt.")
             return
-        if msg.data not in _AVAILABLE_ACTIONS:
-            self.logger.warn(
-                f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}")
 
-        rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-        self._last_detections = None
+        # Run the long-running, blocking logic in a separate thread
+        # to avoid blocking the executor.
+        thread = threading.Thread(target=self._processing_thread, args=(msg,))
+        thread.start()
 
-        self.logger.info(f"Processing: {msg.data}")
-        self.logger.info(
-            f"Initial Joint states: {self.arm_joint_state.position}")
-        # done = False
-        # Hardcoded for now
-        object_to_detect = 'pen'
-        # while not done:
-        self.handle_tool_call(msg.data, object_to_detect, rgb_image,
-                              depth_image)
+    def _processing_thread(self, msg: String):
+        with self.processing_lock:
+            if not self._last_rgb_msg or not self._last_depth_msg:
+                self.logger.warn(
+                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}")
+                return
+            if msg.data not in _AVAILABLE_ACTIONS:
+                self.logger.warn(
+                    f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}")
+                return
 
-        self.go_home()
-        self.logger.info("Task completed.")
+            rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
+            depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+            self._last_detections = None
+
+            self.logger.info(f"Processing: {msg.data}")
+            self.logger.info(
+                f"Initial Joint states: {self.arm_joint_state.position}")
+            # done = False
+            # Hardcoded for now
+            object_to_detect = 'pen'
+            # while not done:
+            self.handle_tool_call(msg.data, object_to_detect, rgb_image,
+                                  depth_image)
+
+            self.go_home()
+            self.logger.info("Task completed.")
 
     def detect_objects(self, image: np.ndarray, object_classes: List[str]):
         self.logger.info(f"Detecting objects of classes: {object_classes}")

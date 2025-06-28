@@ -883,15 +883,33 @@ class AeraSemiAutonomous(Node):
         self._last_rgb_msg = msg
 
     def joint_states_callback(self, msg: JointState):
+        # Create a map for faster lookups
+        joint_name_to_idx = {name: i for i, name in enumerate(msg.name)}
+
+        # Check if all required arm joints are present in the message
+        if not all(name in joint_name_to_idx for name in self.arm_joint_names):
+            # Not all joints are in this message, so we can't form a complete state.
+            # We could log this, but it might be spammy if multiple publishers are on /joint_states
+            return
+
         joint_state = JointState()
         joint_state.header = msg.header
-        for name in self.arm_joint_names:
-            for i, joint_state_joint_name in enumerate(msg.name):
-                if name == joint_state_joint_name:
-                    joint_state.name.append(name)
-                    joint_state.position.append(msg.position[i])
-                    joint_state.velocity.append(msg.velocity[i])
-                    joint_state.effort.append(msg.effort[i])
+        joint_state.name = self.arm_joint_names
+
+        joint_state.position = [0.0] * len(self.arm_joint_names)
+        joint_state.velocity = [0.0] * len(self.arm_joint_names)
+        joint_state.effort = [0.0] * len(self.arm_joint_names)
+
+        has_velocity = len(msg.velocity) == len(msg.name)
+        has_effort = len(msg.effort) == len(msg.name)
+
+        for i, name in enumerate(self.arm_joint_names):
+            idx = joint_name_to_idx[name]
+            joint_state.position[i] = msg.position[idx]
+            if has_velocity:
+                joint_state.velocity[i] = msg.velocity[idx]
+            if has_effort:
+                joint_state.effort[i] = msg.effort[idx]
 
         self.arm_joint_state = joint_state
 

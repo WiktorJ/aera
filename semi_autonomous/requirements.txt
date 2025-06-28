@@ -2,3 +2,7 @@ open3d
 torch
 numpy
 lark
+torchvision
+supervision
+scipy
+segment-anything

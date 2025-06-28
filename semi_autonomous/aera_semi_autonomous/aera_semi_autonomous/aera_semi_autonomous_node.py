@@ -168,7 +168,11 @@ class AeraSemiAutonomous(Node):
             Image, "/camera/camera/depth/image_rect_raw",
             self.depth_callback, 10)
         self.joint_states_sub = self.create_subscription(
-            JointState, "/joint_states", self.joint_states_callback, 10)
+            JointState,
+            "/joint_states",
+            self.joint_states_callback,
+            10,
+            callback_group=callback_group)
 
         if self.publish_point_cloud:
             self.point_cloud_pub = self.create_publisher(

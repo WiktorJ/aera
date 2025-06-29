@@ -318,7 +318,9 @@ class AeraSemiAutonomous(Node):
             self._last_detections = None
 
             self.logger.info(f"Processing: {msg.data}")
-            self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
+            self.logger.info(
+                f"Initial Joint states: {self.moveit2.joint_state.position}"
+            )
             # done = False
             # Hardcoded for now
             object_to_detect = "pen"
@@ -812,10 +814,6 @@ class AeraSemiAutonomous(Node):
         self.logger.info("XD01")
         self.gripper_interface.open()
         self.logger.info("XD02")
-        self.gripper_interface.wait_until_executed()
-        self.gripper_interface.close()
-        self.gripper_interface.wait_until_executed()
-        self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
         self.logger.info("XD03")
 

@@ -39,9 +39,9 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # GroundingDINO config and checkpoint
 GSA_PATH = "./Grounded-Segment-Anything/Grounded-Segment-Anything"
 GROUNDING_DINO_CONFIG_PATH = os.path.join(
-    GSA_PATH, "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py")
-GROUNDING_DINO_CHECKPOINT_PATH = os.path.join(GSA_PATH,
-                                              "groundingdino_swint_ogc.pth")
+    GSA_PATH, "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+)
+GROUNDING_DINO_CHECKPOINT_PATH = os.path.join(GSA_PATH, "groundingdino_swint_ogc.pth")
 
 # Segment-Anything checkpoint
 SAM_ENCODER_VERSION = "vit_h"
@@ -51,31 +51,34 @@ SAM_CHECKPOINT_PATH = os.path.join(GSA_PATH, "sam_vit_h_4b8939.pth")
 BOX_THRESHOLD = 0.4
 TEXT_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.8
-_PICK_OBJECT = 'pick_object'
-_DETECT_OBJECT = 'detect_object'
-_MOVE_ABOVE_OBJECT_AND_RELEASE = 'move_above_object_and_release'
-_RELEASE_GRIPPER = 'release_gripper'
-_FLICK_WRIST_WHILE_RELEASE = 'flick_wrist_while_release'
+_PICK_OBJECT = "pick_object"
+_DETECT_OBJECT = "detect_object"
+_MOVE_ABOVE_OBJECT_AND_RELEASE = "move_above_object_and_release"
+_RELEASE_GRIPPER = "release_gripper"
+_FLICK_WRIST_WHILE_RELEASE = "flick_wrist_while_release"
 
 _AVAILABLE_ACTIONS = (
-    _PICK_OBJECT, _DETECT_OBJECT, _MOVE_ABOVE_OBJECT_AND_RELEASE,
+    _PICK_OBJECT,
+    _DETECT_OBJECT,
+    _MOVE_ABOVE_OBJECT_AND_RELEASE,
     _RELEASE_GRIPPER,
-    _FLICK_WRIST_WHILE_RELEASE)
+    _FLICK_WRIST_WHILE_RELEASE,
+)
 
 # For only single object supported.
 _OBJECT_DETECTION_INDEX = 0
-_TF_PREFIX = 'camera'
-BASE_LINK_NAME = f'{_TF_PREFIX}base_link'
+_TF_PREFIX = "camera"
+BASE_LINK_NAME = f"{_TF_PREFIX}base_link"
 
 
 # Prompting SAM with detected boxes
-def segment(sam_predictor: SamPredictor, image: np.ndarray,
-            xyxy: np.ndarray) -> np.ndarray:
+def segment(
+    sam_predictor: SamPredictor, image: np.ndarray, xyxy: np.ndarray
+) -> np.ndarray:
     sam_predictor.set_image(image)
     result_masks = []
     for box in xyxy:
-        masks, scores, _ = sam_predictor.predict(box=box,
-                                                 multimask_output=True)
+        masks, scores, _ = sam_predictor.predict(box=box, multimask_output=True)
         index = np.argmax(scores)
         result_masks.append(masks[index])
     return np.array(result_masks)
@@ -83,13 +86,13 @@ def segment(sam_predictor: SamPredictor, image: np.ndarray,
 
 class AeraSemiAutonomous(Node):
     def __init__(
-            self,
-            annotate: bool = False,
-            publish_point_cloud: bool = False,
-            # Adjust these offsets to your needs:
-            offset_x: float = 0.015,
-            offset_y: float = -0.015,
-            offset_z: float = 0.08,  # accounts for the height of the gripper
+        self,
+        annotate: bool = False,
+        publish_point_cloud: bool = False,
+        # Adjust these offsets to your needs:
+        offset_x: float = 0.015,
+        offset_y: float = -0.015,
+        offset_z: float = 0.08,  # accounts for the height of the gripper
     ):
         super().__init__("aera_semi_autonomous_node")
 
@@ -101,10 +104,16 @@ class AeraSemiAutonomous(Node):
         callback_group = ReentrantCallbackGroup()
         # Create MoveIt 2 interface
         self.arm_joint_names = [
-            "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"
+            "joint_1",
+            "joint_2",
+            "joint_3",
+            "joint_4",
+            "joint_5",
+            "joint_6",
         ]
-        self.arm_joint_names = [f"{_TF_PREFIX}{joint_name}" for joint_name in
-                                self.arm_joint_names]
+        self.arm_joint_names = [
+            f"{_TF_PREFIX}{joint_name}" for joint_name in self.arm_joint_names
+        ]
         self.moveit2 = MoveIt2(
             node=self,
             joint_names=self.arm_joint_names,
@@ -132,7 +141,8 @@ class AeraSemiAutonomous(Node):
             device="cuda" if torch.cuda.is_available() else "cpu",
         )
         self.sam = sam_model_registry[SAM_ENCODER_VERSION](
-            checkpoint=SAM_CHECKPOINT_PATH)
+            checkpoint=SAM_CHECKPOINT_PATH
+        )
         self.sam.to(device=DEVICE)
         self.sam_predictor = SamPredictor(self.sam)
 
@@ -154,46 +164,50 @@ class AeraSemiAutonomous(Node):
         self.image_width = None
         self.image_height = None
 
-        self.image_sub = self.create_subscription(Image,
-                                                  "/camera/camera/color/image_raw",
-                                                  self.image_callback, 10)
+        self.image_sub = self.create_subscription(
+            Image, "/camera/camera/color/image_raw", self.image_callback, 10
+        )
         # self.depth_sub = self.create_subscription(
         #     Image, "/camera/aligned_depth_to_color/image_raw",
         #     self.depth_callback, 10)
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
-            '/camera/camera/color/camera_info',
+            "/camera/camera/color/camera_info",
             self.camera_info_callback,
-            10
+            10,
         )
         self.depth_sub = self.create_subscription(
-            Image, "/camera/camera/depth/image_rect_raw",
-            self.depth_callback, 10)
+            Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
+        )
         self.joint_states_sub = self.create_subscription(
             JointState,
             "/joint_states",
             self.joint_states_callback,
             10,
-            callback_group=callback_group)
+            callback_group=callback_group,
+        )
 
         if self.publish_point_cloud:
-            self.point_cloud_pub = self.create_publisher(
-                PointCloud2, "/point_cloud", 2)
+            self.point_cloud_pub = self.create_publisher(PointCloud2, "/point_cloud", 2)
         self.prompt_sub = self.create_subscription(
             String,
             "/prompt",
             self.start,
             10,
-            callback_group=MutuallyExclusiveCallbackGroup())
+            callback_group=MutuallyExclusiveCallbackGroup(),
+        )
         self.save_images_sub = self.create_subscription(
-            String, "/save_images", self.save_images, 10)
+            String, "/save_images", self.save_images, 10
+        )
         self.detect_objects_sub = self.create_subscription(
-            String, "/detect_objects", self.detect_objects_cb, 10)
-        self.release_at_sub = self.create_subscription(Int64, "/release_above",
-                                                       self.release_above_cb,
-                                                       10)
+            String, "/detect_objects", self.detect_objects_cb, 10
+        )
+        self.release_at_sub = self.create_subscription(
+            Int64, "/release_above", self.release_above_cb, 10
+        )
         self.pick_object_sub = self.create_subscription(
-            Int64, "/pick_object", self.pick_object_cb, 10)
+            Int64, "/pick_object", self.pick_object_cb, 10
+        )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
@@ -212,60 +226,70 @@ class AeraSemiAutonomous(Node):
                 fx=msg.k[0],
                 fy=msg.k[4],
                 cx=msg.k[2],
-                cy=msg.k[5]
+                cy=msg.k[5],
             )
             # Unsubscribe after getting the info because it's static
             self.destroy_subscription(self.camera_info_sub)
 
-    def handle_tool_call(self, tool_call: str, object_to_detect: str,
-                         rgb_image: np.ndarray, depth_image: np.ndarray):
+    def handle_tool_call(
+        self,
+        tool_call: str,
+        object_to_detect: str,
+        rgb_image: np.ndarray,
+        depth_image: np.ndarray,
+    ):
         if self.camera_intrinsics is None:
             self.logger.error(
-                "Camera intrinsics not yet received. Cannot create point cloud.")
+                "Camera intrinsics not yet received. Cannot create point cloud."
+            )
             return
         if tool_call == _DETECT_OBJECT:
-            self._last_detections = self.detect_objects(rgb_image,
-                                                        [object_to_detect])
+            self._last_detections = self.detect_objects(rgb_image, [object_to_detect])
             if len(self._last_detections.class_id) == 0:
                 self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}")
+                    f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
+                )
                 return
             self.logger.info(f"Detected {object_to_detect}.")
             self.logger.info(
-                f"detection confidence: {self._last_detections.confidence}")
+                f"detection confidence: {self._last_detections.confidence}"
+            )
         elif tool_call == _PICK_OBJECT:
-            if self._last_detections is None or len(
-                    self._last_detections.mask) == 0:
+            if self._last_detections is None or len(self._last_detections.mask) == 0:
                 # logging.error("No detection available")
                 # return
-                self._last_detections = self.detect_objects(rgb_image,
-                                                            [object_to_detect])
+                self._last_detections = self.detect_objects(
+                    rgb_image, [object_to_detect]
+                )
                 if len(self._last_detections.class_id) == 0:
                     self.logger.info(
-                        f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}")
+                        f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
+                    )
                     return
                 self.logger.info(f"Detected {object_to_detect}.")
                 self.logger.info(
-                    f"detection confidence: {self._last_detections.confidence}")
+                    f"detection confidence: {self._last_detections.confidence}"
+                )
 
             if self._object_in_gripper:
                 logging.error("Object in gripper")
                 return
 
-            self.pick_object(_OBJECT_DETECTION_INDEX, self._last_detections,
-                             depth_image)
+            self.pick_object(
+                _OBJECT_DETECTION_INDEX, self._last_detections, depth_image
+            )
             self.logger.info(
                 f"done picking object. Joint states: {self.arm_joint_state.position}"
             )
             self._object_in_gripper = True
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
-            if self._last_detections is None or len(
-                    self._last_detections.mask) == 0:
+            if self._last_detections is None or len(self._last_detections.mask) == 0:
                 logging.error("No detection available")
                 return
 
-            self.release_above(_OBJECT_DETECTION_INDEX, self._last_detections,
-                               depth_image)
+            self.release_above(
+                _OBJECT_DETECTION_INDEX, self._last_detections, depth_image
+            )
             self._object_in_gripper = False
         elif tool_call == _RELEASE_GRIPPER:
             self.release_gripper()
@@ -288,11 +312,13 @@ class AeraSemiAutonomous(Node):
         with self.processing_lock:
             if not self._last_rgb_msg or not self._last_depth_msg:
                 self.logger.warn(
-                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}")
+                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
+                )
                 return
             if msg.data not in _AVAILABLE_ACTIONS:
                 self.logger.warn(
-                    f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}")
+                    f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                )
                 return
 
             rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
@@ -300,22 +326,21 @@ class AeraSemiAutonomous(Node):
             self._last_detections = None
 
             self.logger.info(f"Processing: {msg.data}")
-            self.logger.info(
-                f"Initial Joint states: {self.arm_joint_state.position}")
+            self.logger.info(f"Initial Joint states: {self.arm_joint_state.position}")
             # done = False
             # Hardcoded for now
-            object_to_detect = 'pen'
+            object_to_detect = "pen"
             # while not done:
-            self.handle_tool_call(msg.data, object_to_detect, rgb_image,
-                                  depth_image)
+            self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
 
             self.go_home()
             self.logger.info("Task completed.")
 
     def detect_objects(self, image: np.ndarray, object_classes: List[str]):
         self.logger.info(f"Detecting objects of classes: {object_classes}")
-        rgb_image_for_dino = cv2.cvtColor(image,
-                                          cv2.COLOR_BGR2RGB)  # DINO might prefer RGB
+        rgb_image_for_dino = cv2.cvtColor(
+            image, cv2.COLOR_BGR2RGB
+        )  # DINO might prefer RGB
 
         detections: sv.Detections = self.grounding_dino_model.predict_with_classes(
             image=rgb_image_for_dino,
@@ -325,11 +350,15 @@ class AeraSemiAutonomous(Node):
         )
 
         # NMS post process
-        nms_idx = (torchvision.ops.nms(
-            torch.from_numpy(detections.xyxy),
-            torch.from_numpy(detections.confidence),
-            NMS_THRESHOLD,
-        ).numpy().tolist())
+        nms_idx = (
+            torchvision.ops.nms(
+                torch.from_numpy(detections.xyxy),
+                torch.from_numpy(detections.confidence),
+                NMS_THRESHOLD,
+            )
+            .numpy()
+            .tolist()
+        )
 
         detections.xyxy = detections.xyxy[nms_idx]
         detections.confidence = detections.confidence[nms_idx]
@@ -342,11 +371,15 @@ class AeraSemiAutonomous(Node):
         )
 
         if len(detections.xyxy) > 0:  # Check if there are any detections
-            nms_idx = (torchvision.ops.nms(
-                torch.from_numpy(detections.xyxy),
-                torch.from_numpy(detections.confidence),
-                NMS_THRESHOLD,
-            ).numpy().tolist())
+            nms_idx = (
+                torchvision.ops.nms(
+                    torch.from_numpy(detections.xyxy),
+                    torch.from_numpy(detections.confidence),
+                    NMS_THRESHOLD,
+                )
+                .numpy()
+                .tolist()
+            )
             detections.xyxy = detections.xyxy[nms_idx]
             detections.confidence = detections.confidence[nms_idx]
             # Ensure class_id is numpy array for indexing if it's a tensor
@@ -355,8 +388,7 @@ class AeraSemiAutonomous(Node):
             detections.class_id = detections.class_id[nms_idx]
         else:
             self.logger.warn("No initial detections before NMS.")
-            detections.mask = np.array(
-                [])  # Ensure mask is empty if no detections
+            detections.mask = np.array([])  # Ensure mask is empty if no detections
             return detections  # Return empty detections
 
         if len(detections.xyxy) == 0:  # Check after NMS
@@ -377,8 +409,8 @@ class AeraSemiAutonomous(Node):
             # Annotate DINO boxes
             box_annotator = sv.BoxAnnotator()
             annotated_dino_frame = box_annotator.annotate(
-                scene=bgr_image_annotated.copy(),
-                detections=detections)
+                scene=bgr_image_annotated.copy(), detections=detections
+            )
 
             # Prepare labels carefully, ensuring class_id is valid index for object_classes
             custom_labels = []
@@ -388,40 +420,46 @@ class AeraSemiAutonomous(Node):
                     confidence_val = detections.confidence[i]
                     if 0 <= class_id_val < len(object_classes):
                         custom_labels.append(
-                            f"{object_classes[class_id_val]} {confidence_val:0.2f}")
+                            f"{object_classes[class_id_val]} {confidence_val:0.2f}"
+                        )
                     else:  # Fallback if class_id is out of bounds for object_classes
                         custom_labels.append(
-                            f"ID:{class_id_val} C:{confidence_val:0.2f}")
+                            f"ID:{class_id_val} C:{confidence_val:0.2f}"
+                        )
             else:  # If no class_ids (e.g. all detections filtered out by NMS on class_id)
                 for i in range(
-                        len(detections.xyxy)):  # Make generic labels if no class_ids
-                    custom_labels.append(
-                        f"Det {i} C:{detections.confidence[i]:0.2f}")
+                    len(detections.xyxy)
+                ):  # Make generic labels if no class_ids
+                    custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
 
             if custom_labels:  # Only annotate labels if we have some
-                label_annotator = sv.LabelAnnotator(text_scale=0.5,
-                                                    text_thickness=1,
-                                                    text_padding=3,
-                                                    text_position=sv.Position.TOP_CENTER)
+                label_annotator = sv.LabelAnnotator(
+                    text_scale=0.5,
+                    text_thickness=1,
+                    text_padding=3,
+                    text_position=sv.Position.TOP_CENTER,
+                )
                 # LabelAnnotator annotates ON TOP of the image passed to it.
                 # So, we pass the image already annotated with boxes.
                 annotated_dino_frame_with_labels = label_annotator.annotate(
                     scene=annotated_dino_frame.copy(),
                     # Use copy to avoid modifying prev
                     detections=detections,
-                    labels=custom_labels)
+                    labels=custom_labels,
+                )
                 if self.save_debug_images:
                     cv2.imwrite(
                         f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
-                        annotated_dino_frame_with_labels)
+                        annotated_dino_frame_with_labels,
+                    )
                 if self.debug_visualizations:
-                    cv2.imshow("DINO BBoxes & Labels",
-                               annotated_dino_frame_with_labels)
+                    cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
             else:  # If no labels, just show the boxes
                 if self.save_debug_images:
                     cv2.imwrite(
                         f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
-                        annotated_dino_frame)
+                        annotated_dino_frame,
+                    )
                 if self.debug_visualizations:
                     cv2.imshow("DINO BBoxes", annotated_dino_frame)
 
@@ -430,12 +468,13 @@ class AeraSemiAutonomous(Node):
                 mask_annotator = sv.MaskAnnotator(opacity=0.4)
                 # Create a fresh copy for mask annotation if you want separate images
                 annotated_sam_frame = mask_annotator.annotate(
-                    scene=bgr_image_annotated.copy(),
-                    detections=detections)  # Detections obj should have .mask
+                    scene=bgr_image_annotated.copy(), detections=detections
+                )  # Detections obj should have .mask
                 if self.save_debug_images:
                     cv2.imwrite(
                         f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
-                        annotated_sam_frame)
+                        annotated_sam_frame,
+                    )
                 if self.debug_visualizations:
                     cv2.imshow("SAM Masks", annotated_sam_frame)
                     # cv2.waitKey(0)
@@ -489,13 +528,18 @@ class AeraSemiAutonomous(Node):
         self.n_frames_processed += 1
         return detections
 
-    def pick_object(self, object_index: int, detections: sv.Detections,
-                    depth_image: np.ndarray):
+    def pick_object(
+        self, object_index: int, detections: sv.Detections, depth_image: np.ndarray
+    ):
         """Perform a top-down grasp on the object."""
-        if detections is None or detections.mask is None or object_index >= len(
-                detections.mask):
+        if (
+            detections is None
+            or detections.mask is None
+            or object_index >= len(detections.mask)
+        ):
             self.logger.error(
-                f"Invalid detections or object_index for pick_object. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}")
+                f"Invalid detections or object_index for pick_object. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}"
+            )
             return
 
         if (self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
@@ -504,49 +548,62 @@ class AeraSemiAutonomous(Node):
             # --- DETAILED CHECK OF THE RGB MESSAGE ---
             if current_rgb_msg_to_use is None:
                 self.logger.error(
-                    "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!")
+                    "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
+                )
 
             self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg timestamp: {current_rgb_msg_to_use.header.stamp.sec}.{current_rgb_msg_to_use.header.stamp.nanosec}")
+                f"PICK_OBJECT: self._last_rgb_msg timestamp: {current_rgb_msg_to_use.header.stamp.sec}.{current_rgb_msg_to_use.header.stamp.nanosec}"
+            )
             self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg encoding: {current_rgb_msg_to_use.encoding}")
+                f"PICK_OBJECT: self._last_rgb_msg encoding: {current_rgb_msg_to_use.encoding}"
+            )
             self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg height: {current_rgb_msg_to_use.height}, width: {current_rgb_msg_to_use.width}, step: {current_rgb_msg_to_use.step}")
+                f"PICK_OBJECT: self._last_rgb_msg height: {current_rgb_msg_to_use.height}, width: {current_rgb_msg_to_use.width}, step: {current_rgb_msg_to_use.step}"
+            )
             self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg data length: {len(current_rgb_msg_to_use.data)}")
-            expected_data_len = current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
+                f"PICK_OBJECT: self._last_rgb_msg data length: {len(current_rgb_msg_to_use.data)}"
+            )
+            expected_data_len = (
+                current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
+            )
             if len(current_rgb_msg_to_use.data) != expected_data_len:
                 self.logger.error(
-                    f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}")
+                    f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}"
+                )
 
             try:
-                rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg,
-                                                                 "bgr8")
+                rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(
+                    self._last_rgb_msg, "bgr8"
+                )
                 single_mask_viz = rgb_image_for_viz.copy()
                 # Create a colored overlay for the mask
                 color_mask = np.zeros_like(single_mask_viz)
-                current_mask = detections.mask[
-                    object_index]  # This is a boolean mask
-                color_mask[current_mask] = [0, 255,
-                                            0]  # Green for the selected mask
-                single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask,
-                                                  0.3, 0)
+                current_mask = detections.mask[object_index]  # This is a boolean mask
+                color_mask[current_mask] = [0, 255, 0]  # Green for the selected mask
+                single_mask_viz = cv2.addWeighted(
+                    single_mask_viz, 0.7, color_mask, 0.3, 0
+                )
                 if self.debug_visualizations:
-                    cv2.imshow(f"Selected Mask (Index {object_index}) for Pick",
-                               single_mask_viz)
+                    cv2.imshow(
+                        f"Selected Mask (Index {object_index}) for Pick",
+                        single_mask_viz,
+                    )
                 if self.save_debug_images:
                     cv2.imwrite(
                         f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
-                        single_mask_viz)
+                        single_mask_viz,
+                    )
             except Exception as e:
                 self.logger.error(
-                    f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}")
+                    f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}"
+                )
                 self.logger.error(
-                    f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}")
+                    f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}"
+                )
                 # Also log the exception traceback fully
                 import traceback
-                self.logger.error(
-                    f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
+
+                self.logger.error(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects
@@ -562,21 +619,22 @@ class AeraSemiAutonomous(Node):
         if self.debug_visualizations or self.save_debug_images:
             # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
             display_depth = masked_depth_image_mm.copy()
-            if np.any(
-                    display_depth > 0):  # Avoid division by zero if all are zero
-                display_depth_norm = (display_depth - display_depth[
-                    display_depth > 0].min()) / \
-                                     (display_depth[display_depth > 0].max() -
-                                      display_depth[display_depth > 0].min())
+            if np.any(display_depth > 0):  # Avoid division by zero if all are zero
+                display_depth_norm = (
+                    display_depth - display_depth[display_depth > 0].min()
+                ) / (
+                    display_depth[display_depth > 0].max()
+                    - display_depth[display_depth > 0].min()
+                )
                 display_depth_norm = (display_depth_norm * 255).astype(np.uint8)
             else:
-                display_depth_norm = np.zeros_like(display_depth,
-                                                   dtype=np.uint8)
+                display_depth_norm = np.zeros_like(display_depth, dtype=np.uint8)
 
             if self.save_debug_images:
                 cv2.imwrite(
                     f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
-                    display_depth_norm)
+                    display_depth_norm,
+                )
             if self.debug_visualizations:
                 cv2.imshow("Masked Depth (for pick)", display_depth_norm)
             # cv2.waitKey(0)
@@ -593,14 +651,14 @@ class AeraSemiAutonomous(Node):
             self.camera_intrinsics,
             depth_scale=1000,
             depth_trunc=3.0,
-            project_valid_depth_only=True
+            project_valid_depth_only=True,
         )
 
         if self.debug_visualizations or self.save_debug_images:
-            if not hasattr(self, 'pcd_cam_frame_pub'):
-                self.pcd_cam_frame_pub = self.create_publisher(PointCloud2,
-                                                               "/debug/pcd_camera_frame",
-                                                               10)
+            if not hasattr(self, "pcd_cam_frame_pub"):
+                self.pcd_cam_frame_pub = self.create_publisher(
+                    PointCloud2, "/debug/pcd_camera_frame", 10
+                )
             if len(pcd.points) > 0:
                 # For Open3D >= 0.13.0, use pcd.get_rotation_matrix_from_xyz for frame convention
                 # Create a coordinate frame
@@ -609,14 +667,15 @@ class AeraSemiAutonomous(Node):
 
                 # Publish to ROS for RViz
                 points_np = np.asarray(pcd.points)
-                ros_pcd_cam = point_cloud_to_msg(points_np,
-                                                 "camera_color_optical_frame")  # Use YOUR point_cloud_to_msg
+                ros_pcd_cam = point_cloud_to_msg(
+                    points_np, "camera_color_optical_frame"
+                )  # Use YOUR point_cloud_to_msg
                 self.pcd_cam_frame_pub.publish(ros_pcd_cam)
                 self.logger.info(
-                    f"Published debug PCD in camera frame with {len(points_np)} points.")
+                    f"Published debug PCD in camera frame with {len(points_np)} points."
+                )
             else:
-                self.logger.warn(
-                    "PCD in camera frame is empty for pick_object.")
+                self.logger.warn("PCD in camera frame is empty for pick_object.")
 
         # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
@@ -624,33 +683,38 @@ class AeraSemiAutonomous(Node):
 
         if len(points_base_frame) == 0:
             self.logger.error(
-                "No points in point cloud after transform to base frame for pick_object. Check TF or if mask resulted in empty depth.")
+                "No points in point cloud after transform to base frame for pick_object. Check TF or if mask resulted in empty depth."
+            )
             return
 
         if self.debug_visualizations or self.save_debug_images:
-            if not hasattr(self, 'pcd_base_frame_pub'):
-                self.pcd_base_frame_pub = self.create_publisher(PointCloud2,
-                                                                "/debug/pcd_base_frame",
-                                                                10)
+            if not hasattr(self, "pcd_base_frame_pub"):
+                self.pcd_base_frame_pub = self.create_publisher(
+                    PointCloud2, "/debug/pcd_base_frame", 10
+                )
 
             ros_pcd_base = point_cloud_to_msg(points_base_frame, BASE_LINK_NAME)
             self.pcd_base_frame_pub.publish(ros_pcd_base)
             self.logger.info(
-                f"Published debug PCD in base frame with {len(points_base_frame)} points.")
+                f"Published debug PCD in base frame with {len(points_base_frame)} points."
+            )
 
         grasp_z = points_base_frame[:, 2].max()  # Topmost point in base frame
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
-            points_base_frame[:, 2] > grasp_z - 0.008]  # 8mm tolerance
+            points_base_frame[:, 2] > grasp_z - 0.008
+        ]  # 8mm tolerance
 
         if len(near_grasp_z_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
-                f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far.")
+                f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
+            )
             # You might want to try using all points_base_frame if near_grasp_z_points is empty
             # or use a simpler centroid if minAreaRect fails
             if len(points_base_frame) > 0:
                 self.logger.info(
-                    "Falling back to centroid of all points in base frame.")
+                    "Falling back to centroid of all points in base frame."
+                )
                 center_x = np.mean(points_base_frame[:, 0])
                 center_y = np.mean(points_base_frame[:, 1])
                 center = (center_x, center_y)
@@ -660,36 +724,49 @@ class AeraSemiAutonomous(Node):
                 return  # No points at all
         else:
             xy_points = near_grasp_z_points[:, :2].astype(
-                np.float32)  # Get XY coords in base frame
+                np.float32
+            )  # Get XY coords in base frame
             center, dimensions, theta = cv2.minAreaRect(
-                xy_points)  # center is (x,y) tuple in base frame
+                xy_points
+            )  # center is (x,y) tuple in base frame
 
         # xy_points = near_grasp_z_points[:, :2]
         # xy_points = xy_points.astype(np.float32)
         # center, dimensions, theta = cv2.minAreaRect(xy_points)
 
-        if self.debug_visualizations and len(near_grasp_z_points) >= 3:  # Only if minAreaRect was used
+        if (
+            self.debug_visualizations and len(near_grasp_z_points) >= 3
+        ):  # Only if minAreaRect was used
             plt.figure("XY points for minAreaRect (Base Frame)")
             plt.clf()  # Clear previous plot
-            plt.scatter(xy_points[:, 0], xy_points[:, 1], s=5,
-                        label="Object Top Surface XY Points")
+            plt.scatter(
+                xy_points[:, 0],
+                xy_points[:, 1],
+                s=5,
+                label="Object Top Surface XY Points",
+            )
 
             # Reconstruct the rotated rectangle from minAreaRect output
             box = cv2.boxPoints(
-                ((center[0], center[1]), (dimensions[0], dimensions[1]), theta))
+                ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
+            )
             # box = np.int0(box)  # This conversion might not be needed if just plotting lines
             # For plotting, better to keep it float and close the loop
-            box_plot = np.vstack(
-                [box, box[0]])  # Close the rectangle for plotting
+            box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
 
-            plt.plot(box_plot[:, 0], box_plot[:, 1], 'r-',
-                     label="minAreaRect BBox")
-            plt.scatter(center[0], center[1], c='g', s=50, marker='x',
-                        label="Calculated Center (Base Frame)")
+            plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
+            plt.scatter(
+                center[0],
+                center[1],
+                c="g",
+                s=50,
+                marker="x",
+                label="Calculated Center (Base Frame)",
+            )
             plt.xlabel("X (Base Frame)")
             plt.ylabel("Y (Base Frame)")
             plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
-            plt.axis('equal')  # Important for correct aspect ratio
+            plt.axis("equal")  # Important for correct aspect ratio
             plt.legend()
             plt.grid(True)
             plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
@@ -718,10 +795,10 @@ class AeraSemiAutonomous(Node):
         grasp_pose.orientation.w = grasp_quat[3]
 
         if self.debug_visualizations or self.save_debug_images:
-            if not hasattr(self, 'grasp_pose_pub_pick'):
-                self.grasp_pose_pub_pick = self.create_publisher(PoseStamped,
-                                                                 "/debug/pick_grasp_pose",
-                                                                 10)
+            if not hasattr(self, "grasp_pose_pub_pick"):
+                self.grasp_pose_pub_pick = self.create_publisher(
+                    PoseStamped, "/debug/pick_grasp_pose", 10
+                )
 
             pose_msg = PoseStamped()
             pose_msg.header.stamp = self.get_clock().now().to_msg()
@@ -729,7 +806,8 @@ class AeraSemiAutonomous(Node):
             pose_msg.pose = grasp_pose
             self.grasp_pose_pub_pick.publish(pose_msg)
             self.logger.info(
-                f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}")
+                f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
+            )
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
@@ -752,7 +830,7 @@ class AeraSemiAutonomous(Node):
         self.move_to(msg)
         self.wait_for_new_joint_state()
 
-        gripper_pos = -gripper_opening / 2. * self.gripper_squeeze_factor
+        gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
         self.gripper_interface.move_to_position(gripper_pos)
         self.gripper_interface.wait_until_executed()
@@ -762,8 +840,9 @@ class AeraSemiAutonomous(Node):
         self.move_to(msg)
         self.wait_for_new_joint_state()
 
-    def release_above(self, object_index: int, detections: sv.Detections,
-                      depth_image: np.ndarray):
+    def release_above(
+        self, object_index: int, detections: sv.Detections, depth_image: np.ndarray
+    ):
         """Move the robot arm above the object and release the gripper."""
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
@@ -776,7 +855,7 @@ class AeraSemiAutonomous(Node):
             self.camera_intrinsics,
             depth_scale=1000.0,
             depth_trunc=3.0,  # Max depth to consider, adjust as needed
-            stride=1
+            stride=1,
         )
         pcd.transform(self.cam_to_base_affine)
 
@@ -807,8 +886,7 @@ class AeraSemiAutonomous(Node):
 
     def flick_wrist_while_release(self):
         if self.arm_joint_state is None:
-            self.logger.error(
-                "Cannot flick wrist, arm joint state is not available.")
+            self.logger.error("Cannot flick wrist, arm joint state is not available.")
             return
         joint_positions = self.arm_joint_state.position
         joint_positions[4] -= np.deg2rad(25)
@@ -816,7 +894,8 @@ class AeraSemiAutonomous(Node):
             joint_positions=joint_positions,
             joint_names=self.arm_joint_names,
             tolerance_joint_position=0.005,
-            start_joint_state=self.arm_joint_state)
+            start_joint_state=self.arm_joint_state,
+        )
         if not trajectory:
             self.logger.error("Failed to plan for flick_wrist_while_release")
             return
@@ -836,20 +915,21 @@ class AeraSemiAutonomous(Node):
             self.logger.info("New joint state received.")
         else:
             self.logger.warn(
-                f"Timed out waiting for new joint state after {timeout_s}s.")
+                f"Timed out waiting for new joint state after {timeout_s}s."
+            )
         return triggered
 
     def go_home(self):
         if self.arm_joint_state is None:
-            self.logger.error(
-                "Cannot go home, arm joint state is not available.")
+            self.logger.error("Cannot go home, arm joint state is not available.")
             return
-        joint_positions = [0., 0., 0., 0., 0., 0.]
+        joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         trajectory = self.moveit2.plan(
             joint_positions=joint_positions,
             joint_names=self.arm_joint_names,
             tolerance_joint_position=0.005,
-            start_joint_state=self.arm_joint_state)
+            start_joint_state=self.arm_joint_state,
+        )
         if trajectory:
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
@@ -863,18 +943,23 @@ class AeraSemiAutonomous(Node):
             source_frame="camera_color_optical_frame",
             # source_frame="camera_color_frame",
             time=Time(),
-            timeout=Duration(seconds=5))
-        cam_to_base_rot = Rotation.from_quat([
-            cam_to_base_link_tf.transform.rotation.x,
-            cam_to_base_link_tf.transform.rotation.y,
-            cam_to_base_link_tf.transform.rotation.z,
-            cam_to_base_link_tf.transform.rotation.w,
-        ])
-        cam_to_base_pos = np.array([
-            cam_to_base_link_tf.transform.translation.x,
-            cam_to_base_link_tf.transform.translation.y,
-            cam_to_base_link_tf.transform.translation.z,
-        ])
+            timeout=Duration(seconds=5),
+        )
+        cam_to_base_rot = Rotation.from_quat(
+            [
+                cam_to_base_link_tf.transform.rotation.x,
+                cam_to_base_link_tf.transform.rotation.y,
+                cam_to_base_link_tf.transform.rotation.z,
+                cam_to_base_link_tf.transform.rotation.w,
+            ]
+        )
+        cam_to_base_pos = np.array(
+            [
+                cam_to_base_link_tf.transform.translation.x,
+                cam_to_base_link_tf.transform.translation.y,
+                cam_to_base_link_tf.transform.translation.z,
+            ]
+        )
         affine = np.eye(4)
         affine[:3, :3] = cam_to_base_rot.as_matrix()
         affine[:3, 3] = cam_to_base_pos
@@ -889,8 +974,9 @@ class AeraSemiAutonomous(Node):
         pose_goal.header.frame_id = BASE_LINK_NAME
         pose_goal.pose = msg
 
-        trajectory = self.moveit2.plan(pose=pose_goal,
-                                       start_joint_state=self.arm_joint_state)
+        trajectory = self.moveit2.plan(
+            pose=pose_goal, start_joint_state=self.arm_joint_state
+        )
         if trajectory:
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
@@ -916,8 +1002,7 @@ class AeraSemiAutonomous(Node):
         rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
         self._last_detections = self.detect_objects(rgb_image, class_names)
         detected_classes = [
-            class_names[class_id]
-            for class_id in self._last_detections.class_id
+            class_names[class_id] for class_id in self._last_detections.class_id
         ]
         self.logger.info(f"Detected objects: {detected_classes}")
 
@@ -985,10 +1070,12 @@ class AeraSemiAutonomous(Node):
         save_dir = msg.data
         cv2.imwrite(
             os.path.join(save_dir, f"rgb_image_{self.n_frames_processed}.png"),
-            rgb_image)
+            rgb_image,
+        )
         np.save(
             os.path.join(save_dir, f"depth_image_{self.n_frames_processed}"),
-            depth_image)
+            depth_image,
+        )
 
 
 def main():

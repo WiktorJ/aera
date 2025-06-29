@@ -104,6 +104,7 @@ class AeraSemiAutonomous(Node):
         self.gripper_joint_name = "gripper_joint"
         arm_callback_group = ReentrantCallbackGroup()
         gripper_callback_group = ReentrantCallbackGroup()
+        promtpt_callback_group = MutuallyExclusiveCallbackGroup()
         # Create MoveIt 2 interface
         self.arm_joint_names = [
             "joint_1",
@@ -186,7 +187,7 @@ class AeraSemiAutonomous(Node):
             "/prompt",
             self.start,
             10,
-            callback_group=arm_callback_group,
+            callback_group=promtpt_callback_group,
         )
         self.save_images_sub = self.create_subscription(
             String, "/save_images", self.save_images, 10
@@ -294,15 +295,6 @@ class AeraSemiAutonomous(Node):
         return self._processing_thread(msg)
 
     def _processing_thread(self, msg: String):
-        if self.moveit2.joint_state is None:
-            self.logger.info("Waiting for initial joint state...")
-            if not self.wait_for_new_joint_state(timeout_s=5.0):
-                self.logger.error(
-                    "Could not get initial joint state. Aborting processing."
-                )
-                return
-            self.logger.info("Initial joint state received.")
-
         if not self._last_rgb_msg or not self._last_depth_msg:
             self.logger.warn(
                 f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
@@ -819,16 +811,14 @@ class AeraSemiAutonomous(Node):
         # move 5cm above the item first
         msg.position.z += 0.05
         self.move_to(msg)
+        time.sleep(0.05)
         self.logger.info("XD04")
-        self.wait_for_new_joint_state()
-        self.logger.info("XD05")
 
         # grasp the item
         msg.position.z -= 0.05
         self.move_to(msg)
+        time.sleep(0.05)
         self.logger.info("XD06")
-        self.wait_for_new_joint_state()
-        self.logger.info("XD07")
         # self.moveit2.force_reset_executing_state()
         # self.logger.info("XD107")
 
@@ -843,7 +833,7 @@ class AeraSemiAutonomous(Node):
         msg.position.z += 0.12
         self.move_to(msg)
         self.logger.info("XD10")
-        self.wait_for_new_joint_state()
+        time.sleep(0.05)
         self.logger.info("XD11")
 
     def release_above(
@@ -908,24 +898,10 @@ class AeraSemiAutonomous(Node):
 
         self.moveit2.execute(trajectory)
         self.moveit2.wait_until_executed()
-        self.wait_for_new_joint_state()
+        time.sleep(0.05)
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
-
-    def wait_for_new_joint_state(self, timeout_s: float = 2.0):
-        """Wait for a new joint state to be received."""
-        self.moveit2.reset_new_joint_state_checker()
-        rate = self.create_rate(100)  # 100 Hz
-        start_time = self.get_clock().now()
-        while (self.get_clock().now() - start_time) < Duration(seconds=timeout_s):
-            if self.moveit2.new_joint_state_available:
-                self.logger.info("New joint state received.")
-                return True
-            rate.sleep()
-
-        self.logger.warn(f"Timed out waiting for new joint state after {timeout_s}s.")
-        return False
 
     def go_home(self):
         if self.moveit2.joint_state is None:
@@ -996,7 +972,6 @@ class AeraSemiAutonomous(Node):
         # good pose is 0, -0.3, 0.35
         self.logger.info(f"Releasing at: {msg}")
         self.move_to(msg)
-        self.wait_for_new_joint_state()
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()

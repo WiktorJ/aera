@@ -6,6 +6,7 @@ import time
 from functools import cached_property
 from typing import List
 
+import faulthandler
 import cv2
 import numpy as np
 import open3d as o3d
@@ -155,7 +156,6 @@ class AeraSemiAutonomous(Node):
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
         self.gripper_squeeze_factor = 0.5
-        self.processing_lock = threading.Lock()
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.offset_z = offset_z
@@ -1055,6 +1055,7 @@ class AeraSemiAutonomous(Node):
 
 
 def main():
+    faulthandler.enable()
     rclpy.init()
     node = AeraSemiAutonomous()
     executor = MultiThreadedExecutor(4)

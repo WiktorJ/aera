@@ -130,7 +130,7 @@ class AeraSemiAutonomous(Node):
             open_gripper_joint_positions=[-0.012],
             closed_gripper_joint_positions=[0.0],
             gripper_group_name="ar_gripper",
-            callback_group=gripper_callback_group,
+            callback_group=arm_callback_group,
             gripper_command_action_name="/gripper_controller/gripper_cmd",
         )
         self.tf_buffer = tf2_ros.Buffer()
@@ -186,7 +186,7 @@ class AeraSemiAutonomous(Node):
             "/prompt",
             self.start,
             10,
-            callback_group=MutuallyExclusiveCallbackGroup(),
+            callback_group=arm_callback_group,
         )
         self.save_images_sub = self.create_subscription(
             String, "/save_images", self.save_images, 10
@@ -291,54 +291,43 @@ class AeraSemiAutonomous(Node):
             self._object_in_gripper = False
 
     def start(self, msg: String):
-        if self.processing_lock.locked():
-            self.logger.warn("Already processing a command. Ignoring new prompt.")
-            return
-
-        # Run the long-running, blocking logic in a separate thread
-        # to avoid blocking the executor.
-        thread = threading.Thread(target=self._processing_thread, args=(msg,))
-        thread.start()
+        return self._processing_thread(msg)
 
     def _processing_thread(self, msg: String):
-        with self.processing_lock:
-            # Wait for the first joint state to be received, otherwise planning might fail
-            if self.moveit2.joint_state is None:
-                self.logger.info("Waiting for initial joint state...")
-                if not self.wait_for_new_joint_state(timeout_s=5.0):
-                    self.logger.error(
-                        "Could not get initial joint state. Aborting processing."
-                    )
-                    return
-                self.logger.info("Initial joint state received.")
-
-            if not self._last_rgb_msg or not self._last_depth_msg:
-                self.logger.warn(
-                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
+        if self.moveit2.joint_state is None:
+            self.logger.info("Waiting for initial joint state...")
+            if not self.wait_for_new_joint_state(timeout_s=5.0):
+                self.logger.error(
+                    "Could not get initial joint state. Aborting processing."
                 )
                 return
-            if msg.data not in _AVAILABLE_ACTIONS:
-                self.logger.warn(
-                    f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
-                )
-                return
+            self.logger.info("Initial joint state received.")
 
-            rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-            depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-            self._last_detections = None
-
-            self.logger.info(f"Processing: {msg.data}")
-            self.logger.info(
-                f"Initial Joint states: {self.moveit2.joint_state.position}"
+        if not self._last_rgb_msg or not self._last_depth_msg:
+            self.logger.warn(
+                f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
             )
-            # done = False
-            # Hardcoded for now
-            object_to_detect = "pen"
-            # while not done:
-            self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
+            return
+        if msg.data not in _AVAILABLE_ACTIONS:
+            self.logger.warn(
+                f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+            )
+            return
 
-            self.go_home()
-            self.logger.info("Task completed.")
+        rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
+        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+        self._last_detections = None
+
+        self.logger.info(f"Processing: {msg.data}")
+        self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
+        # done = False
+        # Hardcoded for now
+        object_to_detect = "pen"
+        # while not done:
+        self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
+
+        self.go_home()
+        self.logger.info("Task completed.")
 
     def detect_objects(self, image: np.ndarray, object_classes: List[str]):
         self.logger.info(f"Detecting objects of classes: {object_classes}")

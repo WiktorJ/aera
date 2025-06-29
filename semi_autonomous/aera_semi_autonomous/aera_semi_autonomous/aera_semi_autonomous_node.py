@@ -152,10 +152,8 @@ class AeraSemiAutonomous(Node):
         self.n_frames_processed = 0
         self._last_depth_msg = None
         self._last_rgb_msg = None
-        self.arm_joint_state: JointState | None = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
-        self.joint_state_event = threading.Event()
         self.gripper_squeeze_factor = 0.5
         self.processing_lock = threading.Lock()
         self.offset_x = offset_x
@@ -179,13 +177,6 @@ class AeraSemiAutonomous(Node):
         )
         self.depth_sub = self.create_subscription(
             Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
-        )
-        self.joint_states_sub = self.create_subscription(
-            JointState,
-            "/joint_states",
-            self.joint_states_callback,
-            10,
-            callback_group=arm_callback_group,
         )
 
         if self.publish_point_cloud:
@@ -280,7 +271,7 @@ class AeraSemiAutonomous(Node):
                 _OBJECT_DETECTION_INDEX, self._last_detections, depth_image
             )
             self.logger.info(
-                f"done picking object. Joint states: {self.arm_joint_state.position}"
+                f"done picking object. Joint states: {self.moveit2.joint_state.position}"
             )
             self._object_in_gripper = True
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
@@ -327,7 +318,7 @@ class AeraSemiAutonomous(Node):
             self._last_detections = None
 
             self.logger.info(f"Processing: {msg.data}")
-            self.logger.info(f"Initial Joint states: {self.arm_joint_state.position}")
+            self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
             # done = False
             # Hardcoded for now
             object_to_detect = "pen"
@@ -890,16 +881,16 @@ class AeraSemiAutonomous(Node):
         self.gripper_interface.wait_until_executed()
 
     def flick_wrist_while_release(self):
-        if self.arm_joint_state is None:
+        if self.moveit2.joint_state is None:
             self.logger.error("Cannot flick wrist, arm joint state is not available.")
             return
-        joint_positions = self.arm_joint_state.position
+        joint_positions = self.moveit2.joint_state.position
         joint_positions[4] -= np.deg2rad(25)
         trajectory = self.moveit2.plan(
             joint_positions=joint_positions,
             joint_names=self.arm_joint_names,
             tolerance_joint_position=0.005,
-            start_joint_state=self.arm_joint_state,
+            start_joint_state=self.moveit2.joint_state,
         )
         if not trajectory:
             self.logger.error("Failed to plan for flick_wrist_while_release")
@@ -914,18 +905,20 @@ class AeraSemiAutonomous(Node):
 
     def wait_for_new_joint_state(self, timeout_s: float = 2.0):
         """Wait for a new joint state to be received."""
-        self.joint_state_event.clear()
-        triggered = self.joint_state_event.wait(timeout=timeout_s)
-        if triggered:
-            self.logger.info("New joint state received.")
-        else:
-            self.logger.warn(
-                f"Timed out waiting for new joint state after {timeout_s}s."
-            )
-        return triggered
+        self.moveit2.reset_new_joint_state_checker()
+        rate = self.create_rate(100)  # 100 Hz
+        start_time = self.get_clock().now()
+        while (self.get_clock().now() - start_time) < Duration(seconds=timeout_s):
+            if self.moveit2.new_joint_state_available:
+                self.logger.info("New joint state received.")
+                return True
+            rate.sleep()
+
+        self.logger.warn(f"Timed out waiting for new joint state after {timeout_s}s.")
+        return False
 
     def go_home(self):
-        if self.arm_joint_state is None:
+        if self.moveit2.joint_state is None:
             self.logger.error("Cannot go home, arm joint state is not available.")
             return
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -933,7 +926,7 @@ class AeraSemiAutonomous(Node):
             joint_positions=joint_positions,
             joint_names=self.arm_joint_names,
             tolerance_joint_position=0.005,
-            start_joint_state=self.arm_joint_state,
+            start_joint_state=self.moveit2.joint_state,
         )
         if trajectory:
             self.moveit2.execute(trajectory)
@@ -971,7 +964,7 @@ class AeraSemiAutonomous(Node):
         return affine
 
     def move_to(self, msg: Pose):
-        if self.arm_joint_state is None:
+        if self.moveit2.joint_state is None:
             self.logger.error("Cannot move, arm joint state is not available.")
             return
 
@@ -980,7 +973,7 @@ class AeraSemiAutonomous(Node):
         pose_goal.pose = msg
 
         trajectory = self.moveit2.plan(
-            pose=pose_goal, start_joint_state=self.arm_joint_state
+            pose=pose_goal, start_joint_state=self.moveit2.joint_state
         )
         if trajectory:
             self.moveit2.execute(trajectory)
@@ -1032,39 +1025,6 @@ class AeraSemiAutonomous(Node):
 
     def image_callback(self, msg):
         self._last_rgb_msg = msg
-
-    def joint_states_callback(self, msg: JointState):
-        self.logger.info("Setting joint states")
-        # Create a map for faster lookups
-        joint_name_to_idx = {name: i for i, name in enumerate(msg.name)}
-
-        # Check if all required arm joints are present in the message
-        if not all(name in joint_name_to_idx for name in self.arm_joint_names):
-            # Not all joints are in this message, so we can't form a complete state.
-            # We could log this, but it might be spammy if multiple publishers are on /joint_states
-            return
-
-        joint_state = JointState()
-        joint_state.header = msg.header
-        joint_state.name = self.arm_joint_names
-
-        joint_state.position = [0.0] * len(self.arm_joint_names)
-        joint_state.velocity = [0.0] * len(self.arm_joint_names)
-        joint_state.effort = [0.0] * len(self.arm_joint_names)
-
-        has_velocity = len(msg.velocity) == len(msg.name)
-        has_effort = len(msg.effort) == len(msg.name)
-
-        for i, name in enumerate(self.arm_joint_names):
-            idx = joint_name_to_idx[name]
-            joint_state.position[i] = msg.position[idx]
-            if has_velocity:
-                joint_state.velocity[i] = msg.velocity[idx]
-            if has_effort:
-                joint_state.effort[i] = msg.effort[idx]
-
-        self.arm_joint_state = joint_state
-        self.joint_state_event.set()
 
     def save_images(self, msg):
         if not self._last_rgb_msg or not self._last_depth_msg:

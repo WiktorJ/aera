@@ -820,6 +820,10 @@ class AeraSemiAutonomous(Node):
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
+        self.gripper_interface.close()
+        self.gripper_interface.wait_until_executed()
+        self.gripper_interface.open()
+        self.gripper_interface.wait_until_executed()
 
         # move 5cm above the item first
         msg.position.z += 0.05
@@ -1030,6 +1034,7 @@ class AeraSemiAutonomous(Node):
         self._last_rgb_msg = msg
 
     def joint_states_callback(self, msg: JointState):
+        self.logger.info("Setting joint states")
         # Create a map for faster lookups
         joint_name_to_idx = {name: i for i, name in enumerate(msg.name)}
 

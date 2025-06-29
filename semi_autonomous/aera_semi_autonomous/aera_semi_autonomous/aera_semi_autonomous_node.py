@@ -809,32 +809,45 @@ class AeraSemiAutonomous(Node):
     def grasp_at(self, msg: Pose, gripper_opening: float):
         self.logger.info(f"Grasp at: {msg} with opening: {gripper_opening}")
 
+        self.logger.info("XD01")
         self.gripper_interface.open()
+        self.logger.info("XD02")
         self.gripper_interface.wait_until_executed()
         self.gripper_interface.close()
         self.gripper_interface.wait_until_executed()
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
+        self.logger.info("XD03")
 
         # move 5cm above the item first
         msg.position.z += 0.05
         self.move_to(msg)
+        self.logger.info("XD04")
         self.wait_for_new_joint_state()
+        self.logger.info("XD05")
 
         # grasp the item
         msg.position.z -= 0.05
         self.move_to(msg)
+        self.logger.info("XD06")
         self.wait_for_new_joint_state()
+        self.logger.info("XD07")
+        # self.moveit2.force_reset_executing_state()
+        # self.logger.info("XD107")
 
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
         self.gripper_interface.move_to_position(gripper_pos)
+        self.logger.info("XD08")
         self.gripper_interface.wait_until_executed()
+        self.logger.info("XD09")
 
         # lift the item
         msg.position.z += 0.12
         self.move_to(msg)
+        self.logger.info("XD10")
         self.wait_for_new_joint_state()
+        self.logger.info("XD11")
 
     def release_above(
         self, object_index: int, detections: sv.Detections, depth_image: np.ndarray

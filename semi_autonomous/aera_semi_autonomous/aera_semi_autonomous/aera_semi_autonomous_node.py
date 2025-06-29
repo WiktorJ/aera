@@ -101,7 +101,8 @@ class AeraSemiAutonomous(Node):
         self.save_debug_images = True  # Keep this to save images
         self.cv_bridge = CvBridge()
         self.gripper_joint_name = "gripper_joint"
-        callback_group = ReentrantCallbackGroup()
+        arm_callback_group = ReentrantCallbackGroup()
+        gripper_callback_group = ReentrantCallbackGroup()
         # Create MoveIt 2 interface
         self.arm_joint_names = [
             "joint_1",
@@ -120,7 +121,7 @@ class AeraSemiAutonomous(Node):
             base_link_name=BASE_LINK_NAME,
             end_effector_name=f"{_TF_PREFIX}link_6",
             group_name="ar_manipulator",
-            callback_group=callback_group,
+            callback_group=arm_callback_group,
         )
         self.moveit2.planner_id = "RRTConnectkConfigDefault"
         self.gripper_interface = GripperInterface(
@@ -129,7 +130,7 @@ class AeraSemiAutonomous(Node):
             open_gripper_joint_positions=[-0.012],
             closed_gripper_joint_positions=[0.0],
             gripper_group_name="ar_gripper",
-            callback_group=callback_group,
+            callback_group=gripper_callback_group,
             gripper_command_action_name="/gripper_controller/gripper_cmd",
         )
         self.tf_buffer = tf2_ros.Buffer()
@@ -184,7 +185,7 @@ class AeraSemiAutonomous(Node):
             "/joint_states",
             self.joint_states_callback,
             10,
-            callback_group=callback_group,
+            callback_group=arm_callback_group,
         )
 
         if self.publish_point_cloud:

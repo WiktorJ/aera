@@ -302,6 +302,16 @@ class AeraSemiAutonomous(Node):
 
     def _processing_thread(self, msg: String):
         with self.processing_lock:
+            # Wait for the first joint state to be received, otherwise planning might fail
+            if self.moveit2.joint_state is None:
+                self.logger.info("Waiting for initial joint state...")
+                if not self.wait_for_new_joint_state(timeout_s=5.0):
+                    self.logger.error(
+                        "Could not get initial joint state. Aborting processing."
+                    )
+                    return
+                self.logger.info("Initial joint state received.")
+
             if not self._last_rgb_msg or not self._last_depth_msg:
                 self.logger.warn(
                     f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"

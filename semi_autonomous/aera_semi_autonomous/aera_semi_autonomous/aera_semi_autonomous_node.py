@@ -292,9 +292,6 @@ class AeraSemiAutonomous(Node):
             self._object_in_gripper = False
 
     def start(self, msg: String):
-        return self._processing_thread(msg)
-
-    def _processing_thread(self, msg: String):
         if not self._last_rgb_msg or not self._last_depth_msg:
             self.logger.warn(
                 f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"

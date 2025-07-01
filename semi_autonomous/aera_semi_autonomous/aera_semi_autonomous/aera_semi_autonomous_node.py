@@ -589,8 +589,6 @@ class AeraSemiAutonomous(Node):
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects
-        # masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
-        # mask = detections.mask[object_index]
         # masked_depth_image[mask] = depth_image[mask]
         # masked_depth_image /= 1000.0
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
@@ -1033,7 +1031,9 @@ def main():
     executor = MultiThreadedExecutor(4)
     executor.add_node(node)
     try:
-        executor.spin()
+        while executor.context.ok() and not executor._is_shutdown:
+            executor.spin_once(1)
+        # executor.spin()
     except KeyboardInterrupt:
         pass
 

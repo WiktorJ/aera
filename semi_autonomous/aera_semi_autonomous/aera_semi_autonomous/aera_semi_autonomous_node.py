@@ -712,6 +712,7 @@ class AeraSemiAutonomous(Node):
                 xy_points
             )  # center is (x,y) tuple in base frame
 
+            # Also ensure that the figure is plotted only if debug_visualizations is True and saved only if save_debug_images is True AI!
             if self.debug_visualizations or self.save_debug_images:
                 plt.figure("XY points for minAreaRect (Base Frame)")
                 plt.clf()  # Clear previous plot

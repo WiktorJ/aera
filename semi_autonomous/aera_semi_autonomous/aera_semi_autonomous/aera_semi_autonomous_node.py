@@ -712,7 +712,7 @@ class AeraSemiAutonomous(Node):
                 xy_points
             )  # center is (x,y) tuple in base frame
 
-            # Also make this debug work with save_debug_images AI!
+            # Currently, this debug is just showing the figure with plt, I want it to also save the image if save_debug_images is True AI!
             if self.debug_visualizations:
                 plt.figure("XY points for minAreaRect (Base Frame)")
                 plt.clf()  # Clear previous plot

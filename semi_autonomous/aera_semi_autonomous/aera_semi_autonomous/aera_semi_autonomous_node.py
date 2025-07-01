@@ -235,6 +235,10 @@ class AeraSemiAutonomous(Node):
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             self.debug_img_dir = os.path.join(".debug_img_logs", timestamp)
             os.makedirs(self.debug_img_dir, exist_ok=True)
+            with open(os.path.join(self.debug_img_dir, "log.txt"), "w") as f:
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Tool Call: {tool_call}\n")
+                f.write(f"Object to Detect: {object_to_detect}\n")
         else:
             self.debug_img_dir = None
 
@@ -441,6 +445,10 @@ class AeraSemiAutonomous(Node):
                         os.path.join(self.debug_img_dir, f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg"),
                         annotated_dino_frame_with_labels,
                     )
+                    with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                        f.write("\n--- Detections ---\n")
+                        for label in custom_labels:
+                            f.write(f"{label}\n")
                 if self.debug_visualizations:
                     cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
             else:  # If no labels, just show the boxes
@@ -792,6 +800,15 @@ class AeraSemiAutonomous(Node):
             self.logger.info(
                 f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
             )
+            if self.save_debug_images:
+                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                    f.write("\n--- Grasp Pose ---\n")
+                    f.write(
+                        f"Position (x, y, z): {grasp_pose.position.x:.4f}, {grasp_pose.position.y:.4f}, {grasp_pose.position.z:.4f}\n"
+                    )
+                    f.write(
+                        f"Orientation (x, y, z, w): {grasp_pose.orientation.x:.4f}, {grasp_pose.orientation.y:.4f}, {grasp_pose.orientation.z:.4f}, {grasp_pose.orientation.w:.4f}\n"
+                    )
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
@@ -816,6 +833,10 @@ class AeraSemiAutonomous(Node):
 
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
+        if self.save_debug_images:
+            with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                f.write("\n--- Gripper Position ---\n")
+                f.write(f"Target Gripper Position: {gripper_pos:.4f}\n")
         self.gripper_interface.move_to_position(gripper_pos)
         self.gripper_interface.wait_until_executed()
 

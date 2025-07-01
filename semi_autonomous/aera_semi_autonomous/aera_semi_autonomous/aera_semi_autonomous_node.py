@@ -461,7 +461,7 @@ class AeraSemiAutonomous(Node):
                     cv2.imshow("SAM Masks", annotated_sam_frame)
                     # cv2.waitKey(0)
             else:
-                self.logger.warn("No SAM masks to annotate.")
+                self.logger.debug("No SAM masks to annotate.")
 
             if self.debug_visualizations:
                 cv2.waitKey(1)  # Small delay to allow windows to updateÏ
@@ -529,27 +529,27 @@ class AeraSemiAutonomous(Node):
 
             # --- DETAILED CHECK OF THE RGB MESSAGE ---
             if current_rgb_msg_to_use is None:
-                self.logger.error(
+                self.logger.debug(
                     "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
                 )
 
-            self.logger.info(
+            self.logger.debug(
                 f"PICK_OBJECT: self._last_rgb_msg timestamp: {current_rgb_msg_to_use.header.stamp.sec}.{current_rgb_msg_to_use.header.stamp.nanosec}"
             )
-            self.logger.info(
+            self.logger.debug(
                 f"PICK_OBJECT: self._last_rgb_msg encoding: {current_rgb_msg_to_use.encoding}"
             )
-            self.logger.info(
+            self.logger.debug(
                 f"PICK_OBJECT: self._last_rgb_msg height: {current_rgb_msg_to_use.height}, width: {current_rgb_msg_to_use.width}, step: {current_rgb_msg_to_use.step}"
             )
-            self.logger.info(
+            self.logger.debug(
                 f"PICK_OBJECT: self._last_rgb_msg data length: {len(current_rgb_msg_to_use.data)}"
             )
             expected_data_len = (
                 current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
             )
             if len(current_rgb_msg_to_use.data) != expected_data_len:
-                self.logger.error(
+                self.logger.debug(
                     f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}"
                 )
 
@@ -576,16 +576,16 @@ class AeraSemiAutonomous(Node):
                         single_mask_viz,
                     )
             except Exception as e:
-                self.logger.error(
+                self.logger.debug(
                     f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}"
                 )
-                self.logger.error(
+                self.logger.debug(
                     f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}"
                 )
                 # Also log the exception traceback fully
                 import traceback
 
-                self.logger.error(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
+                self.logger.debug(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects
@@ -651,11 +651,11 @@ class AeraSemiAutonomous(Node):
                     points_np, "camera_color_optical_frame"
                 )  # Use YOUR point_cloud_to_msg
                 self.pcd_cam_frame_pub.publish(ros_pcd_cam)
-                self.logger.info(
+                self.logger.debug(
                     f"Published debug PCD in camera frame with {len(points_np)} points."
                 )
             else:
-                self.logger.warn("PCD in camera frame is empty for pick_object.")
+                self.logger.debug("PCD in camera frame is empty for pick_object.")
 
         # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
@@ -675,7 +675,7 @@ class AeraSemiAutonomous(Node):
 
             ros_pcd_base = point_cloud_to_msg(points_base_frame, BASE_LINK_NAME)
             self.pcd_base_frame_pub.publish(ros_pcd_base)
-            self.logger.info(
+            self.logger.debug(
                 f"Published debug PCD in base frame with {len(points_base_frame)} points."
             )
 
@@ -785,7 +785,7 @@ class AeraSemiAutonomous(Node):
             pose_msg.header.frame_id = BASE_LINK_NAME  # Should be your robot's base
             pose_msg.pose = grasp_pose
             self.grasp_pose_pub_pick.publish(pose_msg)
-            self.logger.info(
+            self.logger.debug(
                 f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
             )
 

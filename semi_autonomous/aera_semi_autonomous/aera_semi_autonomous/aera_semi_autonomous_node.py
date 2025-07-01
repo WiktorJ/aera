@@ -255,6 +255,11 @@ class AeraSemiAutonomous(Node):
                 )
                 return
             self.logger.info(f"Detected {object_to_detect}.")
+            if self.save_debug_images:
+                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                    f.write(
+                        f"detection confidence: {self._last_detections.confidence}\n"
+                    )
             self.logger.info(
                 f"detection confidence: {self._last_detections.confidence}"
             )

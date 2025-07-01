@@ -271,6 +271,7 @@ class AeraSemiAutonomous(Node):
                     )
                     return
                 self.logger.info(f"Detected {object_to_detect}.")
+                # Add this to the debug_img_dir log.txt file AI!
                 self.logger.info(
                     f"detection confidence: {self._last_detections.confidence}"
                 )
@@ -442,7 +443,10 @@ class AeraSemiAutonomous(Node):
                 )
                 if self.save_debug_images:
                     cv2.imwrite(
-                        os.path.join(self.debug_img_dir, f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg"),
+                        os.path.join(
+                            self.debug_img_dir,
+                            f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
+                        ),
                         annotated_dino_frame_with_labels,
                     )
                     with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
@@ -454,7 +458,10 @@ class AeraSemiAutonomous(Node):
             else:  # If no labels, just show the boxes
                 if self.save_debug_images:
                     cv2.imwrite(
-                        os.path.join(self.debug_img_dir, f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg"),
+                        os.path.join(
+                            self.debug_img_dir,
+                            f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
+                        ),
                         annotated_dino_frame,
                     )
                 if self.debug_visualizations:
@@ -469,7 +476,10 @@ class AeraSemiAutonomous(Node):
                 )  # Detections obj should have .mask
                 if self.save_debug_images:
                     cv2.imwrite(
-                        os.path.join(self.debug_img_dir, f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg"),
+                        os.path.join(
+                            self.debug_img_dir,
+                            f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
+                        ),
                         annotated_sam_frame,
                     )
                 if self.debug_visualizations:
@@ -586,7 +596,10 @@ class AeraSemiAutonomous(Node):
                     )
                 if self.save_debug_images:
                     cv2.imwrite(
-                        os.path.join(self.debug_img_dir, f"debug_selected_mask_pick_{self.n_frames_processed}.jpg"),
+                        os.path.join(
+                            self.debug_img_dir,
+                            f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
+                        ),
                         single_mask_viz,
                     )
             except Exception as e:
@@ -626,7 +639,10 @@ class AeraSemiAutonomous(Node):
 
             if self.save_debug_images:
                 cv2.imwrite(
-                    os.path.join(self.debug_img_dir, f"debug_masked_depth_pick_{self.n_frames_processed}.jpg"),
+                    os.path.join(
+                        self.debug_img_dir,
+                        f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
+                    ),
                     display_depth_norm,
                 )
             if self.debug_visualizations:
@@ -760,7 +776,12 @@ class AeraSemiAutonomous(Node):
                 plt.legend()
                 plt.grid(True)
                 if self.save_debug_images:
-                    plt.savefig(os.path.join(self.debug_img_dir, f"debug_minarearect_xy_{self.n_frames_processed}.png"))
+                    plt.savefig(
+                        os.path.join(
+                            self.debug_img_dir,
+                            f"debug_minarearect_xy_{self.n_frames_processed}.png",
+                        )
+                    )
                 if self.debug_visualizations:
                     plt.show(block=False)  # Use block=False for non-blocking
                     plt.pause(0.01)  # Allow plot to render

@@ -237,3 +237,5 @@ semi_autonomous/**/ar4_mk3_drivers
 
 
 .aider*
+
+.debug_img_logs/

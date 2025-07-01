@@ -231,6 +231,13 @@ class AeraSemiAutonomous(Node):
         rgb_image: np.ndarray,
         depth_image: np.ndarray,
     ):
+        if self.save_debug_images:
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            self.debug_img_dir = os.path.join(".debug_img_logs", timestamp)
+            os.makedirs(self.debug_img_dir, exist_ok=True)
+        else:
+            self.debug_img_dir = None
+
         if self.camera_intrinsics is None:
             self.logger.error(
                 "Camera intrinsics not yet received. Cannot create point cloud."
@@ -431,7 +438,7 @@ class AeraSemiAutonomous(Node):
                 )
                 if self.save_debug_images:
                     cv2.imwrite(
-                        f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
+                        os.path.join(self.debug_img_dir, f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg"),
                         annotated_dino_frame_with_labels,
                     )
                 if self.debug_visualizations:
@@ -439,7 +446,7 @@ class AeraSemiAutonomous(Node):
             else:  # If no labels, just show the boxes
                 if self.save_debug_images:
                     cv2.imwrite(
-                        f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
+                        os.path.join(self.debug_img_dir, f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg"),
                         annotated_dino_frame,
                     )
                 if self.debug_visualizations:
@@ -454,7 +461,7 @@ class AeraSemiAutonomous(Node):
                 )  # Detections obj should have .mask
                 if self.save_debug_images:
                     cv2.imwrite(
-                        f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
+                        os.path.join(self.debug_img_dir, f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg"),
                         annotated_sam_frame,
                     )
                 if self.debug_visualizations:
@@ -571,7 +578,7 @@ class AeraSemiAutonomous(Node):
                     )
                 if self.save_debug_images:
                     cv2.imwrite(
-                        f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
+                        os.path.join(self.debug_img_dir, f"debug_selected_mask_pick_{self.n_frames_processed}.jpg"),
                         single_mask_viz,
                     )
             except Exception as e:
@@ -611,7 +618,7 @@ class AeraSemiAutonomous(Node):
 
             if self.save_debug_images:
                 cv2.imwrite(
-                    f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
+                    os.path.join(self.debug_img_dir, f"debug_masked_depth_pick_{self.n_frames_processed}.jpg"),
                     display_depth_norm,
                 )
             if self.debug_visualizations:
@@ -745,7 +752,7 @@ class AeraSemiAutonomous(Node):
                 plt.legend()
                 plt.grid(True)
                 if self.save_debug_images:
-                    plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
+                    plt.savefig(os.path.join(self.debug_img_dir, f"debug_minarearect_xy_{self.n_frames_processed}.png"))
                 if self.debug_visualizations:
                     plt.show(block=False)  # Use block=False for non-blocking
                     plt.pause(0.01)  # Allow plot to render

@@ -93,8 +93,8 @@ class AeraSemiAutonomous(Node):
         # Adjust these offsets to your needs:
         offset_x: float = 0.015,
         offset_y: float = -0.015,
+        offset_z: float = 0.08,  # accounts for the height of the gripper
     ):
-        offset_z: float = (0.08,)  # accounts for the height of the gripper
         super().__init__("aera_semi_autonomous_node")
 
         self.logger = self.get_logger()

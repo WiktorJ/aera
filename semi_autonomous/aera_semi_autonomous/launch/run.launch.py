@@ -7,6 +7,8 @@ from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import TextSubstitution
 
 
 def load_yaml(package_name, file_name):
@@ -75,11 +77,12 @@ def generate_launch_description():
         ar_moveit_launch, launch_arguments=ar_moveit_args
     )
 
-    tabletop_handybot_node = Node(
+    aera_semi_autonomous_node = Node(
         package="aera_semi_autonomous",
         executable="aera_semi_autonomous_node",
         name="aera_semi_autonomous_node",
         output="screen",
+        arguments=["--ros-args", "--log-level", LaunchConfiguration("log_level")],
     )
 
     static_tf_publisher = Node(
@@ -89,12 +92,19 @@ def generate_launch_description():
         output="screen",
     )
 
+    log_evel_arg = DeclareLaunchArgument(
+        "log_level",
+        default_value=TextSubstitution(text=str("INFO")),
+        description="Logging level",
+    )
+
     return LaunchDescription(
         [
             depthai,
             delay_calibration_tf_publisher,
             ar_moveit,
-            tabletop_handybot_node,
+            aera_semi_autonomous_node,
             static_tf_publisher,
+            log_evel_arg,
         ]
     )

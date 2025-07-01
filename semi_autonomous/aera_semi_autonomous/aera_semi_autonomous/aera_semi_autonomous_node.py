@@ -93,13 +93,13 @@ class AeraSemiAutonomous(Node):
         # Adjust these offsets to your needs:
         offset_x: float = 0.015,
         offset_y: float = -0.015,
-        offset_z: float = 0.08,  # accounts for the height of the gripper
     ):
+        offset_z: float = (0.08,)  # accounts for the height of the gripper
         super().__init__("aera_semi_autonomous_node")
 
         self.logger = self.get_logger()
-        self.debug_visualizations = False  # Temporarily disable for now
-        self.save_debug_images = True  # Keep this to save images
+        self.debug_visualizations = False
+        self.save_debug_images = True
         self.cv_bridge = CvBridge()
         self.gripper_joint_name = "gripper_joint"
         arm_callback_group = ReentrantCallbackGroup()
@@ -527,7 +527,6 @@ class AeraSemiAutonomous(Node):
         if (self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
             current_rgb_msg_to_use = self._last_rgb_msg  # Use a local variable
 
-            # --- DETAILED CHECK OF THE RGB MESSAGE ---
             if current_rgb_msg_to_use is None:
                 self.logger.warn(
                     "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
@@ -635,7 +634,7 @@ class AeraSemiAutonomous(Node):
         )
 
         if self.debug_visualizations or self.save_debug_images:
-            self.logger.info(f"Claculated PointCloud: {pcd}")
+            self.logger.info(f"Calculated PointCloud: {pcd}")
             if not hasattr(self, "pcd_cam_frame_pub"):
                 self.pcd_cam_frame_pub = self.create_publisher(
                     PointCloud2, "/debug/pcd_camera_frame", 10
@@ -795,39 +794,28 @@ class AeraSemiAutonomous(Node):
     def grasp_at(self, msg: Pose, gripper_opening: float):
         self.logger.info(f"Grasp at: {msg} with opening: {gripper_opening}")
 
-        self.logger.info("XD01")
         self.gripper_interface.open()
-        self.logger.info("XD02")
         self.gripper_interface.wait_until_executed()
-        self.logger.info("XD03")
 
         # move 5cm above the item first
         msg.position.z += 0.05
         self.move_to(msg)
         time.sleep(0.05)
-        self.logger.info("XD04")
 
         # grasp the item
         msg.position.z -= 0.05
         self.move_to(msg)
         time.sleep(0.05)
-        self.logger.info("XD06")
-        # self.moveit2.force_reset_executing_state()
-        # self.logger.info("XD107")
 
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
         self.gripper_interface.move_to_position(gripper_pos)
-        self.logger.info("XD08")
         self.gripper_interface.wait_until_executed()
-        self.logger.info("XD09")
 
         # lift the item
         msg.position.z += 0.12
         self.move_to(msg)
-        self.logger.info("XD10")
         time.sleep(0.05)
-        self.logger.info("XD11")
 
     def release_above(
         self, object_index: int, detections: sv.Detections, depth_image: np.ndarray

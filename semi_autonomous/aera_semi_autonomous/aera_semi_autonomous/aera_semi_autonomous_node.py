@@ -712,7 +712,6 @@ class AeraSemiAutonomous(Node):
                 xy_points
             )  # center is (x,y) tuple in base frame
 
-            # Also ensure that the figure is plotted only if debug_visualizations is True and saved only if save_debug_images is True AI!
             if self.debug_visualizations or self.save_debug_images:
                 plt.figure("XY points for minAreaRect (Base Frame)")
                 plt.clf()  # Clear previous plot
@@ -746,9 +745,11 @@ class AeraSemiAutonomous(Node):
                 plt.axis("equal")  # Important for correct aspect ratio
                 plt.legend()
                 plt.grid(True)
-                plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
-                plt.show(block=False)  # Use block=False for non-blocking
-                plt.pause(0.01)  # Allow plot to render
+                if self.save_debug_images:
+                    plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
+                if self.debug_visualizations:
+                    plt.show(block=False)  # Use block=False for non-blocking
+                    plt.pause(0.01)  # Allow plot to render
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:

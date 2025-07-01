@@ -635,6 +635,7 @@ class AeraSemiAutonomous(Node):
         )
 
         if self.debug_visualizations or self.save_debug_images:
+            self.logger.debug(f"Claculated PointCloud: {pcd}")
             if not hasattr(self, "pcd_cam_frame_pub"):
                 self.pcd_cam_frame_pub = self.create_publisher(
                     PointCloud2, "/debug/pcd_camera_frame", 10
@@ -668,6 +669,7 @@ class AeraSemiAutonomous(Node):
             return
 
         if self.debug_visualizations or self.save_debug_images:
+            self.logger.debug(f"Transformed PointCloud: {pcd}")
             if not hasattr(self, "pcd_base_frame_pub"):
                 self.pcd_base_frame_pub = self.create_publisher(
                     PointCloud2, "/debug/pcd_base_frame", 10
@@ -710,48 +712,43 @@ class AeraSemiAutonomous(Node):
                 xy_points
             )  # center is (x,y) tuple in base frame
 
-        # xy_points = near_grasp_z_points[:, :2]
-        # xy_points = xy_points.astype(np.float32)
-        # center, dimensions, theta = cv2.minAreaRect(xy_points)
+            # Also make this debug work with save_debug_images AI!
+            if self.debug_visualizations:
+                plt.figure("XY points for minAreaRect (Base Frame)")
+                plt.clf()  # Clear previous plot
+                plt.scatter(
+                    xy_points[:, 0],
+                    xy_points[:, 1],
+                    s=5,
+                    label="Object Top Surface XY Points",
+                )
 
-        if (
-            self.debug_visualizations and len(near_grasp_z_points) >= 3
-        ):  # Only if minAreaRect was used
-            plt.figure("XY points for minAreaRect (Base Frame)")
-            plt.clf()  # Clear previous plot
-            plt.scatter(
-                xy_points[:, 0],
-                xy_points[:, 1],
-                s=5,
-                label="Object Top Surface XY Points",
-            )
+                # Reconstruct the rotated rectangle from minAreaRect output
+                box = cv2.boxPoints(
+                    ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
+                )
+                # box = np.int0(box)  # This conversion might not be needed if just plotting lines
+                # For plotting, better to keep it float and close the loop
+                box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
 
-            # Reconstruct the rotated rectangle from minAreaRect output
-            box = cv2.boxPoints(
-                ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
-            )
-            # box = np.int0(box)  # This conversion might not be needed if just plotting lines
-            # For plotting, better to keep it float and close the loop
-            box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
-
-            plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
-            plt.scatter(
-                center[0],
-                center[1],
-                c="g",
-                s=50,
-                marker="x",
-                label="Calculated Center (Base Frame)",
-            )
-            plt.xlabel("X (Base Frame)")
-            plt.ylabel("Y (Base Frame)")
-            plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
-            plt.axis("equal")  # Important for correct aspect ratio
-            plt.legend()
-            plt.grid(True)
-            plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
-            plt.show(block=False)  # Use block=False for non-blocking
-            plt.pause(0.01)  # Allow plot to render
+                plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
+                plt.scatter(
+                    center[0],
+                    center[1],
+                    c="g",
+                    s=50,
+                    marker="x",
+                    label="Calculated Center (Base Frame)",
+                )
+                plt.xlabel("X (Base Frame)")
+                plt.ylabel("Y (Base Frame)")
+                plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
+                plt.axis("equal")  # Important for correct aspect ratio
+                plt.legend()
+                plt.grid(True)
+                plt.savefig(f"debug_minarearect_xy_{self.n_frames_processed}.png")
+                plt.show(block=False)  # Use block=False for non-blocking
+                plt.pause(0.01)  # Allow plot to render
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:

@@ -6,6 +6,7 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch.substitutions import LaunchConfiguration
 
 
 def load_yaml(package_name, file_name):
@@ -16,47 +17,63 @@ def load_yaml(package_name, file_name):
 
 
 def generate_launch_description():
+    log_level = LaunchConfiguration("log_level")
     custom_camera_params_file = os.path.join(
-        get_package_share_directory('aera_semi_autonomous'),
-        'config',
-        'camera.yaml'
+        get_package_share_directory("aera_semi_autonomous"), "config", "camera.yaml"
     )
 
     launch_args = {
-        'rs_compat': 'true',
-        'pointcloud.enable': 'true',
-        'params_file': custom_camera_params_file
+        "rs_compat": "true",
+        "pointcloud.enable": "true",
+        "params_file": custom_camera_params_file,
     }
     depthai = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory("depthai_ros_driver"),
-                         "launch", "camera.launch.py")
-        ]),
-        launch_arguments=launch_args.items())
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("depthai_ros_driver"),
+                    "launch",
+                    "camera.launch.py",
+                )
+            ]
+        ),
+        launch_arguments=launch_args.items(),
+    )
 
     calibration_tf_publisher = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            os.path.join(get_package_share_directory("easy_handeye2"),
-                         "launch", "publish.launch.py")
-        ]),
-        launch_arguments={"name": "ar4_calibration"}.items())
+        PythonLaunchDescriptionSource(
+            [
+                os.path.join(
+                    get_package_share_directory("easy_handeye2"),
+                    "launch",
+                    "publish.launch.py",
+                )
+            ]
+        ),
+        launch_arguments={"name": "ar4_calibration"}.items(),
+    )
 
     delay_calibration_tf_publisher = TimerAction(
         actions=[calibration_tf_publisher],
         period=2.0,
     )
 
-    ar_moveit_launch = PythonLaunchDescriptionSource([
-        os.path.join(get_package_share_directory("annin_ar4_moveit_config"),
-                     "launch",
-                     "moveit.launch.py")
-    ])
+    ar_moveit_launch = PythonLaunchDescriptionSource(
+        [
+            os.path.join(
+                get_package_share_directory("annin_ar4_moveit_config"),
+                "launch",
+                "moveit.launch.py",
+            )
+        ]
+    )
     ar_moveit_args = {
         "include_gripper": "True",
-        "rviz_config_file": "moveit_with_camera.rviz"
+        "rviz_config_file": "moveit_with_camera.rviz",
     }.items()
-    ar_moveit = IncludeLaunchDescription(ar_moveit_launch,
-                                         launch_arguments=ar_moveit_args)
+    ar_moveit = IncludeLaunchDescription(
+        ar_moveit_launch, launch_arguments=ar_moveit_args
+    )
 
     tabletop_handybot_node = Node(
         package="aera_semi_autonomous",
@@ -72,7 +89,12 @@ def generate_launch_description():
         output="screen",
     )
 
-    return LaunchDescription([
-        depthai, delay_calibration_tf_publisher, ar_moveit,
-        tabletop_handybot_node, static_tf_publisher
-    ])
+    return LaunchDescription(
+        [
+            depthai,
+            delay_calibration_tf_publisher,
+            ar_moveit,
+            tabletop_handybot_node,
+            static_tf_publisher,
+        ]
+    )

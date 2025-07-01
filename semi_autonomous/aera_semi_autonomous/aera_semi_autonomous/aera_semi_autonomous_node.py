@@ -529,7 +529,7 @@ class AeraSemiAutonomous(Node):
 
             # --- DETAILED CHECK OF THE RGB MESSAGE ---
             if current_rgb_msg_to_use is None:
-                self.logger.info(
+                self.logger.warn(
                     "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
                 )
 
@@ -549,7 +549,7 @@ class AeraSemiAutonomous(Node):
                 current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
             )
             if len(current_rgb_msg_to_use.data) != expected_data_len:
-                self.logger.info(
+                self.logger.warn(
                     f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}"
                 )
 
@@ -576,16 +576,16 @@ class AeraSemiAutonomous(Node):
                         single_mask_viz,
                     )
             except Exception as e:
-                self.logger.info(
+                self.logger.warn(
                     f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}"
                 )
-                self.logger.info(
+                self.logger.warn(
                     f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}"
                 )
                 # Also log the exception traceback fully
                 import traceback
 
-                self.logger.info(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
+                self.logger.warn(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
             # cv2.waitKey(0)
 
         # mask out the depth image except for the detected objects

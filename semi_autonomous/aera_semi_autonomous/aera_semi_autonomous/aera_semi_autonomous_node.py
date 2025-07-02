@@ -960,7 +960,18 @@ class AeraSemiAutonomous(Node):
             pose=pose_goal, start_joint_state=self.moveit2.joint_state
         )
         if trajectory:
-            # Also log the trajectory in the log.txt file AI!
+            if self.save_debug_images:
+                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                    f.write("\n--- MoveIt Trajectory ---\n")
+                    f.write(
+                        f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
+                    )
+                    for point in trajectory.joint_trajectory.points:
+                        positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
+                        time_str = f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
+                        f.write(
+                            f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
+                        )
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
         else:

@@ -29,6 +29,7 @@ from segment_anything import SamPredictor, sam_model_registry
 from sensor_msgs.msg import Image, PointCloud2, CameraInfo
 from std_msgs.msg import Int64, String
 from sensor_msgs.msg import JointState
+from trajectory_msgs.msg import JointTrajectory
 import matplotlib.pyplot as plt
 
 from pymoveit2 import GripperInterface, MoveIt2
@@ -241,6 +242,17 @@ class AeraSemiAutonomous(Node):
             with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
                 f.write(message)
 
+    def _log_trajectories(self, trajectory: JointTrajectory):
+        log_message = "\n--- MoveIt Trajectory ---\n"
+        log_message += f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
+        for point in trajectory.joint_trajectory.points:
+            positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
+            time_str = (
+                f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
+            )
+            log_message += f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
+        self._log_debug_info(log_message)
+
     def _save_debug_image(self, filename: str, image: np.ndarray):
         if self.save_debug_images and self.debug_img_dir:
             cv2.imwrite(os.path.join(self.debug_img_dir, filename), image)
@@ -270,14 +282,6 @@ class AeraSemiAutonomous(Node):
                     f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
                 )
                 return
-            self.logger.info(f"Detected {object_to_detect}.")
-            if self.save_debug_images:
-                self._log_debug_info(
-                    f"detection confidence: {self._last_detections.confidence}\n"
-                )
-            self.logger.info(
-                f"detection confidence: {self._last_detections.confidence}"
-            )
         elif tool_call == _PICK_OBJECT:
             if self._last_detections is None or len(self._last_detections.mask) == 0:
                 # logging.error("No detection available")
@@ -290,15 +294,6 @@ class AeraSemiAutonomous(Node):
                         f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
                     )
                     return
-                self.logger.info(f"Detected {object_to_detect}.")
-                if self.save_debug_images:
-                    self._log_debug_info(
-                        f"detection confidence: {self._last_detections.confidence}\n"
-                    )
-                self.logger.info(
-                    f"detection confidence: {self._last_detections.confidence}"
-                )
-
             if self._object_in_gripper:
                 logging.error("Object in gripper")
                 return
@@ -506,6 +501,10 @@ class AeraSemiAutonomous(Node):
                 cv2.waitKey(1)  # Small delay to allow windows to updateÏ
 
         self.n_frames_processed += 1
+        self.logger.info(f"Detected {detections}.")
+        if self.save_debug_images:
+            self._log_debug_info(f"detection confidence: {detections.confidence}\n")
+        self.logger.info(f"detection confidence: {detections.confidence}")
         return detections
 
     def pick_object(
@@ -530,18 +529,6 @@ class AeraSemiAutonomous(Node):
                     "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
                 )
 
-            self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg timestamp: {current_rgb_msg_to_use.header.stamp.sec}.{current_rgb_msg_to_use.header.stamp.nanosec}"
-            )
-            self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg encoding: {current_rgb_msg_to_use.encoding}"
-            )
-            self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg height: {current_rgb_msg_to_use.height}, width: {current_rgb_msg_to_use.width}, step: {current_rgb_msg_to_use.step}"
-            )
-            self.logger.info(
-                f"PICK_OBJECT: self._last_rgb_msg data length: {len(current_rgb_msg_to_use.data)}"
-            )
             expected_data_len = (
                 current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
             )
@@ -957,17 +944,7 @@ class AeraSemiAutonomous(Node):
         )
         if trajectory:
             if self.save_debug_images:
-                log_message = "\n--- MoveIt Trajectory ---\n"
-                log_message += (
-                    f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
-                )
-                for point in trajectory.joint_trajectory.points:
-                    positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
-                    time_str = f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
-                    log_message += (
-                        f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
-                    )
-                self._log_debug_info(log_message)
+                self._log_trajectories(trajectory)
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
         else:

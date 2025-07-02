@@ -224,13 +224,7 @@ class AeraSemiAutonomous(Node):
             # Unsubscribe after getting the info because it's static
             self.destroy_subscription(self.camera_info_sub)
 
-    def handle_tool_call(
-        self,
-        tool_call: str,
-        object_to_detect: str,
-        rgb_image: np.ndarray,
-        depth_image: np.ndarray,
-    ):
+    def _setup_debug_logging(self, tool_call: str, object_to_detect: str):
         if self.save_debug_images:
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             self.debug_img_dir = os.path.join(".debug_img_logs", timestamp)
@@ -241,6 +235,28 @@ class AeraSemiAutonomous(Node):
                 f.write(f"Object to Detect: {object_to_detect}\n")
         else:
             self.debug_img_dir = None
+
+    def _log_debug_info(self, message: str):
+        if self.save_debug_images and self.debug_img_dir:
+            with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
+                f.write(message)
+
+    def _save_debug_image(self, filename: str, image: np.ndarray):
+        if self.save_debug_images and self.debug_img_dir:
+            cv2.imwrite(os.path.join(self.debug_img_dir, filename), image)
+
+    def _save_debug_plot(self, filename: str):
+        if self.save_debug_images and self.debug_img_dir:
+            plt.savefig(os.path.join(self.debug_img_dir, filename))
+
+    def handle_tool_call(
+        self,
+        tool_call: str,
+        object_to_detect: str,
+        rgb_image: np.ndarray,
+        depth_image: np.ndarray,
+    ):
+        self._setup_debug_logging(tool_call, object_to_detect)
 
         if self.camera_intrinsics is None:
             self.logger.error(
@@ -256,10 +272,9 @@ class AeraSemiAutonomous(Node):
                 return
             self.logger.info(f"Detected {object_to_detect}.")
             if self.save_debug_images:
-                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                    f.write(
-                        f"detection confidence: {self._last_detections.confidence}\n"
-                    )
+                self._log_debug_info(
+                    f"detection confidence: {self._last_detections.confidence}\n"
+                )
             self.logger.info(
                 f"detection confidence: {self._last_detections.confidence}"
             )
@@ -277,10 +292,9 @@ class AeraSemiAutonomous(Node):
                     return
                 self.logger.info(f"Detected {object_to_detect}.")
                 if self.save_debug_images:
-                    with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                        f.write(
-                            f"detection confidence: {self._last_detections.confidence}\n"
-                        )
+                    self._log_debug_info(
+                        f"detection confidence: {self._last_detections.confidence}\n"
+                    )
                 self.logger.info(
                     f"detection confidence: {self._last_detections.confidence}"
                 )
@@ -451,26 +465,20 @@ class AeraSemiAutonomous(Node):
                     labels=custom_labels,
                 )
                 if self.save_debug_images:
-                    cv2.imwrite(
-                        os.path.join(
-                            self.debug_img_dir,
-                            f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
-                        ),
+                    self._save_debug_image(
+                        f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
                         annotated_dino_frame_with_labels,
                     )
-                    with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                        f.write("\n--- Detections ---\n")
-                        for label in custom_labels:
-                            f.write(f"{label}\n")
+                    log_message = "\n--- Detections ---\n"
+                    for label in custom_labels:
+                        log_message += f"{label}\n"
+                    self._log_debug_info(log_message)
                 if self.debug_visualizations:
                     cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
             else:  # If no labels, just show the boxes
                 if self.save_debug_images:
-                    cv2.imwrite(
-                        os.path.join(
-                            self.debug_img_dir,
-                            f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
-                        ),
+                    self._save_debug_image(
+                        f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
                         annotated_dino_frame,
                     )
                 if self.debug_visualizations:
@@ -484,11 +492,8 @@ class AeraSemiAutonomous(Node):
                     scene=bgr_image_annotated.copy(), detections=detections
                 )  # Detections obj should have .mask
                 if self.save_debug_images:
-                    cv2.imwrite(
-                        os.path.join(
-                            self.debug_img_dir,
-                            f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
-                        ),
+                    self._save_debug_image(
+                        f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
                         annotated_sam_frame,
                     )
                 if self.debug_visualizations:
@@ -563,11 +568,8 @@ class AeraSemiAutonomous(Node):
                         single_mask_viz,
                     )
                 if self.save_debug_images:
-                    cv2.imwrite(
-                        os.path.join(
-                            self.debug_img_dir,
-                            f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
-                        ),
+                    self._save_debug_image(
+                        f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
                         single_mask_viz,
                     )
             except Exception as e:
@@ -606,11 +608,8 @@ class AeraSemiAutonomous(Node):
                 display_depth_norm = np.zeros_like(display_depth, dtype=np.uint8)
 
             if self.save_debug_images:
-                cv2.imwrite(
-                    os.path.join(
-                        self.debug_img_dir,
-                        f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
-                    ),
+                self._save_debug_image(
+                    f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
                     display_depth_norm,
                 )
             if self.debug_visualizations:
@@ -744,11 +743,8 @@ class AeraSemiAutonomous(Node):
                 plt.legend()
                 plt.grid(True)
                 if self.save_debug_images:
-                    plt.savefig(
-                        os.path.join(
-                            self.debug_img_dir,
-                            f"debug_minarearect_xy_{self.n_frames_processed}.png",
-                        )
+                    self._save_debug_plot(
+                        f"debug_minarearect_xy_{self.n_frames_processed}.png"
                     )
                 if self.debug_visualizations:
                     plt.show(block=False)  # Use block=False for non-blocking
@@ -790,14 +786,12 @@ class AeraSemiAutonomous(Node):
                 f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
             )
             if self.save_debug_images:
-                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                    f.write("\n--- Grasp Pose ---\n")
-                    f.write(
-                        f"Position (x, y, z): {grasp_pose.position.x:.4f}, {grasp_pose.position.y:.4f}, {grasp_pose.position.z:.4f}\n"
-                    )
-                    f.write(
-                        f"Orientation (x, y, z, w): {grasp_pose.orientation.x:.4f}, {grasp_pose.orientation.y:.4f}, {grasp_pose.orientation.z:.4f}, {grasp_pose.orientation.w:.4f}\n"
-                    )
+                log_message = (
+                    "\n--- Grasp Pose ---\n"
+                    f"Position (x, y, z): {grasp_pose.position.x:.4f}, {grasp_pose.position.y:.4f}, {grasp_pose.position.z:.4f}\n"
+                    f"Orientation (x, y, z, w): {grasp_pose.orientation.x:.4f}, {grasp_pose.orientation.y:.4f}, {grasp_pose.orientation.z:.4f}, {grasp_pose.orientation.w:.4f}\n"
+                )
+                self._log_debug_info(log_message)
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
@@ -823,9 +817,11 @@ class AeraSemiAutonomous(Node):
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
         if self.save_debug_images:
-            with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                f.write("\n--- Gripper Position ---\n")
-                f.write(f"Target Gripper Position: {gripper_pos:.4f}\n")
+            log_message = (
+                "\n--- Gripper Position ---\n"
+                f"Target Gripper Position: {gripper_pos:.4f}\n"
+            )
+            self._log_debug_info(log_message)
         self.gripper_interface.move_to_position(gripper_pos)
         self.gripper_interface.wait_until_executed()
 
@@ -961,17 +957,17 @@ class AeraSemiAutonomous(Node):
         )
         if trajectory:
             if self.save_debug_images:
-                with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
-                    f.write("\n--- MoveIt Trajectory ---\n")
-                    f.write(
-                        f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
+                log_message = "\n--- MoveIt Trajectory ---\n"
+                log_message += (
+                    f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
+                )
+                for point in trajectory.joint_trajectory.points:
+                    positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
+                    time_str = f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
+                    log_message += (
+                        f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
                     )
-                    for point in trajectory.joint_trajectory.points:
-                        positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
-                        time_str = f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
-                        f.write(
-                            f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
-                        )
+                self._log_debug_info(log_message)
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
         else:

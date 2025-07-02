@@ -500,47 +500,6 @@ class AeraSemiAutonomous(Node):
             if self.debug_visualizations:
                 cv2.waitKey(1)  # Small delay to allow windows to updateÏ
 
-        # if self.annotate:
-        #     box_annotator = sv.BoxAnnotator()
-        #     mask_annotator = sv.MaskAnnotator()
-        #     labels = [
-        #         f"{object_classes[class_id]} {confidence:0.2f}"
-        #         for _, _, confidence, class_id, _, _ in detections
-        #     ]
-        #     annotated_frame = box_annotator.annotate(scene=image.copy(),
-        #                                              detections=detections,
-        #                                              labels=labels)
-        #     cv2.imwrite(
-        #         f"annotated_image_detections_{self.n_frames_processed}.jpg",
-        #         annotated_frame)
-        #
-        #     annotated_frame = mask_annotator.annotate(scene=image.copy(),
-        #                                               detections=detections)
-        #     cv2.imwrite(f"annotated_image_masks_{self.n_frames_processed}.jpg",
-        #                 annotated_frame)
-
-        # if self.publish_point_cloud and self.camera_intrinsics is not None:
-        #     depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-        #     # mask out the depth image except for the detected objects
-        #     masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
-        #     for mask in detections.mask:
-        #         masked_depth_image[mask] = depth_image[mask]
-        #     # masked_depth_image /= 1000.0
-        #
-        #     pcd = o3d.geometry.PointCloud.create_from_depth_image(
-        #         o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
-        #         self.camera_intrinsics,
-        #         depth_scale=1000.0,
-        #         depth_trunc=3.0,  # Max depth to consider, adjust as needed
-        #         stride=1
-        #     )
-        #
-        #     # convert it to a ROS PointCloud2 message
-        #     points = np.asarray(pcd.points)
-        #     # pc_msg = point_cloud_to_msg(points, "/camera_color_frame")
-        #     pc_msg = point_cloud_to_msg(points, "/camera_color_optical_frame")
-        #     self.point_cloud_pub.publish(pc_msg)
-
         self.n_frames_processed += 1
         return detections
 
@@ -1001,6 +960,7 @@ class AeraSemiAutonomous(Node):
             pose=pose_goal, start_joint_state=self.moveit2.joint_state
         )
         if trajectory:
+            # Also log the trajectory in the log.txt file AI!
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
         else:

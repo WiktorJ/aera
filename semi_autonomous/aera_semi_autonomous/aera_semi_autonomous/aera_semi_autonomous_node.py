@@ -656,21 +656,30 @@ class AeraSemiAutonomous(Node):
         z_coords = points_base_frame[:, 2]
         # Calculate grasp_z by filtering outliers from the top 25% of points.
         top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
-        # Add info logging for each branch of the below if-else AI!
         if top_z_coords.size > 1:
             mean_z = np.mean(top_z_coords)
             std_z = np.std(top_z_coords)
             # Discard points more than 1 std from the mean.
             filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
             if filtered_z_coords.size > 0:
+                self.logger.info(
+                    f"Using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
+                )
                 grasp_z = np.mean(filtered_z_coords)
             else:
                 # Fallback if all points were filtered out.
+                self.logger.info(
+                    "All top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
+                )
                 grasp_z = mean_z
         elif top_z_coords.size > 0:
+            self.logger.info("Only one top z-coord. Using it for grasp_z.")
             grasp_z = top_z_coords[0]
         else:
             # Fallback if there are no points in the top percentile (e.g., all points are the same).
+            self.logger.info(
+                "No points in top percentile. Falling back to mean of all z-coords."
+            )
             grasp_z = np.mean(z_coords)
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[

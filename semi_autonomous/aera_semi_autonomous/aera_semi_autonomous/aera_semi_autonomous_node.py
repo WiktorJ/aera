@@ -92,9 +92,9 @@ class AeraSemiAutonomous(Node):
         annotate: bool = False,
         publish_point_cloud: bool = False,
         # Adjust these offsets to your needs:
-        offset_x: float = 0.015,
-        offset_y: float = -0.015,
-        offset_z: float = 0.12,  # accounts for the height of the gripper
+        offset_x: float = 0.04,
+        offset_y: float = 0.025,
+        offset_z: float = 0.08,  # accounts for the height of the gripper
     ):
         super().__init__("aera_semi_autonomous_node")
 
@@ -157,7 +157,7 @@ class AeraSemiAutonomous(Node):
         self._last_rgb_msg = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
-        self.gripper_squeeze_factor = 0.5
+        self.gripper_squeeze_factor = 0.2
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.offset_z = offset_z
@@ -655,7 +655,7 @@ class AeraSemiAutonomous(Node):
             )
         z_coords = points_base_frame[:, 2]
         # Calculate grasp_z by filtering outliers from the top 25% of points.
-        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 75)]
+        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
         if top_z_coords.size > 1:
             mean_z = np.mean(top_z_coords)
             std_z = np.std(top_z_coords)

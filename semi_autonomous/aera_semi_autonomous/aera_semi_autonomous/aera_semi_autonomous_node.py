@@ -222,7 +222,6 @@ class AeraSemiAutonomous(Node):
                 cx=msg.k[2],
                 cy=msg.k[5],
             )
-            # Log camera_intrinsics to log.txt AI!
             # Unsubscribe after getting the info because it's static
             self.destroy_subscription(self.camera_info_sub)
 
@@ -235,6 +234,9 @@ class AeraSemiAutonomous(Node):
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"Tool Call: {tool_call}\n")
                 f.write(f"Object to Detect: {object_to_detect}\n")
+                if self.camera_intrinsics:
+                    f.write("\n--- Camera Intrinsics ---\n")
+                    f.write(f"{self.camera_intrinsics}\n")
         else:
             self.debug_img_dir = None
 

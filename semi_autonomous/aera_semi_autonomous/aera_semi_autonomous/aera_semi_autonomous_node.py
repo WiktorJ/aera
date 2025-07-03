@@ -656,6 +656,7 @@ class AeraSemiAutonomous(Node):
         z_coords = points_base_frame[:, 2]
         # Calculate grasp_z by filtering outliers from the top 25% of points.
         top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
+        # Add info logging for each branch of the below if-else AI!
         if top_z_coords.size > 1:
             mean_z = np.mean(top_z_coords)
             std_z = np.std(top_z_coords)

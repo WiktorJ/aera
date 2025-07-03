@@ -222,6 +222,7 @@ class AeraSemiAutonomous(Node):
                 cx=msg.k[2],
                 cy=msg.k[5],
             )
+            # Log camera_intrinsics to log.txt AI!
             # Unsubscribe after getting the info because it's static
             self.destroy_subscription(self.camera_info_sub)
 

@@ -658,8 +658,8 @@ class AeraSemiAutonomous(Node):
         grasp_z = np.mean(z_coords[z_coords >= np.percentile(z_coords, 90)])
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
-            points_base_frame[:, 2] > grasp_z - 0.008
-        ]  # 8mm tolerance
+            points_base_frame[:, 2] > grasp_z - 0.01
+        ]
 
         if len(near_grasp_z_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(

@@ -601,7 +601,7 @@ class AeraSemiAutonomous(Node):
         # )
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image_mm.astype(np.float32)),
-            self.camera_intrinsics
+            self.camera_intrinsics,
         )
 
         if self.debug_visualizations or self.save_debug_images:
@@ -650,9 +650,9 @@ class AeraSemiAutonomous(Node):
             self.logger.info(
                 f"Published debug PCD in base frame with {len(points_base_frame)} points."
             )
-        # Calculate grasp_z as the mean of the top 10% of points
         z_coords = points_base_frame[:, 2]
-        grasp_z = np.mean(z_coords[z_coords >= np.percentile(z_coords, 90)])
+        # Calculate variance of the 25th percentile. Discard the points that are more than 1 std from the mean, make grazp_z to be median of the result AI!
+        grasp_z = np.median(z_coords[z_coords >= np.percentile(z_coords, 75)])
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
             points_base_frame[:, 2] > grasp_z - 0.01

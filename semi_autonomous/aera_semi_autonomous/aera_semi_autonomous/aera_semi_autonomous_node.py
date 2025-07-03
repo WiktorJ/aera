@@ -94,7 +94,7 @@ class AeraSemiAutonomous(Node):
         # Adjust these offsets to your needs:
         offset_x: float = 0.015,
         offset_y: float = -0.015,
-        offset_z: float = 0.08,  # accounts for the height of the gripper
+        offset_z: float = 0.12,  # accounts for the height of the gripper
     ):
         super().__init__("aera_semi_autonomous_node")
 
@@ -601,10 +601,7 @@ class AeraSemiAutonomous(Node):
         # )
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image_mm.astype(np.float32)),
-            self.camera_intrinsics,
-            depth_scale=1000,
-            depth_trunc=3.0,
-            project_valid_depth_only=True,
+            self.camera_intrinsics
         )
 
         if self.debug_visualizations or self.save_debug_images:

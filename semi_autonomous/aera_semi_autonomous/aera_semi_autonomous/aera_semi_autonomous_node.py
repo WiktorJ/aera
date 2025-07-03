@@ -662,15 +662,15 @@ class AeraSemiAutonomous(Node):
             # Discard points more than 1 std from the mean.
             filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
             if filtered_z_coords.size > 0:
-                grasp_z = np.median(filtered_z_coords)
+                grasp_z = np.mean(filtered_z_coords)
             else:
                 # Fallback if all points were filtered out.
-                grasp_z = np.median(top_z_coords)
+                grasp_z = mean_z
         elif top_z_coords.size > 0:
             grasp_z = top_z_coords[0]
         else:
             # Fallback if there are no points in the top percentile (e.g., all points are the same).
-            grasp_z = np.median(z_coords)
+            grasp_z = np.mean(z_coords)
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
             points_base_frame[:, 2] > grasp_z - 0.01

@@ -653,7 +653,7 @@ class AeraSemiAutonomous(Node):
             self.logger.info(
                 f"Published debug PCD in base frame with {len(points_base_frame)} points."
             )
-
+        # Instead of taking max, take mean of 10th percentile AI!
         grasp_z = points_base_frame[:, 2].max()  # Topmost point in base frame
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[

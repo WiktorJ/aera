@@ -242,17 +242,6 @@ class AeraSemiAutonomous(Node):
             with open(os.path.join(self.debug_img_dir, "log.txt"), "a") as f:
                 f.write(message)
 
-    def _log_trajectories(self, trajectory: JointTrajectory):
-        log_message = "\n--- MoveIt Trajectory ---\n"
-        log_message += f"Joint Names: {trajectory.joint_trajectory.joint_names}\n"
-        for point in trajectory.joint_trajectory.points:
-            positions_str = ", ".join([f"{p:.4f}" for p in point.positions])
-            time_str = (
-                f"{point.time_from_start.sec}.{point.time_from_start.nanosec:09d}"
-            )
-            log_message += f"  Point (at {time_str}s): Positions: [{positions_str}]\n"
-        self._log_debug_info(log_message)
-
     def _save_debug_image(self, filename: str, image: np.ndarray):
         if self.save_debug_images and self.debug_img_dir:
             cv2.imwrite(os.path.join(self.debug_img_dir, filename), image)
@@ -944,7 +933,9 @@ class AeraSemiAutonomous(Node):
         )
         if trajectory:
             if self.save_debug_images:
-                self._log_trajectories(trajectory)
+                log_message = "\n--- MoveIt Trajectory ---\n"
+                log_message += f"Trajectory: {repr(trajectory)}\n"
+                self._log_debug_info(log_message)
             self.moveit2.execute(trajectory)
             self.moveit2.wait_until_executed()
         else:

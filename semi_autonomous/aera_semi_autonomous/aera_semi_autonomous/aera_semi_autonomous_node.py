@@ -651,8 +651,23 @@ class AeraSemiAutonomous(Node):
                 f"Published debug PCD in base frame with {len(points_base_frame)} points."
             )
         z_coords = points_base_frame[:, 2]
-        # Calculate variance of the 25th percentile. Discard the points that are more than 1 std from the mean, make grazp_z to be median of the result AI!
-        grasp_z = np.median(z_coords[z_coords >= np.percentile(z_coords, 75)])
+        # Calculate grasp_z by filtering outliers from the top 25% of points.
+        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 75)]
+        if top_z_coords.size > 1:
+            mean_z = np.mean(top_z_coords)
+            std_z = np.std(top_z_coords)
+            # Discard points more than 1 std from the mean.
+            filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
+            if filtered_z_coords.size > 0:
+                grasp_z = np.median(filtered_z_coords)
+            else:
+                # Fallback if all points were filtered out.
+                grasp_z = np.median(top_z_coords)
+        elif top_z_coords.size > 0:
+            grasp_z = top_z_coords[0]
+        else:
+            # Fallback if there are no points in the top percentile (e.g., all points are the same).
+            grasp_z = np.median(z_coords)
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
             points_base_frame[:, 2] > grasp_z - 0.01

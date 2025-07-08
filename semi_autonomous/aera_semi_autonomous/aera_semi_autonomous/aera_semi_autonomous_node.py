@@ -94,7 +94,7 @@ class AeraSemiAutonomous(Node):
         # Adjust these offsets to your needs:
         offset_x: float = 0.04,
         offset_y: float = 0.025,
-        offset_z: float = 0.08,  # accounts for the height of the gripper
+        offset_z: float = 0.11,  # accounts for the height of the gripper
     ):
         super().__init__("aera_semi_autonomous_node")
 
@@ -333,7 +333,7 @@ class AeraSemiAutonomous(Node):
         self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
         # done = False
         # Hardcoded for now
-        object_to_detect = "pen"
+        object_to_detect = "green pen"
         # while not done:
         self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
 

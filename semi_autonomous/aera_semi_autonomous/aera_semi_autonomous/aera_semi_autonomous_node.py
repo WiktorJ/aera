@@ -1038,9 +1038,7 @@ def main():
     executor = MultiThreadedExecutor(4)
     executor.add_node(node)
     try:
-        while executor.context.ok() and not executor._is_shutdown:
-            executor.spin_once(1)
-        # executor.spin()
+        executor.spin()
     except KeyboardInterrupt:
         pass
 

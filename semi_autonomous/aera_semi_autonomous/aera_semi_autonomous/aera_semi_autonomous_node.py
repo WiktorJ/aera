@@ -57,14 +57,12 @@ _PICK_OBJECT = "pick_object"
 _DETECT_OBJECT = "detect_object"
 _MOVE_ABOVE_OBJECT_AND_RELEASE = "move_above_object_and_release"
 _RELEASE_GRIPPER = "release_gripper"
-_FLICK_WRIST_WHILE_RELEASE = "flick_wrist_while_release"
 
 _AVAILABLE_ACTIONS = (
     _PICK_OBJECT,
     _DETECT_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,
     _RELEASE_GRIPPER,
-    _FLICK_WRIST_WHILE_RELEASE,
 )
 
 # For only single object supported.
@@ -279,16 +277,8 @@ class AeraSemiAutonomous(Node):
                 return
         elif tool_call == _PICK_OBJECT:
             if self._last_detections is None or len(self._last_detections.mask) == 0:
-                # logging.error("No detection available")
-                # return
-                self._last_detections = self.detect_objects(
-                    rgb_image, [object_to_detect]
-                )
-                if len(self._last_detections.class_id) == 0:
-                    self.logger.info(
-                        f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
-                    )
-                    return
+                logging.error("No detection available")
+                return
             if self._object_in_gripper:
                 logging.error("Object in gripper")
                 return
@@ -311,9 +301,6 @@ class AeraSemiAutonomous(Node):
             self._object_in_gripper = False
         elif tool_call == _RELEASE_GRIPPER:
             self.release_gripper()
-            self._object_in_gripper = False
-        elif tool_call == _FLICK_WRIST_WHILE_RELEASE:
-            self.flick_wrist_while_release()
             self._object_in_gripper = False
 
     def _parse_prompt_message(self, msg_data: str):
@@ -352,7 +339,6 @@ class AeraSemiAutonomous(Node):
 
         rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
         depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-        self._last_detections = None
 
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
@@ -898,29 +884,6 @@ class AeraSemiAutonomous(Node):
         self.release_at(drop_pose)
 
     def release_gripper(self):
-        self.gripper_interface.open()
-        self.gripper_interface.wait_until_executed()
-
-    def flick_wrist_while_release(self):
-        if self.moveit2.joint_state is None:
-            self.logger.error("Cannot flick wrist, arm joint state is not available.")
-            return
-        joint_positions = self.moveit2.joint_state.position
-        joint_positions[4] -= np.deg2rad(25)
-        trajectory = self.moveit2.plan(
-            joint_positions=joint_positions,
-            joint_names=self.arm_joint_names,
-            tolerance_joint_position=0.005,
-            start_joint_state=self.moveit2.joint_state,
-        )
-        if not trajectory:
-            self.logger.error("Failed to plan for flick_wrist_while_release")
-            return
-
-        self.moveit2.execute(trajectory)
-        self.moveit2.wait_until_executed()
-        time.sleep(0.05)
-
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
 

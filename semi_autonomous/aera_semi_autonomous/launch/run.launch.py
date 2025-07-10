@@ -83,6 +83,14 @@ def generate_launch_description():
         name="aera_semi_autonomous_node",
         output="screen",
         arguments=["--ros-args", "--log-level", LaunchConfiguration("log_level")],
+        parameters=[
+            {
+                "offset_x": LaunchConfiguration("offset_x"),
+                "offset_y": LaunchConfiguration("offset_y"),
+                "offset_z": LaunchConfiguration("offset_z"),
+                "gripper_squeeze_factor": LaunchConfiguration("gripper_squeeze_factor"),
+            }
+        ],
     )
 
     static_tf_publisher = Node(
@@ -90,6 +98,27 @@ def generate_launch_description():
         executable="static_transform_publisher",
         arguments=["0", "0", "0", "0", "0", "0", "world", "camera_link"],
         output="screen",
+    )
+
+    offset_x_arg = DeclareLaunchArgument(
+        "offset_x",
+        default_value=TextSubstitution(text="0.04"),
+        description="Offset x for grasp pose",
+    )
+    offset_y_arg = DeclareLaunchArgument(
+        "offset_y",
+        default_value=TextSubstitution(text="0.025"),
+        description="Offset y for grasp pose",
+    )
+    offset_z_arg = DeclareLaunchArgument(
+        "offset_z",
+        default_value=TextSubstitution(text="0.1"),
+        description="Offset z for grasp pose",
+    )
+    gripper_squeeze_factor_arg = DeclareLaunchArgument(
+        "gripper_squeeze_factor",
+        default_value=TextSubstitution(text="0.2"),
+        description="Gripper squeeze factor",
     )
 
     log_evel_arg = DeclareLaunchArgument(
@@ -106,5 +135,9 @@ def generate_launch_description():
             aera_semi_autonomous_node,
             static_tf_publisher,
             log_evel_arg,
+            offset_x_arg,
+            offset_y_arg,
+            offset_z_arg,
+            gripper_squeeze_factor_arg,
         ]
     )

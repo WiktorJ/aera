@@ -87,14 +87,13 @@ def segment(
 
 
 class AeraSemiAutonomous(Node):
-    def __init__(
-        self,
-        offset_x: float = 0.04,
-        offset_y: float = 0.025,
-        offset_z: float = 0.1,
-        gripper_squeeze_factor=0.2,
-    ):
+    def __init__(self):
         super().__init__("aera_semi_autonomous_node")
+
+        self.declare_parameter("offset_x", 0.04)
+        self.declare_parameter("offset_y", 0.025)
+        self.declare_parameter("offset_z", 0.1)
+        self.declare_parameter("gripper_squeeze_factor", 0.2)
 
         self.logger = self.get_logger()
         self.debug_visualizations = False
@@ -153,10 +152,12 @@ class AeraSemiAutonomous(Node):
         self._last_rgb_msg = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
-        self.offset_x = offset_x
-        self.offset_y = offset_y
-        self.offset_z = offset_z
-        self.gripper_squeeze_factor = gripper_squeeze_factor
+        self.offset_x = self.get_parameter("offset_x").get_parameter_value().double_value
+        self.offset_y = self.get_parameter("offset_y").get_parameter_value().double_value
+        self.offset_z = self.get_parameter("offset_z").get_parameter_value().double_value
+        self.gripper_squeeze_factor = (
+            self.get_parameter("gripper_squeeze_factor").get_parameter_value().double_value
+        )
         self.camera_intrinsics = None
         self.image_width = None
         self.image_height = None

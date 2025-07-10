@@ -19,6 +19,32 @@ def load_yaml(package_name, file_name):
 
 
 def generate_launch_description():
+    log_level_arg = DeclareLaunchArgument(
+        "log_level",
+        default_value=TextSubstitution(text=str("INFO")),
+        description="Logging level",
+    )
+    offset_x_arg = DeclareLaunchArgument(
+        "offset_x",
+        default_value=TextSubstitution(text="0.04"),
+        description="Offset x for grasp pose",
+    )
+    offset_y_arg = DeclareLaunchArgument(
+        "offset_y",
+        default_value=TextSubstitution(text="0.025"),
+        description="Offset y for grasp pose",
+    )
+    offset_z_arg = DeclareLaunchArgument(
+        "offset_z",
+        default_value=TextSubstitution(text="0.1"),
+        description="Offset z for grasp pose",
+    )
+    gripper_squeeze_factor_arg = DeclareLaunchArgument(
+        "gripper_squeeze_factor",
+        default_value=TextSubstitution(text="0.2"),
+        description="Gripper squeeze factor",
+    )
+
     log_level = LaunchConfiguration("log_level")
     custom_camera_params_file = os.path.join(
         get_package_share_directory("aera_semi_autonomous"), "config", "camera.yaml"
@@ -100,44 +126,17 @@ def generate_launch_description():
         output="screen",
     )
 
-    offset_x_arg = DeclareLaunchArgument(
-        "offset_x",
-        default_value=TextSubstitution(text="0.04"),
-        description="Offset x for grasp pose",
-    )
-    offset_y_arg = DeclareLaunchArgument(
-        "offset_y",
-        default_value=TextSubstitution(text="0.025"),
-        description="Offset y for grasp pose",
-    )
-    offset_z_arg = DeclareLaunchArgument(
-        "offset_z",
-        default_value=TextSubstitution(text="0.1"),
-        description="Offset z for grasp pose",
-    )
-    gripper_squeeze_factor_arg = DeclareLaunchArgument(
-        "gripper_squeeze_factor",
-        default_value=TextSubstitution(text="0.2"),
-        description="Gripper squeeze factor",
-    )
-
-    log_evel_arg = DeclareLaunchArgument(
-        "log_level",
-        default_value=TextSubstitution(text=str("INFO")),
-        description="Logging level",
-    )
-
     return LaunchDescription(
         [
+            log_level_arg,
+            offset_x_arg,
+            offset_y_arg,
+            offset_z_arg,
+            gripper_squeeze_factor_arg,
             depthai,
             delay_calibration_tf_publisher,
             ar_moveit,
             aera_semi_autonomous_node,
             static_tf_publisher,
-            log_evel_arg,
-            offset_x_arg,
-            offset_y_arg,
-            offset_z_arg,
-            gripper_squeeze_factor_arg,
         ]
     )

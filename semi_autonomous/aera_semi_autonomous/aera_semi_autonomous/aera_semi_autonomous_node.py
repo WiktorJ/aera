@@ -308,6 +308,17 @@ class AeraSemiAutonomous(Node):
             self.flick_wrist_while_release()
             self._object_in_gripper = False
 
+    def _parse_prompt_message(self, msg_data: str):
+        try:
+            data = yaml.safe_load(msg_data)
+            if not isinstance(data, dict):
+                self.logger.error(f"Parsed prompt is not a dictionary: {msg_data}")
+                return None
+            return data
+        except yaml.YAMLError:
+            self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
+            return None
+
     def start(self, msg: String):
         if not self._last_rgb_msg or not self._last_depth_msg:
             self.logger.warn(
@@ -315,16 +326,12 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        try:
-            data = yaml.safe_load(msg.data)
-            if not isinstance(data, dict):
-                self.logger.error(f"Parsed prompt is not a dictionary: {msg.data}")
-                return
-            action = data.get("action")
-            object_to_detect = str(data.get("object", ""))
-        except yaml.YAMLError:
-            self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg.data}")
+        data = self._parse_prompt_message(msg.data)
+        if data is None:
             return
+
+        action = data.get("action")
+        object_to_detect = str(data.get("object", ""))
 
         if not action:
             self.logger.error(f"No 'action' found in prompt message: {msg.data}")

@@ -89,12 +89,10 @@ def segment(
 class AeraSemiAutonomous(Node):
     def __init__(
         self,
-        annotate: bool = False,
-        publish_point_cloud: bool = False,
-        # Adjust these offsets to your needs:
         offset_x: float = 0.04,
         offset_y: float = 0.025,
-        offset_z: float = 0.11,  # accounts for the height of the gripper
+        offset_z: float = 0.1,
+        gripper_squeeze_factor=0.2,
     ):
         super().__init__("aera_semi_autonomous_node")
 
@@ -150,17 +148,15 @@ class AeraSemiAutonomous(Node):
         self.sam.to(device=DEVICE)
         self.sam_predictor = SamPredictor(self.sam)
 
-        self.annotate = annotate
-        self.publish_point_cloud = publish_point_cloud
         self.n_frames_processed = 0
         self._last_depth_msg = None
         self._last_rgb_msg = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
-        self.gripper_squeeze_factor = 0.2
         self.offset_x = offset_x
         self.offset_y = offset_y
         self.offset_z = offset_z
+        self.gripper_squeeze_factor = gripper_squeeze_factor
         self.camera_intrinsics = None
         self.image_width = None
         self.image_height = None
@@ -181,8 +177,6 @@ class AeraSemiAutonomous(Node):
             Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
         )
 
-        if self.publish_point_cloud:
-            self.point_cloud_pub = self.create_publisher(PointCloud2, "/point_cloud", 2)
         self.prompt_sub = self.create_subscription(
             String,
             "/prompt",
@@ -406,7 +400,7 @@ class AeraSemiAutonomous(Node):
             xyxy=detections.xyxy,
         )
 
-        if self.annotate or self.debug_visualizations or self.save_debug_images:
+        if self.debug_visualizations or self.save_debug_images:
             # Create a BGR copy for OpenCV annotations
             bgr_image_annotated = image.copy()
 

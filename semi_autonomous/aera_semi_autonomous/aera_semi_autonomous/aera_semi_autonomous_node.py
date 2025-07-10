@@ -317,9 +317,12 @@ class AeraSemiAutonomous(Node):
 
         try:
             data = yaml.safe_load(msg.data)
+            if not isinstance(data, dict):
+                self.logger.error(f"Parsed prompt is not a dictionary: {msg.data}")
+                return
             action = data.get("action")
-            object_to_detect = data.get("object", "")
-        except (yaml.YAMLError, AttributeError):
+            object_to_detect = str(data.get("object", ""))
+        except yaml.YAMLError:
             self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg.data}")
             return
 

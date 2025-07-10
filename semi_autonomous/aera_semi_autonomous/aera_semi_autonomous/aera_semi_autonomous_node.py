@@ -315,11 +315,17 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        parts = msg.data.split(",", 1)
-        action = parts[0].strip()
-        object_to_detect = ""
-        if len(parts) > 1:
-            object_to_detect = parts[1].strip()
+        try:
+            data = json.loads(msg.data)
+            action = data.get("action")
+            object_to_detect = data.get("object", "")
+        except json.JSONDecodeError:
+            self.logger.error(f"Failed to parse JSON from prompt: {msg.data}")
+            return
+
+        if not action:
+            self.logger.error(f"No 'action' found in prompt message: {msg.data}")
+            return
 
         if action not in _AVAILABLE_ACTIONS:
             self.logger.warn(

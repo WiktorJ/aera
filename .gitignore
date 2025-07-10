@@ -231,9 +231,9 @@ fabric.properties
 **/Grounded-Segment-Anything/
 **/ros2_aruco
 **/pymoveit2
+**/ar4_ros_driver
 **/log
 **/install
-semi_autonomous/**/ar4_mk3_drivers
 
 
 .aider*

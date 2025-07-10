@@ -133,7 +133,7 @@ class AeraSemiAutonomous(Node):
             open_gripper_joint_positions=[-0.012],
             closed_gripper_joint_positions=[0.0],
             gripper_group_name="ar_gripper",
-            callback_group=arm_callback_group,
+            callback_group=gripper_callback_group,
             gripper_command_action_name="/gripper_controller/gripper_cmd",
         )
         self.tf_buffer = tf2_ros.Buffer()

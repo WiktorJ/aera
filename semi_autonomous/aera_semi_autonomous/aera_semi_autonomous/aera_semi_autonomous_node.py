@@ -152,11 +152,19 @@ class AeraSemiAutonomous(Node):
         self._last_rgb_msg = None
         self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
-        self.offset_x = self.get_parameter("offset_x").get_parameter_value().double_value
-        self.offset_y = self.get_parameter("offset_y").get_parameter_value().double_value
-        self.offset_z = self.get_parameter("offset_z").get_parameter_value().double_value
+        self.offset_x = (
+            self.get_parameter("offset_x").get_parameter_value().double_value
+        )
+        self.offset_y = (
+            self.get_parameter("offset_y").get_parameter_value().double_value
+        )
+        self.offset_z = (
+            self.get_parameter("offset_z").get_parameter_value().double_value
+        )
         self.gripper_squeeze_factor = (
-            self.get_parameter("gripper_squeeze_factor").get_parameter_value().double_value
+            self.get_parameter("gripper_squeeze_factor")
+            .get_parameter_value()
+            .double_value
         )
         self.camera_intrinsics = None
         self.image_width = None
@@ -313,11 +321,23 @@ class AeraSemiAutonomous(Node):
             data = yaml.safe_load(msg_data)
             if not isinstance(data, dict):
                 self.logger.error(f"Parsed prompt is not a dictionary: {msg_data}")
-                return None
-            return data
+                return None, None
+            action = data.get("action")
+            object_to_detect = data.get("object", "")
+
+            if not action:
+                self.logger.error(f"No 'action' found in prompt message: {msg_data}")
+                return None, None
+
+            if action not in _AVAILABLE_ACTIONS:
+                self.logger.warn(
+                    f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                )
+                return None, None
+            return action, object_to_detect
         except yaml.YAMLError:
             self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
-            return None
+            return None, None
 
     def start(self, msg: String):
         if not self._last_rgb_msg or not self._last_depth_msg:
@@ -326,21 +346,8 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        data = self._parse_prompt_message(msg.data)
-        if data is None:
-            return
-
-        action = data.get("action")
-        object_to_detect = str(data.get("object", ""))
-
-        if not action:
-            self.logger.error(f"No 'action' found in prompt message: {msg.data}")
-            return
-
-        if action not in _AVAILABLE_ACTIONS:
-            self.logger.warn(
-                f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
-            )
+        action, object_to_detect = self._parse_prompt_message(msg.data)
+        if action is None or object_to_detect is None:
             return
 
         rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)

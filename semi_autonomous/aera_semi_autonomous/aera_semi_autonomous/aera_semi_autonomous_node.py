@@ -314,9 +314,16 @@ class AeraSemiAutonomous(Node):
                 f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
             )
             return
-        if msg.data not in _AVAILABLE_ACTIONS:
+
+        parts = msg.data.split(",", 1)
+        action = parts[0].strip()
+        object_to_detect = ""
+        if len(parts) > 1:
+            object_to_detect = parts[1].strip()
+
+        if action not in _AVAILABLE_ACTIONS:
             self.logger.warn(
-                f"Action: {msg} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
             )
             return
 
@@ -327,10 +334,8 @@ class AeraSemiAutonomous(Node):
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
         # done = False
-        # Hardcoded for now
-        object_to_detect = "green pen"
         # while not done:
-        self.handle_tool_call(msg.data, object_to_detect, rgb_image, depth_image)
+        self.handle_tool_call(action, object_to_detect, rgb_image, depth_image)
 
         self.go_home()
         self.logger.info("Task completed.")

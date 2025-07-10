@@ -1,4 +1,4 @@
-import json
+import yaml
 import logging
 import os
 import threading
@@ -316,11 +316,11 @@ class AeraSemiAutonomous(Node):
             return
 
         try:
-            data = json.loads(msg.data)
+            data = yaml.safe_load(msg.data)
             action = data.get("action")
             object_to_detect = data.get("object", "")
-        except json.JSONDecodeError:
-            self.logger.error(f"Failed to parse JSON from prompt: {msg.data}")
+        except (yaml.YAMLError, AttributeError):
+            self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg.data}")
             return
 
         if not action:

@@ -284,35 +284,12 @@ class AeraSemiAutonomous(Node):
         try:
             data = yaml.safe_load(msg_data)
 
-            actions_data = None
-            if isinstance(data, list):
-                actions_data = data
-            elif isinstance(data, dict):
-                actions_data = data.get("action")
-                # Handle single action format for backward compatibility
-                if isinstance(actions_data, str):
-                    action = actions_data
-                    object_to_detect = data.get("object", "")
-                    if action not in _AVAILABLE_ACTIONS:
-                        self.logger.warn(
-                            f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
-                        )
-                        return None
-                    return [(action, object_to_detect)]
-            else:
-                self.logger.error(
-                    f"Parsed prompt is not a dictionary or list: {msg_data}"
-                )
-                return None
-
-            if not isinstance(actions_data, list):
-                self.logger.error(
-                    f"The 'action' field is not a list or the top level is not a list: {msg_data}"
-                )
+            if not isinstance(data, list):
+                self.logger.error(f"The top level is not a list: {msg_data}")
                 return None
 
             commands = []
-            for command_data in actions_data:
+            for command_data in data:
                 if not isinstance(command_data, dict):
                     self.logger.error(
                         f"Command item is not a dictionary: {command_data}"

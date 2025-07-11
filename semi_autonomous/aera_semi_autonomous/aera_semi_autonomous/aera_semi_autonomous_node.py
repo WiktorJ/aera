@@ -583,30 +583,6 @@ class AeraSemiAutonomous(Node):
             self.camera_intrinsics,
         )
 
-        if self.debug_visualizations or self.save_debug_images:
-            self.logger.info(f"Calculated PointCloud: {pcd}")
-            if not hasattr(self, "pcd_cam_frame_pub"):
-                self.pcd_cam_frame_pub = self.create_publisher(
-                    PointCloud2, "/debug/pcd_camera_frame", 10
-                )
-            if len(pcd.points) > 0:
-                # For Open3D >= 0.13.0, use pcd.get_rotation_matrix_from_xyz for frame convention
-                # Create a coordinate frame
-                # coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0,0,0])
-                # o3d.visualization.draw_geometries([pcd, coord_frame]) # This blocks, useful for direct debug
-
-                # Publish to ROS for RViz
-                points_np = np.asarray(pcd.points)
-                ros_pcd_cam = point_cloud_to_msg(
-                    points_np, "camera_color_optical_frame"
-                )  # Use YOUR point_cloud_to_msg
-                self.pcd_cam_frame_pub.publish(ros_pcd_cam)
-                self.logger.info(
-                    f"Published debug PCD in camera frame with {len(points_np)} points."
-                )
-            else:
-                self.logger.info("PCD in camera frame is empty for pick_object.")
-
         # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
         points_base_frame = np.asarray(pcd.points)

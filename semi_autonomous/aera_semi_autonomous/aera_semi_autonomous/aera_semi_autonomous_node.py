@@ -681,19 +681,35 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        filtered_z_coords = z_coords[z_coords >= np.percentile(z_coords, 25)]
-
-        if filtered_z_coords.size > 0:
+        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 25)]
+        if top_z_coords.size > 1:
+            mean_z = np.mean(top_z_coords)
+            std_z = np.std(top_z_coords)
+            # Discard points more than 1 std from the mean.
+            filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
+            if filtered_z_coords.size > 0:
+                self.logger.info(
+                    f"1. Top detection using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
+                )
+                grasp_z = np.mean(filtered_z_coords)
+            else:
+                # Fallback if all points were filtered out.
+                self.logger.info(
+                    "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
+                )
+                grasp_z = mean_z
+        elif top_z_coords.size > 0:
             self.logger.info(
-                f"Using mean of filtered z-coords ({filtered_z_coords.size} points) for grasp_z (removed 10th and 90th percentile outliers)."
+                "3. Top detection only one top z-coord. Using it for grasp_z."
             )
-            grasp_z = np.mean(filtered_z_coords)
+            grasp_z = top_z_coords[0]
         else:
-            # Fallback if all points were filtered out (shouldn't happen with 10-90 percentile range).
+            # Fallback if there are no points in the top percentile (e.g., all points are the same).
             self.logger.info(
-                "All z-coords were filtered out. Falling back to mean of all z-coords."
+                "4. Top detection no points in top percentile. Falling back to mean of all z-coords."
             )
             grasp_z = np.mean(z_coords)
+
         # Filter points near this top surface
         near_grasp_z_points = points_base_frame[
             points_base_frame[:, 2] > grasp_z - 0.01
@@ -811,7 +827,8 @@ class AeraSemiAutonomous(Node):
         drop_z = np.percentile(points[:, 2], 95) + 0.02
         median_z = np.median(np.percentile(points[:, 2], 5))
 
-        xy_points = points[points[:, 2] > median_z - 0.01, :2]
+        # xy_points = points[points[:, 2] > median_z - 0.01, :2]
+        xy_points = points[:, :2]
         xy_points = xy_points.astype(np.float32)
 
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points

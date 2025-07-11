@@ -811,7 +811,7 @@ class AeraSemiAutonomous(Node):
         drop_z = np.percentile(points[:, 2], 95) + 0.02
         median_z = np.median(np.percentile(points[:, 2], 5))
 
-        xy_points = points[points[:, 2] > median_z, :2]
+        xy_points = points[points[:, 2] > median_z - 0.01, :2]
         xy_points = xy_points.astype(np.float32)
 
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points

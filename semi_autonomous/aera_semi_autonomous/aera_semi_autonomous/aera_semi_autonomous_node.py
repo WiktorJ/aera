@@ -54,13 +54,11 @@ BOX_THRESHOLD = 0.4
 TEXT_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.8
 _PICK_OBJECT = "pick_object"
-_DETECT_OBJECT = "detect_object"
 _MOVE_ABOVE_OBJECT_AND_RELEASE = "move_above_object_and_release"
 _RELEASE_GRIPPER = "release_gripper"
 
 _AVAILABLE_ACTIONS = (
     _PICK_OBJECT,
-    _DETECT_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,
     _RELEASE_GRIPPER,
 )
@@ -148,7 +146,6 @@ class AeraSemiAutonomous(Node):
         self.n_frames_processed = 0
         self._last_depth_msg = None
         self._last_rgb_msg = None
-        self._last_detections: sv.Detections | None = None
         self._object_in_gripper: bool = False
         self.offset_x = (
             self.get_parameter("offset_x").get_parameter_value().double_value
@@ -193,15 +190,6 @@ class AeraSemiAutonomous(Node):
         )
         self.save_images_sub = self.create_subscription(
             String, "/save_images", self.save_images, 10
-        )
-        self.detect_objects_sub = self.create_subscription(
-            String, "/detect_objects", self.detect_objects_cb, 10
-        )
-        self.release_at_sub = self.create_subscription(
-            Int64, "/release_above", self.release_above_cb, 10
-        )
-        self.pick_object_sub = self.create_subscription(
-            Int64, "/pick_object", self.pick_object_cb, 10
         )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
@@ -268,36 +256,28 @@ class AeraSemiAutonomous(Node):
                 "Camera intrinsics not yet received. Cannot create point cloud."
             )
             return
-        if tool_call == _DETECT_OBJECT:
-            self._last_detections = self.detect_objects(rgb_image, [object_to_detect])
-            if len(self._last_detections.class_id) == 0:
+        if tool_call == _PICK_OBJECT:
+            detection = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detection.class_id) == 0:
                 self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {self._last_detections.class_id}"
+                    f"No {object_to_detect} detected. Got the following detection: {detection.class_id}"
                 )
-                return
-        elif tool_call == _PICK_OBJECT:
-            if self._last_detections is None or len(self._last_detections.mask) == 0:
-                logging.error("No detection available")
-                return
             if self._object_in_gripper:
                 logging.error("Object in gripper")
                 return
 
-            self.pick_object(
-                _OBJECT_DETECTION_INDEX, self._last_detections, depth_image
-            )
+            self.pick_object(_OBJECT_DETECTION_INDEX, detection, depth_image)
             self.logger.info(
                 f"done picking object. Joint states: {self.moveit2.joint_state.position}"
             )
             self._object_in_gripper = True
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
-            if self._last_detections is None or len(self._last_detections.mask) == 0:
-                logging.error("No detection available")
-                return
-
-            self.release_above(
-                _OBJECT_DETECTION_INDEX, self._last_detections, depth_image
-            )
+            detection = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detection.class_id) == 0:
+                self.logger.info(
+                    f"No {object_to_detect} detected. Got the following detection: {detection.class_id}"
+                )
+            self.release_above(_OBJECT_DETECTION_INDEX, detection, depth_image)
             self._object_in_gripper = False
         elif tool_call == _RELEASE_GRIPPER:
             self.release_gripper()
@@ -963,35 +943,6 @@ class AeraSemiAutonomous(Node):
 
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
-
-    def detect_objects_cb(self, msg: String):
-        if self._last_rgb_msg is None:
-            self.logger.warning("No RGB image available.")
-            return
-
-        class_names = msg.data.split(",")
-        rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-        self._last_detections = self.detect_objects(rgb_image, class_names)
-        detected_classes = [
-            class_names[class_id] for class_id in self._last_detections.class_id
-        ]
-        self.logger.info(f"Detected objects: {detected_classes}")
-
-    def pick_object_cb(self, msg: Int64):
-        if self._last_detections is None or self._last_depth_msg is None:
-            self.logger.warning("No detections or depth image available.")
-            return
-
-        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-        self.pick_object(msg.data, self._last_detections, depth_image)
-
-    def release_above_cb(self, msg: Int64):
-        if self._last_detections is None or self._last_depth_msg is None:
-            self.logger.warning("No detections or depth image available.")
-            return
-
-        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-        self.release_above(msg.data, self._last_detections, depth_image)
 
     def depth_callback(self, msg):
         self._last_depth_msg = msg

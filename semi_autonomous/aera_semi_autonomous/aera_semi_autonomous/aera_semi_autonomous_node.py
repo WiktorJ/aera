@@ -211,15 +211,14 @@ class AeraSemiAutonomous(Node):
             # Unsubscribe after getting the info because it's static
             self.destroy_subscription(self.camera_info_sub)
 
-    def _setup_debug_logging(self, tool_call: str, object_to_detect: str):
+    def _setup_debug_logging(self, input_message: str):
         if self.save_debug_images:
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             self.debug_img_dir = os.path.join(".debug_img_logs", timestamp)
             os.makedirs(self.debug_img_dir, exist_ok=True)
             with open(os.path.join(self.debug_img_dir, "log.txt"), "w") as f:
                 f.write(f"Timestamp: {timestamp}\n")
-                f.write(f"Tool Call: {tool_call}\n")
-                f.write(f"Object to Detect: {object_to_detect}\n")
+                f.write(f"Input Message: {input_message}\n")
                 if self.camera_intrinsics:
                     f.write("\n--- Camera Intrinsics ---\n")
                     f.write(f"{self.camera_intrinsics}\n")
@@ -246,8 +245,6 @@ class AeraSemiAutonomous(Node):
         rgb_image: np.ndarray,
         depth_image: np.ndarray,
     ):
-        self._setup_debug_logging(tool_call, object_to_detect)
-
         if self.camera_intrinsics is None:
             self.logger.error(
                 "Camera intrinsics not yet received. Cannot create point cloud."
@@ -321,6 +318,7 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
+        self._setup_debug_logging(msg.data)
 
         for action, object_to_detect in commands:
             if not self._last_rgb_msg or not self._last_depth_msg:

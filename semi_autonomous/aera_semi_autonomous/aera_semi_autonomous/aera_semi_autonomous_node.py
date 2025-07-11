@@ -238,6 +238,159 @@ class AeraSemiAutonomous(Node):
         if self.save_debug_images and self.debug_img_dir:
             plt.savefig(os.path.join(self.debug_img_dir, filename))
 
+    def _debug_visualize_selected_mask(self, detections: sv.Detections, object_index: int, operation_name: str):
+        """Debug visualization for the selected mask overlay on RGB image."""
+        if not (self.debug_visualizations or self.save_debug_images) or not self._last_rgb_msg:
+            return
+
+        current_rgb_msg_to_use = self._last_rgb_msg
+
+        if current_rgb_msg_to_use is None:
+            self.logger.warn(f"{operation_name}: self._last_rgb_msg is None right before cv_bridge call!")
+            return
+
+        expected_data_len = current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
+        if len(current_rgb_msg_to_use.data) != expected_data_len:
+            self.logger.warn(
+                f"{operation_name}: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}"
+            )
+
+        try:
+            rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg, "bgr8")
+            single_mask_viz = rgb_image_for_viz.copy()
+            # Create a colored overlay for the mask
+            color_mask = np.zeros_like(single_mask_viz)
+            current_mask = detections.mask[object_index]  # This is a boolean mask
+            color_mask[current_mask] = [0, 255, 0]  # Green for the selected mask
+            single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask, 0.3, 0)
+            
+            if self.debug_visualizations:
+                cv2.imshow(f"Selected Mask (Index {object_index}) for {operation_name}", single_mask_viz)
+            if self.save_debug_images:
+                self._save_debug_image(
+                    f"debug_selected_mask_{operation_name.lower()}_{self.n_frames_processed}.jpg",
+                    single_mask_viz,
+                )
+        except Exception as e:
+            self.logger.warn(f"{operation_name}: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}")
+            self.logger.warn(
+                f"{operation_name}: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}"
+            )
+            import traceback
+            self.logger.warn(f"{operation_name}: Traceback: {traceback.format_exc()}")
+
+    def _debug_save_masked_depth(self, masked_depth_image_mm: np.ndarray, operation_name: str):
+        """Debug visualization for masked depth image."""
+        if not (self.debug_visualizations or self.save_debug_images):
+            return
+
+        # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
+        display_depth = masked_depth_image_mm.copy()
+        if np.any(display_depth > 0):  # Avoid division by zero if all are zero
+            display_depth_norm = (
+                display_depth - display_depth[display_depth > 0].min()
+            ) / (
+                display_depth[display_depth > 0].max()
+                - display_depth[display_depth > 0].min()
+            )
+            display_depth_norm = (display_depth_norm * 255).astype(np.uint8)
+        else:
+            display_depth_norm = np.zeros_like(display_depth, dtype=np.uint8)
+
+        if self.save_debug_images:
+            self._save_debug_image(
+                f"debug_masked_depth_{operation_name.lower()}_{self.n_frames_processed}.jpg",
+                display_depth_norm,
+            )
+        if self.debug_visualizations:
+            cv2.imshow(f"Masked Depth (for {operation_name.lower()})", display_depth_norm)
+            cv2.waitKey(0)
+
+    def _debug_publish_camera_frame_pcd(self, pcd: o3d.geometry.PointCloud, operation_name: str):
+        """Debug publishing of point cloud in camera frame."""
+        if not (self.debug_visualizations or self.save_debug_images):
+            return
+
+        self.logger.info(f"Calculated PointCloud: {pcd}")
+        if not hasattr(self, "pcd_cam_frame_pub"):
+            self.pcd_cam_frame_pub = self.create_publisher(PointCloud2, "/debug/pcd_camera_frame", 10)
+        
+        if len(pcd.points) > 0:
+            points_np = np.asarray(pcd.points)
+            ros_pcd_cam = point_cloud_to_msg(points_np, "camera_color_optical_frame")
+            self.pcd_cam_frame_pub.publish(ros_pcd_cam)
+            self.logger.info(f"Published debug PCD in camera frame with {len(points_np)} points.")
+        else:
+            self.logger.info(f"PCD in camera frame is empty for {operation_name.lower()}.")
+
+    def _debug_publish_base_frame_pcd(self, points_base_frame: np.ndarray, operation_name: str):
+        """Debug publishing of point cloud in base frame."""
+        if not (self.debug_visualizations or self.save_debug_images):
+            return
+
+        if not hasattr(self, "pcd_base_frame_pub"):
+            self.pcd_base_frame_pub = self.create_publisher(PointCloud2, "/debug/pcd_base_frame", 10)
+
+        ros_pcd_base = point_cloud_to_msg(points_base_frame, BASE_LINK_NAME)
+        self.pcd_base_frame_pub.publish(ros_pcd_base)
+        self.logger.info(f"Published debug PCD in base frame with {len(points_base_frame)} points.")
+
+    def _debug_visualize_minarearect_and_pose(self, xy_points: np.ndarray, center: tuple, dimensions: tuple, 
+                                            theta: float, grasp_z: float, grasp_pose: Pose, operation_name: str):
+        """Debug visualization for minAreaRect and grasp pose."""
+        if not (self.debug_visualizations or self.save_debug_images):
+            return
+
+        plt.figure(f"XY points for minAreaRect (Base Frame) - {operation_name}")
+        plt.clf()  # Clear previous plot
+        plt.scatter(xy_points[:, 0], xy_points[:, 1], s=5, label="Object Top Surface XY Points")
+
+        # Reconstruct the rotated rectangle from minAreaRect output
+        box = cv2.boxPoints(((center[0], center[1]), (dimensions[0], dimensions[1]), theta))
+        box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
+
+        plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
+        plt.scatter(center[0], center[1], c="g", s=50, marker="x", label="Calculated Center (Base Frame)")
+        plt.xlabel("X (Base Frame)")
+        plt.ylabel("Y (Base Frame)")
+        plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m) - {operation_name}")
+        plt.axis("equal")  # Important for correct aspect ratio
+        plt.legend()
+        plt.grid(True)
+        
+        if self.save_debug_images:
+            self._save_debug_plot(f"debug_minarearect_xy_{operation_name.lower()}_{self.n_frames_processed}.png")
+        if self.debug_visualizations:
+            plt.show(block=False)  # Use block=False for non-blocking
+            plt.pause(0.01)  # Allow plot to render
+
+        # Publish grasp pose for visualization
+        if operation_name.lower() == "pick":
+            if not hasattr(self, "grasp_pose_pub_pick"):
+                self.grasp_pose_pub_pick = self.create_publisher(PoseStamped, "/debug/pick_grasp_pose", 10)
+            pose_pub = self.grasp_pose_pub_pick
+        else:
+            if not hasattr(self, "grasp_pose_pub_release"):
+                self.grasp_pose_pub_release = self.create_publisher(PoseStamped, "/debug/release_grasp_pose", 10)
+            pose_pub = self.grasp_pose_pub_release
+
+        pose_msg = PoseStamped()
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+        pose_msg.header.frame_id = BASE_LINK_NAME
+        pose_msg.pose = grasp_pose
+        pose_pub.publish(pose_msg)
+        self.logger.info(
+            f"Published debug {operation_name.lower()}_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
+        )
+        
+        if self.save_debug_images:
+            log_message = (
+                f"\n--- {operation_name} Pose ---\n"
+                f"Position (x, y, z): {grasp_pose.position.x:.4f}, {grasp_pose.position.y:.4f}, {grasp_pose.position.z:.4f}\n"
+                f"Orientation (x, y, z, w): {grasp_pose.orientation.x:.4f}, {grasp_pose.orientation.y:.4f}, {grasp_pose.orientation.z:.4f}, {grasp_pose.orientation.w:.4f}\n"
+            )
+            self._log_debug_info(log_message)
+
     def handle_tool_call(
         self,
         tool_call: str,
@@ -515,112 +668,21 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        if (self.debug_visualizations or self.save_debug_images) and self._last_rgb_msg:
-            current_rgb_msg_to_use = self._last_rgb_msg  # Use a local variable
-
-            if current_rgb_msg_to_use is None:
-                self.logger.warn(
-                    "PICK_OBJECT: self._last_rgb_msg is None right before cv_bridge call!"
-                )
-
-            expected_data_len = (
-                current_rgb_msg_to_use.step * current_rgb_msg_to_use.height
-            )
-            if len(current_rgb_msg_to_use.data) != expected_data_len:
-                self.logger.warn(
-                    f"PICK_OBJECT: RGB message data length mismatch! Expected {expected_data_len}, Got {len(current_rgb_msg_to_use.data)}"
-                )
-
-            try:
-                rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(
-                    self._last_rgb_msg, "bgr8"
-                )
-                single_mask_viz = rgb_image_for_viz.copy()
-                # Create a colored overlay for the mask
-                color_mask = np.zeros_like(single_mask_viz)
-                current_mask = detections.mask[object_index]  # This is a boolean mask
-                color_mask[current_mask] = [0, 255, 0]  # Green for the selected mask
-                single_mask_viz = cv2.addWeighted(
-                    single_mask_viz, 0.7, color_mask, 0.3, 0
-                )
-                if self.debug_visualizations:
-                    cv2.imshow(
-                        f"Selected Mask (Index {object_index}) for Pick",
-                        single_mask_viz,
-                    )
-                if self.save_debug_images:
-                    self._save_debug_image(
-                        f"debug_selected_mask_pick_{self.n_frames_processed}.jpg",
-                        single_mask_viz,
-                    )
-            except Exception as e:
-                self.logger.warn(
-                    f"PICK_OBJECT: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}"
-                )
-                self.logger.warn(
-                    f"PICK_OBJECT: Failing message details again: encoding={current_rgb_msg_to_use.encoding}, H={current_rgb_msg_to_use.height}, W={current_rgb_msg_to_use.width}, step={current_rgb_msg_to_use.step}, data_len={len(current_rgb_msg_to_use.data)}"
-                )
-                # Also log the exception traceback fully
-                import traceback
-
-                self.logger.warn(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
+        self._debug_visualize_selected_mask(detections, object_index, "Pick")
 
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image_mm[mask] = depth_image[mask]  # Apply mask
         masked_depth_image_mm /= 1000.0
 
-        if self.debug_visualizations or self.save_debug_images:
-            # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
-            display_depth = masked_depth_image_mm.copy()
-            if np.any(display_depth > 0):  # Avoid division by zero if all are zero
-                display_depth_norm = (
-                    display_depth - display_depth[display_depth > 0].min()
-                ) / (
-                    display_depth[display_depth > 0].max()
-                    - display_depth[display_depth > 0].min()
-                )
-                display_depth_norm = (display_depth_norm * 255).astype(np.uint8)
-            else:
-                display_depth_norm = np.zeros_like(display_depth, dtype=np.uint8)
-
-            if self.save_debug_images:
-                self._save_debug_image(
-                    f"debug_masked_depth_pick_{self.n_frames_processed}.jpg",
-                    display_depth_norm,
-                )
-            if self.debug_visualizations:
-                cv2.imshow("Masked Depth (for pick)", display_depth_norm)
-                cv2.waitKey(0)
+        self._debug_save_masked_depth(masked_depth_image_mm, "Pick")
 
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image_mm.astype(np.float32)),
             self.camera_intrinsics,
         )
 
-        if self.debug_visualizations or self.save_debug_images:
-            self.logger.info(f"Calculated PointCloud: {pcd}")
-            if not hasattr(self, "pcd_cam_frame_pub"):
-                self.pcd_cam_frame_pub = self.create_publisher(
-                    PointCloud2, "/debug/pcd_camera_frame", 10
-                )
-            if len(pcd.points) > 0:
-                # For Open3D >= 0.13.0, use pcd.get_rotation_matrix_from_xyz for frame convention
-                # Create a coordinate frame
-                # coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0,0,0])
-                # o3d.visualization.draw_geometries([pcd, coord_frame]) # This blocks, useful for direct debug
-
-                # Publish to ROS for RViz
-                points_np = np.asarray(pcd.points)
-                ros_pcd_cam = point_cloud_to_msg(
-                    points_np, "camera_color_optical_frame"
-                )  # Use YOUR point_cloud_to_msg
-                self.pcd_cam_frame_pub.publish(ros_pcd_cam)
-                self.logger.info(
-                    f"Published debug PCD in camera frame with {len(points_np)} points."
-                )
-            else:
-                self.logger.info("PCD in camera frame is empty for pick_object.")
+        self._debug_publish_camera_frame_pcd(pcd, "Pick")
 
         # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
@@ -634,16 +696,7 @@ class AeraSemiAutonomous(Node):
 
         if self.debug_visualizations or self.save_debug_images:
             self.logger.info(f"Transformed PointCloud: {pcd}")
-            if not hasattr(self, "pcd_base_frame_pub"):
-                self.pcd_base_frame_pub = self.create_publisher(
-                    PointCloud2, "/debug/pcd_base_frame", 10
-                )
-
-            ros_pcd_base = point_cloud_to_msg(points_base_frame, BASE_LINK_NAME)
-            self.pcd_base_frame_pub.publish(ros_pcd_base)
-            self.logger.info(
-                f"Published debug PCD in base frame with {len(points_base_frame)} points."
-            )
+            self._debug_publish_base_frame_pcd(points_base_frame, "Pick")
         z_coords = points_base_frame[:, 2]
         # Calculate grasp_z by filtering outliers from the top 25% of points.
         top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
@@ -691,46 +744,7 @@ class AeraSemiAutonomous(Node):
             xy_points
         )  # center is (x,y) tuple in base frame
 
-        if self.debug_visualizations or self.save_debug_images:
-            plt.figure("XY points for minAreaRect (Base Frame)")
-            plt.clf()  # Clear previous plot
-            plt.scatter(
-                xy_points[:, 0],
-                xy_points[:, 1],
-                s=5,
-                label="Object Top Surface XY Points",
-            )
-
-            # Reconstruct the rotated rectangle from minAreaRect output
-            box = cv2.boxPoints(
-                ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
-            )
-            # box = np.int0(box)  # This conversion might not be needed if just plotting lines
-            # For plotting, better to keep it float and close the loop
-            box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
-
-            plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
-            plt.scatter(
-                center[0],
-                center[1],
-                c="g",
-                s=50,
-                marker="x",
-                label="Calculated Center (Base Frame)",
-            )
-            plt.xlabel("X (Base Frame)")
-            plt.ylabel("Y (Base Frame)")
-            plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
-            plt.axis("equal")  # Important for correct aspect ratio
-            plt.legend()
-            plt.grid(True)
-            if self.save_debug_images:
-                self._save_debug_plot(
-                    f"debug_minarearect_xy_{self.n_frames_processed}.png"
-                )
-            if self.debug_visualizations:
-                plt.show(block=False)  # Use block=False for non-blocking
-                plt.pause(0.01)  # Allow plot to render
+        self._debug_visualize_minarearect_and_pose(xy_points, center, dimensions, theta, grasp_z, grasp_pose, "Pick")
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:
@@ -753,27 +767,6 @@ class AeraSemiAutonomous(Node):
         grasp_pose.orientation.z = grasp_quat[2]
         grasp_pose.orientation.w = grasp_quat[3]
 
-        if self.debug_visualizations or self.save_debug_images:
-            if not hasattr(self, "grasp_pose_pub_pick"):
-                self.grasp_pose_pub_pick = self.create_publisher(
-                    PoseStamped, "/debug/pick_grasp_pose", 10
-                )
-
-            pose_msg = PoseStamped()
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-            pose_msg.header.frame_id = BASE_LINK_NAME  # Should be your robot's base
-            pose_msg.pose = grasp_pose
-            self.grasp_pose_pub_pick.publish(pose_msg)
-            self.logger.info(
-                f"Published debug pick_grasp_pose: {grasp_pose.position.x:.3f}, {grasp_pose.position.y:.3f}, {grasp_pose.position.z:.3f}"
-            )
-            if self.save_debug_images:
-                log_message = (
-                    "\n--- Grasp Pose ---\n"
-                    f"Position (x, y, z): {grasp_pose.position.x:.4f}, {grasp_pose.position.y:.4f}, {grasp_pose.position.z:.4f}\n"
-                    f"Orientation (x, y, z, w): {grasp_pose.orientation.x:.4f}, {grasp_pose.orientation.y:.4f}, {grasp_pose.orientation.z:.4f}, {grasp_pose.orientation.w:.4f}\n"
-                )
-                self._log_debug_info(log_message)
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
@@ -816,10 +809,24 @@ class AeraSemiAutonomous(Node):
         self, object_index: int, detections: sv.Detections, depth_image: np.ndarray
     ):
         """Move the robot arm above the object and release the gripper."""
+        if (
+            detections is None
+            or detections.mask is None
+            or object_index >= len(detections.mask)
+        ):
+            self.logger.error(
+                f"Invalid detections or object_index for release_above. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}"
+            )
+            return
+
+        self._debug_visualize_selected_mask(detections, object_index, "Release")
+
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image[mask] = depth_image[mask]
-        # masked_depth_image /= 1000.0
+        masked_depth_image_mm = masked_depth_image / 1000.0
+
+        self._debug_save_masked_depth(masked_depth_image_mm, "Release")
 
         # convert the masked depth image to a point cloud
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
@@ -829,16 +836,34 @@ class AeraSemiAutonomous(Node):
             depth_trunc=3.0,  # Max depth to consider, adjust as needed
             stride=1,
         )
-        pcd.transform(self.cam_to_base_affine)
 
+        self._debug_publish_camera_frame_pcd(pcd, "Release")
+
+        pcd.transform(self.cam_to_base_affine)
         points = np.asarray(pcd.points).astype(np.float32)
+
+        if len(points) == 0:
+            self.logger.error(
+                "No points in point cloud after transform to base frame for release_above. Check TF or if mask resulted in empty depth."
+            )
+            return
+
+        self._debug_publish_base_frame_pcd(points, "Release")
+
         # release 5cm above the object
         drop_z = np.percentile(points[:, 2], 95) + 0.05
         median_z = np.median(points[:, 2])
 
         xy_points = points[points[:, 2] > median_z, :2]
         xy_points = xy_points.astype(np.float32)
-        center, _, _ = cv2.minAreaRect(xy_points)
+        
+        if len(xy_points) < 3:  # minAreaRect needs at least 3 points
+            self.logger.error(
+                f"Not enough points ({len(xy_points)}) near drop_z for minAreaRect in release_above. Mask might be too small or object too thin/far."
+            )
+            return
+
+        center, dimensions, theta = cv2.minAreaRect(xy_points)
 
         drop_pose = Pose()
         drop_pose.position.x = center[0] + self.offset_x
@@ -849,6 +874,8 @@ class AeraSemiAutonomous(Node):
         drop_pose.orientation.y = 1.0
         drop_pose.orientation.z = 0.0
         drop_pose.orientation.w = 0.0
+
+        self._debug_visualize_minarearect_and_pose(xy_points, center, dimensions, theta, drop_z, drop_pose, "Release")
 
         self.release_at(drop_pose)
 

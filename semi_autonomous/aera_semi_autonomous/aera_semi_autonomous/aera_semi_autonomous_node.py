@@ -288,43 +288,75 @@ class AeraSemiAutonomous(Node):
             data = yaml.safe_load(msg_data)
             if not isinstance(data, dict):
                 self.logger.error(f"Parsed prompt is not a dictionary: {msg_data}")
-                return None, None
-            action = data.get("action")
-            object_to_detect = data.get("object", "")
+                return None
 
-            if not action:
-                self.logger.error(f"No 'action' found in prompt message: {msg_data}")
-                return None, None
+            actions_data = data.get("action")
 
-            if action not in _AVAILABLE_ACTIONS:
-                self.logger.warn(
-                    f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
-                )
-                return None, None
-            return action, object_to_detect
+            # Handle single action format for backward compatibility
+            if isinstance(actions_data, str):
+                action = actions_data
+                object_to_detect = data.get("object", "")
+                if action not in _AVAILABLE_ACTIONS:
+                    self.logger.warn(
+                        f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                    )
+                    return None
+                return [(action, object_to_detect)]
+
+            if not isinstance(actions_data, list):
+                self.logger.error(f"The 'action' field is not a list: {msg_data}")
+                return None
+
+            commands = []
+            for command_data in actions_data:
+                if not isinstance(command_data, dict):
+                    self.logger.error(
+                        f"Command item is not a dictionary: {command_data}"
+                    )
+                    return None
+                action = command_data.get("action")
+                object_to_detect = command_data.get("object", "")
+
+                if not action:
+                    self.logger.error(f"No 'action' found in command: {command_data}")
+                    return None
+
+                if action not in _AVAILABLE_ACTIONS:
+                    self.logger.warn(
+                        f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                    )
+                    return None
+                commands.append((action, object_to_detect))
+            return commands
         except yaml.YAMLError:
             self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
-            return None, None
+            return None
 
     def start(self, msg: String):
-        if not self._last_rgb_msg or not self._last_depth_msg:
-            self.logger.warn(
-                f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
-            )
+        commands = self._parse_prompt_message(msg.data)
+        if not commands:
+            self.logger.warn(f"Could not parse commands from: {msg.data}")
             return
-
-        action, object_to_detect = self._parse_prompt_message(msg.data)
-        if action is None or object_to_detect is None:
-            return
-
-        rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
 
         self.logger.info(f"Processing: {msg.data}")
         self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
-        # done = False
-        # while not done:
-        self.handle_tool_call(action, object_to_detect, rgb_image, depth_image)
+
+        for action, object_to_detect in commands:
+            if not self._last_rgb_msg or not self._last_depth_msg:
+                self.logger.warn(
+                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
+                )
+                self.logger.error("No image messages received. Aborting command chain.")
+                return
+
+            # Use the latest images for each action
+            rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
+            depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+
+            self.logger.info(
+                f"Executing action: '{action}' on object: '{object_to_detect}'"
+            )
+            self.handle_tool_call(action, object_to_detect, rgb_image, depth_image)
 
         self.go_home()
         self.logger.info("Task completed.")

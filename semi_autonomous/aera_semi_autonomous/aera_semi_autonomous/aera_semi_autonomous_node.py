@@ -168,9 +168,6 @@ class AeraSemiAutonomous(Node):
         self.image_sub = self.create_subscription(
             Image, "/camera/camera/color/image_raw", self.image_callback, 10
         )
-        # self.depth_sub = self.create_subscription(
-        #     Image, "/camera/aligned_depth_to_color/image_raw",
-        #     self.depth_callback, 10)
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
             "/camera/camera/color/camera_info",
@@ -257,27 +254,27 @@ class AeraSemiAutonomous(Node):
             )
             return
         if tool_call == _PICK_OBJECT:
-            detection = self.detect_objects(rgb_image, [object_to_detect])
-            if len(detection.class_id) == 0:
+            detections = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detections.class_id) == 0:
                 self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {detection.class_id}"
+                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )
             if self._object_in_gripper:
                 logging.error("Object in gripper")
                 return
 
-            self.pick_object(_OBJECT_DETECTION_INDEX, detection, depth_image)
+            self.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image)
             self.logger.info(
                 f"done picking object. Joint states: {self.moveit2.joint_state.position}"
             )
             self._object_in_gripper = True
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
-            detection = self.detect_objects(rgb_image, [object_to_detect])
-            if len(detection.class_id) == 0:
+            detections = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detections.class_id) == 0:
                 self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {detection.class_id}"
+                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )
-            self.release_above(_OBJECT_DETECTION_INDEX, detection, depth_image)
+            self.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image)
             self._object_in_gripper = False
         elif tool_call == _RELEASE_GRIPPER:
             self.release_gripper()
@@ -361,7 +358,9 @@ class AeraSemiAutonomous(Node):
         self.go_home()
         self.logger.info("Task completed.")
 
-    def detect_objects(self, image: np.ndarray, object_classes: List[str]):
+    def detect_objects(
+        self, image: np.ndarray, object_classes: List[str]
+    ) -> sv.Detections:
         self.logger.info(f"Detecting objects of classes: {object_classes}")
         rgb_image_for_dino = cv2.cvtColor(
             image, cv2.COLOR_BGR2RGB
@@ -506,7 +505,7 @@ class AeraSemiAutonomous(Node):
                     )
                 if self.debug_visualizations:
                     cv2.imshow("SAM Masks", annotated_sam_frame)
-                    # cv2.waitKey(0)
+                    cv2.waitKey(0)
             else:
                 self.logger.info("No SAM masks to annotate.")
 
@@ -583,11 +582,7 @@ class AeraSemiAutonomous(Node):
                 import traceback
 
                 self.logger.warn(f"PICK_OBJECT: Traceback: {traceback.format_exc()}")
-            # cv2.waitKey(0)
 
-        # mask out the depth image except for the detected objects
-        # masked_depth_image[mask] = depth_image[mask]
-        # masked_depth_image /= 1000.0
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image_mm[mask] = depth_image[mask]  # Apply mask
@@ -614,15 +609,8 @@ class AeraSemiAutonomous(Node):
                 )
             if self.debug_visualizations:
                 cv2.imshow("Masked Depth (for pick)", display_depth_norm)
-            # cv2.waitKey(0)
+                cv2.waitKey(0)
 
-        # pcd = o3d.geometry.PointCloud.create_from_depth_image(
-        #     o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
-        #     self.camera_intrinsics,
-        #     depth_scale=1000.0,
-        #     depth_trunc=3.0,  # Max depth to consider, adjust as needed
-        #     stride=1
-        # )
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image_mm.astype(np.float32)),
             self.camera_intrinsics,
@@ -713,67 +701,54 @@ class AeraSemiAutonomous(Node):
             self.logger.error(
                 f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
-            # You might want to try using all points_base_frame if near_grasp_z_points is empty
-            # or use a simpler centroid if minAreaRect fails
-            if len(points_base_frame) > 0:
-                self.logger.info(
-                    "Falling back to centroid of all points in base frame."
-                )
-                center_x = np.mean(points_base_frame[:, 0])
-                center_y = np.mean(points_base_frame[:, 1])
-                center = (center_x, center_y)
-                dimensions = (0.01, 0.01)  # dummy
-                theta = 0.0
-            else:
-                return  # No points at all
-        else:
-            xy_points = near_grasp_z_points[:, :2].astype(
-                np.float32
-            )  # Get XY coords in base frame
-            center, dimensions, theta = cv2.minAreaRect(
-                xy_points
-            )  # center is (x,y) tuple in base frame
+            return  # No points at all
+        xy_points = near_grasp_z_points[:, :2].astype(
+            np.float32
+        )  # Get XY coords in base frame
+        center, dimensions, theta = cv2.minAreaRect(
+            xy_points
+        )  # center is (x,y) tuple in base frame
 
-            if self.debug_visualizations or self.save_debug_images:
-                plt.figure("XY points for minAreaRect (Base Frame)")
-                plt.clf()  # Clear previous plot
-                plt.scatter(
-                    xy_points[:, 0],
-                    xy_points[:, 1],
-                    s=5,
-                    label="Object Top Surface XY Points",
-                )
+        if self.debug_visualizations or self.save_debug_images:
+            plt.figure("XY points for minAreaRect (Base Frame)")
+            plt.clf()  # Clear previous plot
+            plt.scatter(
+                xy_points[:, 0],
+                xy_points[:, 1],
+                s=5,
+                label="Object Top Surface XY Points",
+            )
 
-                # Reconstruct the rotated rectangle from minAreaRect output
-                box = cv2.boxPoints(
-                    ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
-                )
-                # box = np.int0(box)  # This conversion might not be needed if just plotting lines
-                # For plotting, better to keep it float and close the loop
-                box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
+            # Reconstruct the rotated rectangle from minAreaRect output
+            box = cv2.boxPoints(
+                ((center[0], center[1]), (dimensions[0], dimensions[1]), theta)
+            )
+            # box = np.int0(box)  # This conversion might not be needed if just plotting lines
+            # For plotting, better to keep it float and close the loop
+            box_plot = np.vstack([box, box[0]])  # Close the rectangle for plotting
 
-                plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
-                plt.scatter(
-                    center[0],
-                    center[1],
-                    c="g",
-                    s=50,
-                    marker="x",
-                    label="Calculated Center (Base Frame)",
+            plt.plot(box_plot[:, 0], box_plot[:, 1], "r-", label="minAreaRect BBox")
+            plt.scatter(
+                center[0],
+                center[1],
+                c="g",
+                s=50,
+                marker="x",
+                label="Calculated Center (Base Frame)",
+            )
+            plt.xlabel("X (Base Frame)")
+            plt.ylabel("Y (Base Frame)")
+            plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
+            plt.axis("equal")  # Important for correct aspect ratio
+            plt.legend()
+            plt.grid(True)
+            if self.save_debug_images:
+                self._save_debug_plot(
+                    f"debug_minarearect_xy_{self.n_frames_processed}.png"
                 )
-                plt.xlabel("X (Base Frame)")
-                plt.ylabel("Y (Base Frame)")
-                plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m)")
-                plt.axis("equal")  # Important for correct aspect ratio
-                plt.legend()
-                plt.grid(True)
-                if self.save_debug_images:
-                    self._save_debug_plot(
-                        f"debug_minarearect_xy_{self.n_frames_processed}.png"
-                    )
-                if self.debug_visualizations:
-                    plt.show(block=False)  # Use block=False for non-blocking
-                    plt.pause(0.01)  # Allow plot to render
+            if self.debug_visualizations:
+                plt.show(block=False)  # Use block=False for non-blocking
+                plt.pause(0.01)  # Allow plot to render
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:

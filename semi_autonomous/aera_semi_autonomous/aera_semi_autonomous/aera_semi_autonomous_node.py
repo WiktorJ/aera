@@ -501,11 +501,16 @@ class AeraSemiAutonomous(Node):
         self.logger.info(f"detection confidence: {detections.confidence}")
         return detections
 
-    def _debug_visualize_selected_mask(self, detections: sv.Detections, object_index: int, operation_name: str):
+    def _debug_visualize_selected_mask(
+        self, detections: sv.Detections, object_index: int, operation_name: str
+    ):
         """Debug visualization for the selected mask."""
-        if not (self.debug_visualizations or self.save_debug_images) or not self._last_rgb_msg:
+        if (
+            not (self.debug_visualizations or self.save_debug_images)
+            or not self._last_rgb_msg
+        ):
             return
-            
+
         try:
             rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg, "bgr8")
             single_mask_viz = rgb_image_for_viz.copy()
@@ -514,24 +519,32 @@ class AeraSemiAutonomous(Node):
             current_mask = detections.mask[object_index]  # This is a boolean mask
             color_mask[current_mask] = [0, 255, 0]  # Green for the selected mask
             single_mask_viz = cv2.addWeighted(single_mask_viz, 0.7, color_mask, 0.3, 0)
-            
+
             if self.debug_visualizations:
-                cv2.imshow(f"Selected Mask (Index {object_index}) for {operation_name}", single_mask_viz)
+                cv2.imshow(
+                    f"Selected Mask (Index {object_index}) for {operation_name}",
+                    single_mask_viz,
+                )
             if self.save_debug_images:
                 self._save_debug_image(
                     f"debug_selected_mask_{operation_name.lower()}_{self.n_frames_processed}.jpg",
                     single_mask_viz,
                 )
         except Exception as e:
-            self.logger.warn(f"{operation_name}: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}")
+            self.logger.warn(
+                f"{operation_name}: cv_bridge.imgmsg_to_cv2 FAILED! Error: {e}"
+            )
             import traceback
+
             self.logger.warn(f"{operation_name}: Traceback: {traceback.format_exc()}")
 
-    def _debug_visualize_masked_depth(self, masked_depth_image_mm: np.ndarray, operation_name: str):
+    def _debug_visualize_masked_depth(
+        self, masked_depth_image_mm: np.ndarray, operation_name: str
+    ):
         """Debug visualization for the masked depth image."""
         if not (self.debug_visualizations or self.save_debug_images):
             return
-            
+
         # Normalize for display (imshow expects 0-255 for uint8 or 0-1 for float)
         display_depth = masked_depth_image_mm.copy()
         if np.any(display_depth > 0):  # Avoid division by zero if all are zero
@@ -551,14 +564,24 @@ class AeraSemiAutonomous(Node):
                 display_depth_norm,
             )
         if self.debug_visualizations:
-            cv2.imshow(f"Masked Depth (for {operation_name.lower()})", display_depth_norm)
+            cv2.imshow(
+                f"Masked Depth (for {operation_name.lower()})", display_depth_norm
+            )
             cv2.waitKey(0)
 
-    def _debug_visualize_minarearect(self, xy_points: np.ndarray, center: tuple, dimensions: tuple, theta: float, grasp_z: float, operation_name: str):
+    def _debug_visualize_minarearect(
+        self,
+        xy_points: np.ndarray,
+        center: tuple,
+        dimensions: tuple,
+        theta: float,
+        grasp_z: float,
+        operation_name: str,
+    ):
         """Debug visualization for the minAreaRect calculation."""
         if not (self.debug_visualizations or self.save_debug_images):
             return
-            
+
         plt.figure(f"XY points for minAreaRect (Base Frame) - {operation_name}")
         plt.clf()  # Clear previous plot
         plt.scatter(
@@ -586,7 +609,9 @@ class AeraSemiAutonomous(Node):
         )
         plt.xlabel("X (Base Frame)")
         plt.ylabel("Y (Base Frame)")
-        plt.title(f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m) - {operation_name}")
+        plt.title(
+            f"Object Top XY in Base Frame (Z ~ {grasp_z:.3f}m) - {operation_name}"
+        )
         plt.axis("equal")  # Important for correct aspect ratio
         plt.legend()
         plt.grid(True)
@@ -598,21 +623,23 @@ class AeraSemiAutonomous(Node):
             plt.show(block=False)  # Use block=False for non-blocking
             plt.pause(0.01)  # Allow plot to render
 
-    def _debug_log_pose_info(self, pose: Pose, gripper_opening: float = None, operation_name: str = ""):
+    def _debug_log_pose_info(
+        self, pose: Pose, gripper_opening: float = None, operation_name: str = ""
+    ):
         """Debug logging for pose and gripper information."""
         if not self.save_debug_images:
             return
-            
+
         log_message = f"\n--- {operation_name} Pose ---\n"
         log_message += f"Position (x, y, z): {pose.position.x:.4f}, {pose.position.y:.4f}, {pose.position.z:.4f}\n"
         log_message += f"Orientation (x, y, z, w): {pose.orientation.x:.4f}, {pose.orientation.y:.4f}, {pose.orientation.z:.4f}, {pose.orientation.w:.4f}\n"
-        
+
         if gripper_opening is not None:
             gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
             gripper_pos = min(gripper_pos, 0.0)
             log_message += f"\n--- Gripper Position ---\n"
             log_message += f"Target Gripper Position: {gripper_pos:.4f}\n"
-            
+
         self._log_debug_info(log_message)
 
     def pick_object(
@@ -654,7 +681,8 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        # Calculate grasp_z by filtering outliers from the top 25% of points.
+        # Calculate grasp_z by filtering outliers from the top 50% of points.
+        # This should filteout lower 10 and upper 10 percentile instead of taking upper 50 AI!
         top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
         if top_z_coords.size > 1:
             mean_z = np.mean(top_z_coords)
@@ -700,7 +728,9 @@ class AeraSemiAutonomous(Node):
             xy_points
         )  # center is (x,y) tuple in base frame
 
-        self._debug_visualize_minarearect(xy_points, center, dimensions, theta, grasp_z, "Pick")
+        self._debug_visualize_minarearect(
+            xy_points, center, dimensions, theta, grasp_z, "Pick"
+        )
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:
@@ -787,7 +817,7 @@ class AeraSemiAutonomous(Node):
         pcd.transform(self.cam_to_base_affine)
 
         points = np.asarray(pcd.points).astype(np.float32)
-        
+
         if len(points) == 0:
             self.logger.error(
                 "No points in point cloud after transform to base frame for release_above. Check TF or if mask resulted in empty depth."
@@ -795,12 +825,12 @@ class AeraSemiAutonomous(Node):
             return
 
         # release 5cm above the object
-        drop_z = np.percentile(points[:, 2], 95) + 0.05
-        median_z = np.median(points[:, 2])
+        drop_z = np.percentile(points[:, 2], 95) + 0.02
+        median_z = np.median(np.percentile(points[:, 2], 5))
 
         xy_points = points[points[:, 2] > median_z, :2]
         xy_points = xy_points.astype(np.float32)
-        
+
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
                 f"Not enough points ({len(xy_points)}) near drop_z for minAreaRect in release_above. Mask might be too small or object too thin/far."
@@ -809,7 +839,9 @@ class AeraSemiAutonomous(Node):
 
         center, dimensions, theta = cv2.minAreaRect(xy_points)
 
-        self._debug_visualize_minarearect(xy_points, center, dimensions, theta, drop_z, "Release")
+        self._debug_visualize_minarearect(
+            xy_points, center, dimensions, theta, drop_z, "Release"
+        )
 
         drop_pose = Pose()
         drop_pose.position.x = center[0] + self.offset_x

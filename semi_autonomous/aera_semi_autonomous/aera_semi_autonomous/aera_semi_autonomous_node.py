@@ -681,7 +681,7 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 25)]
+        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
         if top_z_coords.size > 1:
             mean_z = np.mean(top_z_coords)
             std_z = np.std(top_z_coords)

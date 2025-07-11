@@ -681,11 +681,8 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        # Calculate grasp_z by filtering outliers - remove lower 10% and upper 10% percentiles
-        p10 = np.percentile(z_coords, 10)
-        p90 = np.percentile(z_coords, 90)
-        filtered_z_coords = z_coords[(z_coords >= p10) & (z_coords <= p90)]
-        
+        filtered_z_coords = z_coords[z_coords >= np.percentile(z_coords, 25)]
+
         if filtered_z_coords.size > 0:
             self.logger.info(
                 f"Using mean of filtered z-coords ({filtered_z_coords.size} points) for grasp_z (removed 10th and 90th percentile outliers)."

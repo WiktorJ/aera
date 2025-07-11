@@ -681,34 +681,20 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        # Calculate grasp_z by filtering outliers from the top 50% of points.
-        # This should filteout lower 10 and upper 10 percentile instead of taking upper 50 AI!
-        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
-        if top_z_coords.size > 1:
-            mean_z = np.mean(top_z_coords)
-            std_z = np.std(top_z_coords)
-            # Discard points more than 1 std from the mean.
-            filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
-            if filtered_z_coords.size > 0:
-                self.logger.info(
-                    f"1. Top detection using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
-                )
-                grasp_z = np.mean(filtered_z_coords)
-            else:
-                # Fallback if all points were filtered out.
-                self.logger.info(
-                    "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
-                )
-                grasp_z = mean_z
-        elif top_z_coords.size > 0:
+        # Calculate grasp_z by filtering outliers - remove lower 10% and upper 10% percentiles
+        p10 = np.percentile(z_coords, 10)
+        p90 = np.percentile(z_coords, 90)
+        filtered_z_coords = z_coords[(z_coords >= p10) & (z_coords <= p90)]
+        
+        if filtered_z_coords.size > 0:
             self.logger.info(
-                "3. Top detection only one top z-coord. Using it for grasp_z."
+                f"Using mean of filtered z-coords ({filtered_z_coords.size} points) for grasp_z (removed 10th and 90th percentile outliers)."
             )
-            grasp_z = top_z_coords[0]
+            grasp_z = np.mean(filtered_z_coords)
         else:
-            # Fallback if there are no points in the top percentile (e.g., all points are the same).
+            # Fallback if all points were filtered out (shouldn't happen with 10-90 percentile range).
             self.logger.info(
-                "4. Top detection no points in top percentile. Falling back to mean of all z-coords."
+                "All z-coords were filtered out. Falling back to mean of all z-coords."
             )
             grasp_z = np.mean(z_coords)
         # Filter points near this top surface

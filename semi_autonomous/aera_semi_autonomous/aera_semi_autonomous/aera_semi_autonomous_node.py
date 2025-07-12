@@ -97,7 +97,6 @@ class AeraSemiAutonomous(Node):
         self.debug_visualizations = False
         self.save_debug_images = True
         self.cv_bridge = CvBridge()
-        self.gripper_joint_name = "gripper_joint"
         arm_callback_group = ReentrantCallbackGroup()
         gripper_callback_group = ReentrantCallbackGroup()
         prompt_callback_group = MutuallyExclusiveCallbackGroup()
@@ -761,6 +760,8 @@ class AeraSemiAutonomous(Node):
 
     def grasp_at(self, msg: Pose, gripper_pos: float):
         self.logger.info(f"Grasp at: {msg} with opening: {gripper_pos}")
+        if self.debug_mode:
+            return
         self.release_gripper()
 
         # move 5cm above the item first
@@ -854,6 +855,8 @@ class AeraSemiAutonomous(Node):
         self.release_at(drop_pose)
 
     def release_gripper(self):
+        if self.debug_mode:
+            return
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
 
@@ -929,6 +932,8 @@ class AeraSemiAutonomous(Node):
         # NOTE: straight down is wxyz 0, 0, 1, 0
         # good pose is 0, -0.3, 0.35
         self.logger.info(f"Releasing at: {msg}")
+        if self.debug_mode:
+            return
         self.move_to(msg)
         self.release_gripper()
 

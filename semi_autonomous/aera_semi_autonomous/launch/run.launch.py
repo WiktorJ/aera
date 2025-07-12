@@ -19,6 +19,11 @@ def load_yaml(package_name, file_name):
 
 
 def generate_launch_description():
+    debug_mode_arg = DeclareLaunchArgument(
+        "debug_mode",
+        default_value=TextSubstitution(text=str(False)),
+        description="Debug mode",
+    )
     log_level_arg = DeclareLaunchArgument(
         "log_level",
         default_value=TextSubstitution(text=str("INFO")),
@@ -114,6 +119,7 @@ def generate_launch_description():
                 "offset_y": LaunchConfiguration("offset_y"),
                 "offset_z": LaunchConfiguration("offset_z"),
                 "gripper_squeeze_factor": LaunchConfiguration("gripper_squeeze_factor"),
+                "debug_mode": LaunchConfiguration("debug_mode"),
             }
         ],
     )
@@ -132,6 +138,7 @@ def generate_launch_description():
             offset_y_arg,
             offset_z_arg,
             gripper_squeeze_factor_arg,
+            debug_mode_arg,
             depthai,
             delay_calibration_tf_publisher,
             ar_moveit,

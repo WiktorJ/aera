@@ -100,7 +100,7 @@ class AeraSemiAutonomous(Node):
         self.gripper_joint_name = "gripper_joint"
         arm_callback_group = ReentrantCallbackGroup()
         gripper_callback_group = ReentrantCallbackGroup()
-        promtpt_callback_group = MutuallyExclusiveCallbackGroup()
+        prompt_callback_group = MutuallyExclusiveCallbackGroup()
         # Create MoveIt 2 interface
         self.arm_joint_names = [
             "joint_1",
@@ -188,7 +188,7 @@ class AeraSemiAutonomous(Node):
             "/prompt",
             self.start,
             10,
-            callback_group=promtpt_callback_group,
+            callback_group=prompt_callback_group,
         )
         self.logger.info("Aera Semi Autonomous node initialized.")
 

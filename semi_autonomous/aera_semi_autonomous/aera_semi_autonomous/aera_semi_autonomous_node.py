@@ -409,90 +409,7 @@ class AeraSemiAutonomous(Node):
         )
 
         if self.debug_visualizations or self.save_debug_images:
-            # Create a BGR copy for OpenCV annotations
-            bgr_image_annotated = image.copy()
-
-            # Annotate DINO boxes
-            box_annotator = sv.BoxAnnotator()
-            annotated_dino_frame = box_annotator.annotate(
-                scene=bgr_image_annotated.copy(), detections=detections
-            )
-
-            # Prepare labels carefully, ensuring class_id is valid index for object_classes
-            custom_labels = []
-            if detections.class_id is not None and len(detections.class_id) > 0:
-                for i in range(len(detections.xyxy)):
-                    class_id_val = detections.class_id[i]
-                    confidence_val = detections.confidence[i]
-                    if 0 <= class_id_val < len(object_classes):
-                        custom_labels.append(
-                            f"{object_classes[class_id_val]} {confidence_val:0.2f}"
-                        )
-                    else:  # Fallback if class_id is out of bounds for object_classes
-                        custom_labels.append(
-                            f"ID:{class_id_val} C:{confidence_val:0.2f}"
-                        )
-            else:  # If no class_ids (e.g. all detections filtered out by NMS on class_id)
-                for i in range(
-                    len(detections.xyxy)
-                ):  # Make generic labels if no class_ids
-                    custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
-
-            if custom_labels:  # Only annotate labels if we have some
-                label_annotator = sv.LabelAnnotator(
-                    text_scale=0.5,
-                    text_thickness=1,
-                    text_padding=3,
-                    text_position=sv.Position.TOP_CENTER,
-                )
-                # LabelAnnotator annotates ON TOP of the image passed to it.
-                # So, we pass the image already annotated with boxes.
-                annotated_dino_frame_with_labels = label_annotator.annotate(
-                    scene=annotated_dino_frame.copy(),
-                    # Use copy to avoid modifying prev
-                    detections=detections,
-                    labels=custom_labels,
-                )
-                if self.save_debug_images:
-                    self._save_debug_image(
-                        f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
-                        annotated_dino_frame_with_labels,
-                    )
-                    log_message = "\n--- Detections ---\n"
-                    for label in custom_labels:
-                        log_message += f"{label}\n"
-                    self._log_debug_info(log_message)
-                if self.debug_visualizations:
-                    cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
-            else:  # If no labels, just show the boxes
-                if self.save_debug_images:
-                    self._save_debug_image(
-                        f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
-                        annotated_dino_frame,
-                    )
-                if self.debug_visualizations:
-                    cv2.imshow("DINO BBoxes", annotated_dino_frame)
-
-            # Annotate SAM masks
-            if detections.mask is not None and len(detections.mask) > 0:
-                mask_annotator = sv.MaskAnnotator(opacity=0.4)
-                # Create a fresh copy for mask annotation if you want separate images
-                annotated_sam_frame = mask_annotator.annotate(
-                    scene=bgr_image_annotated.copy(), detections=detections
-                )  # Detections obj should have .mask
-                if self.save_debug_images:
-                    self._save_debug_image(
-                        f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
-                        annotated_sam_frame,
-                    )
-                if self.debug_visualizations:
-                    cv2.imshow("SAM Masks", annotated_sam_frame)
-                    cv2.waitKey(0)
-            else:
-                self.logger.info("No SAM masks to annotate.")
-
-            if self.debug_visualizations:
-                cv2.waitKey(1)  # Small delay to allow windows to updateÏ
+            self._debug_visualize_detections(image, detections, object_classes)
 
         self.n_frames_processed += 1
         self.logger.info(f"Detected {detections}.")
@@ -622,6 +539,95 @@ class AeraSemiAutonomous(Node):
         if self.debug_visualizations:
             plt.show(block=False)  # Use block=False for non-blocking
             plt.pause(0.01)  # Allow plot to render
+
+    def _debug_visualize_detections(
+        self, image: np.ndarray, detections: sv.Detections, object_classes: List[str]
+    ):
+        """Debug visualization for object detections with bounding boxes, labels, and masks."""
+        # Create a BGR copy for OpenCV annotations
+        bgr_image_annotated = image.copy()
+
+        # Annotate DINO boxes
+        box_annotator = sv.BoxAnnotator()
+        annotated_dino_frame = box_annotator.annotate(
+            scene=bgr_image_annotated.copy(), detections=detections
+        )
+
+        # Prepare labels carefully, ensuring class_id is valid index for object_classes
+        custom_labels = []
+        if detections.class_id is not None and len(detections.class_id) > 0:
+            for i in range(len(detections.xyxy)):
+                class_id_val = detections.class_id[i]
+                confidence_val = detections.confidence[i]
+                if 0 <= class_id_val < len(object_classes):
+                    custom_labels.append(
+                        f"{object_classes[class_id_val]} {confidence_val:0.2f}"
+                    )
+                else:  # Fallback if class_id is out of bounds for object_classes
+                    custom_labels.append(
+                        f"ID:{class_id_val} C:{confidence_val:0.2f}"
+                    )
+        else:  # If no class_ids (e.g. all detections filtered out by NMS on class_id)
+            for i in range(
+                len(detections.xyxy)
+            ):  # Make generic labels if no class_ids
+                custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
+
+        if custom_labels:  # Only annotate labels if we have some
+            label_annotator = sv.LabelAnnotator(
+                text_scale=0.5,
+                text_thickness=1,
+                text_padding=3,
+                text_position=sv.Position.TOP_CENTER,
+            )
+            # LabelAnnotator annotates ON TOP of the image passed to it.
+            # So, we pass the image already annotated with boxes.
+            annotated_dino_frame_with_labels = label_annotator.annotate(
+                scene=annotated_dino_frame.copy(),
+                # Use copy to avoid modifying prev
+                detections=detections,
+                labels=custom_labels,
+            )
+            if self.save_debug_images:
+                self._save_debug_image(
+                    f"debug_annotated_dino_boxes_labels_{self.n_frames_processed}.jpg",
+                    annotated_dino_frame_with_labels,
+                )
+                log_message = "\n--- Detections ---\n"
+                for label in custom_labels:
+                    log_message += f"{label}\n"
+                self._log_debug_info(log_message)
+            if self.debug_visualizations:
+                cv2.imshow("DINO BBoxes & Labels", annotated_dino_frame_with_labels)
+        else:  # If no labels, just show the boxes
+            if self.save_debug_images:
+                self._save_debug_image(
+                    f"debug_annotated_dino_boxes_{self.n_frames_processed}.jpg",
+                    annotated_dino_frame,
+                )
+            if self.debug_visualizations:
+                cv2.imshow("DINO BBoxes", annotated_dino_frame)
+
+        # Annotate SAM masks
+        if detections.mask is not None and len(detections.mask) > 0:
+            mask_annotator = sv.MaskAnnotator(opacity=0.4)
+            # Create a fresh copy for mask annotation if you want separate images
+            annotated_sam_frame = mask_annotator.annotate(
+                scene=bgr_image_annotated.copy(), detections=detections
+            )  # Detections obj should have .mask
+            if self.save_debug_images:
+                self._save_debug_image(
+                    f"debug_annotated_sam_masks_{self.n_frames_processed}.jpg",
+                    annotated_sam_frame,
+                )
+            if self.debug_visualizations:
+                cv2.imshow("SAM Masks", annotated_sam_frame)
+                cv2.waitKey(0)
+        else:
+            self.logger.info("No SAM masks to annotate.")
+
+        if self.debug_visualizations:
+            cv2.waitKey(1)  # Small delay to allow windows to updateÏ
 
     def _debug_log_pose_info(
         self, pose: Pose, gripper_opening: float = None, operation_name: str = ""

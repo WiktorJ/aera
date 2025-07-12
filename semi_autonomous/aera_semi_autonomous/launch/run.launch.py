@@ -45,7 +45,6 @@ def generate_launch_description():
         description="Gripper squeeze factor",
     )
 
-    log_level = LaunchConfiguration("log_level")
     custom_camera_params_file = os.path.join(
         get_package_share_directory("aera_semi_autonomous"), "config", "camera.yaml"
     )

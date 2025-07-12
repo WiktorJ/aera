@@ -171,7 +171,7 @@ class AeraSemiAutonomous(Node):
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
             "/camera/camera/color/camera_info",
-            self.camera_info_callback,
+            self._camera_info_callback,
             10,
         )
         self.depth_sub = self.create_subscription(
@@ -185,13 +185,9 @@ class AeraSemiAutonomous(Node):
             10,
             callback_group=promtpt_callback_group,
         )
-        self.save_images_sub = self.create_subscription(
-            String, "/save_images", self.save_images, 10
-        )
-
         self.logger.info("Aera Semi Autonomous node initialized.")
 
-    def camera_info_callback(self, msg: CameraInfo):
+    def _camera_info_callback(self, msg: CameraInfo):
         if self.camera_intrinsics is None:
             self.logger.info("Received camera intrinsics.")
             self.image_width = msg.width
@@ -237,186 +233,6 @@ class AeraSemiAutonomous(Node):
     def _save_debug_plot(self, filename: str):
         if self.save_debug_images and self.debug_img_dir:
             plt.savefig(os.path.join(self.debug_img_dir, filename))
-
-    def handle_tool_call(
-        self,
-        tool_call: str,
-        object_to_detect: str,
-        rgb_image: np.ndarray,
-        depth_image: np.ndarray,
-    ):
-        if self.camera_intrinsics is None:
-            self.logger.error(
-                "Camera intrinsics not yet received. Cannot create point cloud."
-            )
-            return
-        if tool_call == _PICK_OBJECT:
-            detections = self.detect_objects(rgb_image, [object_to_detect])
-            if len(detections.class_id) == 0:
-                self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
-                )
-            if self._object_in_gripper:
-                logging.error("Object in gripper")
-                return
-
-            self.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image)
-            self.logger.info(
-                f"done picking object. Joint states: {self.moveit2.joint_state.position}"
-            )
-            self._object_in_gripper = True
-        elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
-            detections = self.detect_objects(rgb_image, [object_to_detect])
-            if len(detections.class_id) == 0:
-                self.logger.info(
-                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
-                )
-            self.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image)
-            self._object_in_gripper = False
-        elif tool_call == _RELEASE_GRIPPER:
-            self.release_gripper()
-            self._object_in_gripper = False
-
-    def _parse_prompt_message(self, msg_data: str):
-        try:
-            data = yaml.safe_load(msg_data)
-
-            if not isinstance(data, list):
-                self.logger.error(f"The top level is not a list: {msg_data}")
-                return None
-
-            commands = []
-            for command_data in data:
-                if not isinstance(command_data, dict):
-                    self.logger.error(
-                        f"Command item is not a dictionary: {command_data}"
-                    )
-                    return None
-                action = command_data.get("action")
-                object_to_detect = command_data.get("object", "")
-
-                if not action:
-                    self.logger.error(f"No 'action' found in command: {command_data}")
-                    return None
-
-                if action not in _AVAILABLE_ACTIONS:
-                    self.logger.warn(
-                        f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
-                    )
-                    return None
-                commands.append((action, object_to_detect))
-            return commands
-        except yaml.YAMLError:
-            self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
-            return None
-
-    def start(self, msg: String):
-        commands = self._parse_prompt_message(msg.data)
-        if not commands:
-            self.logger.warn(f"Could not parse commands from: {msg.data}")
-            return
-
-        self.logger.info(f"Processing: {msg.data}")
-        self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
-        self._setup_debug_logging(msg.data)
-
-        for action, object_to_detect in commands:
-            if not self._last_rgb_msg or not self._last_depth_msg:
-                self.logger.warn(
-                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
-                )
-                self.logger.error("No image messages received. Aborting command chain.")
-                return
-
-            # Use the latest images for each action
-            rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-            depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-
-            self.logger.info(
-                f"Executing action: '{action}' on object: '{object_to_detect}'"
-            )
-            self.handle_tool_call(action, object_to_detect, rgb_image, depth_image)
-
-        self.go_home()
-        self.logger.info("Task completed.")
-
-    def detect_objects(
-        self, image: np.ndarray, object_classes: List[str]
-    ) -> sv.Detections:
-        self.logger.info(f"Detecting objects of classes: {object_classes}")
-        rgb_image_for_dino = cv2.cvtColor(
-            image, cv2.COLOR_BGR2RGB
-        )  # DINO might prefer RGB
-
-        detections: sv.Detections = self.grounding_dino_model.predict_with_classes(
-            image=rgb_image_for_dino,
-            classes=object_classes,
-            box_threshold=BOX_THRESHOLD,
-            text_threshold=TEXT_THRESHOLD,
-        )
-
-        # NMS post process
-        nms_idx = (
-            torchvision.ops.nms(
-                torch.from_numpy(detections.xyxy),
-                torch.from_numpy(detections.confidence),
-                NMS_THRESHOLD,
-            )
-            .numpy()
-            .tolist()
-        )
-
-        detections.xyxy = detections.xyxy[nms_idx]
-        detections.confidence = detections.confidence[nms_idx]
-        detections.class_id = detections.class_id[nms_idx]
-
-        detections.mask = segment(
-            sam_predictor=self.sam_predictor,
-            image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
-            xyxy=detections.xyxy,
-        )
-
-        if len(detections.xyxy) > 0:  # Check if there are any detections
-            nms_idx = (
-                torchvision.ops.nms(
-                    torch.from_numpy(detections.xyxy),
-                    torch.from_numpy(detections.confidence),
-                    NMS_THRESHOLD,
-                )
-                .numpy()
-                .tolist()
-            )
-            detections.xyxy = detections.xyxy[nms_idx]
-            detections.confidence = detections.confidence[nms_idx]
-            # Ensure class_id is numpy array for indexing if it's a tensor
-            if isinstance(detections.class_id, torch.Tensor):
-                detections.class_id = detections.class_id.cpu().numpy()
-            detections.class_id = detections.class_id[nms_idx]
-        else:
-            self.logger.warn("No initial detections before NMS.")
-            detections.mask = np.array([])  # Ensure mask is empty if no detections
-            return detections  # Return empty detections
-
-        if len(detections.xyxy) == 0:  # Check after NMS
-            self.logger.warn("No detections after NMS.")
-            detections.mask = np.array([])
-            return detections
-
-        detections.mask = segment(
-            sam_predictor=self.sam_predictor,
-            image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),  # SAM expects RGB
-            xyxy=detections.xyxy,
-        )
-
-        if self.debug_visualizations or self.save_debug_images:
-            self._debug_visualize_detections(image, detections, object_classes)
-
-        self.n_frames_processed += 1
-        self.logger.info(f"Detected {detections}.")
-        if self.save_debug_images:
-            self._log_debug_info(f"detection confidence: {detections.confidence}\n")
-        self.logger.info(f"detection confidence: {detections.confidence}")
-        return detections
 
     def _debug_visualize_selected_mask(
         self, detections: sv.Detections, object_index: int, operation_name: str
@@ -564,13 +380,9 @@ class AeraSemiAutonomous(Node):
                         f"{object_classes[class_id_val]} {confidence_val:0.2f}"
                     )
                 else:  # Fallback if class_id is out of bounds for object_classes
-                    custom_labels.append(
-                        f"ID:{class_id_val} C:{confidence_val:0.2f}"
-                    )
+                    custom_labels.append(f"ID:{class_id_val} C:{confidence_val:0.2f}")
         else:  # If no class_ids (e.g. all detections filtered out by NMS on class_id)
-            for i in range(
-                len(detections.xyxy)
-            ):  # Make generic labels if no class_ids
+            for i in range(len(detections.xyxy)):  # Make generic labels if no class_ids
                 custom_labels.append(f"Det {i} C:{detections.confidence[i]:0.2f}")
 
         if custom_labels:  # Only annotate labels if we have some
@@ -648,6 +460,186 @@ class AeraSemiAutonomous(Node):
 
         self._log_debug_info(log_message)
 
+    def _parse_prompt_message(self, msg_data: str):
+        try:
+            data = yaml.safe_load(msg_data)
+
+            if not isinstance(data, list):
+                self.logger.error(f"The top level is not a list: {msg_data}")
+                return None
+
+            commands = []
+            for command_data in data:
+                if not isinstance(command_data, dict):
+                    self.logger.error(
+                        f"Command item is not a dictionary: {command_data}"
+                    )
+                    return None
+                action = command_data.get("action")
+                object_to_detect = command_data.get("object", "")
+
+                if not action:
+                    self.logger.error(f"No 'action' found in command: {command_data}")
+                    return None
+
+                if action not in _AVAILABLE_ACTIONS:
+                    self.logger.warn(
+                        f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                    )
+                    return None
+                commands.append((action, object_to_detect))
+            return commands
+        except yaml.YAMLError:
+            self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
+            return None
+
+    def start(self, msg: String):
+        commands = self._parse_prompt_message(msg.data)
+        if not commands:
+            self.logger.warn(f"Could not parse commands from: {msg.data}")
+            return
+
+        self.logger.info(f"Processing: {msg.data}")
+        self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
+        self._setup_debug_logging(msg.data)
+
+        for action, object_to_detect in commands:
+            if not self._last_rgb_msg or not self._last_depth_msg:
+                self.logger.warn(
+                    f"rgb_msg present: {self._last_rgb_msg is not None}, depth_msg present: {self._last_depth_msg is not None}"
+                )
+                self.logger.error("No image messages received. Aborting command chain.")
+                return
+
+            # Use the latest images for each action
+            rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
+            depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+
+            self.logger.info(
+                f"Executing action: '{action}' on object: '{object_to_detect}'"
+            )
+            self.handle_tool_call(action, object_to_detect, rgb_image, depth_image)
+
+        self.go_home()
+        self.logger.info("Task completed.")
+
+    def handle_tool_call(
+        self,
+        tool_call: str,
+        object_to_detect: str,
+        rgb_image: np.ndarray,
+        depth_image: np.ndarray,
+    ):
+        if self.camera_intrinsics is None:
+            self.logger.error(
+                "Camera intrinsics not yet received. Cannot create point cloud."
+            )
+            return
+        if tool_call == _PICK_OBJECT:
+            detections = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detections.class_id) == 0:
+                self.logger.info(
+                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
+                )
+            if self._object_in_gripper:
+                logging.error("Object in gripper")
+                return
+
+            self.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image)
+            self.logger.info(
+                f"done picking object. Joint states: {self.moveit2.joint_state.position}"
+            )
+            self._object_in_gripper = True
+        elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
+            detections = self.detect_objects(rgb_image, [object_to_detect])
+            if len(detections.class_id) == 0:
+                self.logger.info(
+                    f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
+                )
+            self.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image)
+            self._object_in_gripper = False
+        elif tool_call == _RELEASE_GRIPPER:
+            self.release_gripper()
+            self._object_in_gripper = False
+
+    def detect_objects(
+        self, image: np.ndarray, object_classes: List[str]
+    ) -> sv.Detections:
+        self.logger.info(f"Detecting objects of classes: {object_classes}")
+        rgb_image_for_dino = cv2.cvtColor(
+            image, cv2.COLOR_BGR2RGB
+        )  # DINO might prefer RGB
+
+        detections: sv.Detections = self.grounding_dino_model.predict_with_classes(
+            image=rgb_image_for_dino,
+            classes=object_classes,
+            box_threshold=BOX_THRESHOLD,
+            text_threshold=TEXT_THRESHOLD,
+        )
+
+        # NMS post process
+        nms_idx = (
+            torchvision.ops.nms(
+                torch.from_numpy(detections.xyxy),
+                torch.from_numpy(detections.confidence),
+                NMS_THRESHOLD,
+            )
+            .numpy()
+            .tolist()
+        )
+
+        detections.xyxy = detections.xyxy[nms_idx]
+        detections.confidence = detections.confidence[nms_idx]
+        detections.class_id = detections.class_id[nms_idx]
+
+        detections.mask = segment(
+            sam_predictor=self.sam_predictor,
+            image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
+            xyxy=detections.xyxy,
+        )
+
+        if len(detections.xyxy) > 0:  # Check if there are any detections
+            nms_idx = (
+                torchvision.ops.nms(
+                    torch.from_numpy(detections.xyxy),
+                    torch.from_numpy(detections.confidence),
+                    NMS_THRESHOLD,
+                )
+                .numpy()
+                .tolist()
+            )
+            detections.xyxy = detections.xyxy[nms_idx]
+            detections.confidence = detections.confidence[nms_idx]
+            # Ensure class_id is numpy array for indexing if it's a tensor
+            if isinstance(detections.class_id, torch.Tensor):
+                detections.class_id = detections.class_id.cpu().numpy()
+            detections.class_id = detections.class_id[nms_idx]
+        else:
+            self.logger.warn("No initial detections before NMS.")
+            detections.mask = np.array([])  # Ensure mask is empty if no detections
+            return detections  # Return empty detections
+
+        if len(detections.xyxy) == 0:  # Check after NMS
+            self.logger.warn("No detections after NMS.")
+            detections.mask = np.array([])
+            return detections
+
+        detections.mask = segment(
+            sam_predictor=self.sam_predictor,
+            image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),  # SAM expects RGB
+            xyxy=detections.xyxy,
+        )
+
+        if self.debug_visualizations or self.save_debug_images:
+            self._debug_visualize_detections(image, detections, object_classes)
+
+        self.n_frames_processed += 1
+        self.logger.info(f"Detected {detections}.")
+        if self.save_debug_images:
+            self._log_debug_info(f"detection confidence: {detections.confidence}\n")
+        self.logger.info(f"detection confidence: {detections.confidence}")
+        return detections
+
     def pick_object(
         self, object_index: int, detections: sv.Detections, depth_image: np.ndarray
     ):
@@ -704,11 +696,6 @@ class AeraSemiAutonomous(Node):
                     "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
                 )
                 grasp_z = mean_z
-        elif top_z_coords.size > 0:
-            self.logger.info(
-                "3. Top detection only one top z-coord. Using it for grasp_z."
-            )
-            grasp_z = top_z_coords[0]
         else:
             # Fallback if there are no points in the top percentile (e.g., all points are the same).
             self.logger.info(
@@ -949,23 +936,6 @@ class AeraSemiAutonomous(Node):
 
     def image_callback(self, msg):
         self._last_rgb_msg = msg
-
-    def save_images(self, msg):
-        if not self._last_rgb_msg or not self._last_depth_msg:
-            return
-
-        rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
-        depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
-
-        save_dir = msg.data
-        cv2.imwrite(
-            os.path.join(save_dir, f"rgb_image_{self.n_frames_processed}.png"),
-            rgb_image,
-        )
-        np.save(
-            os.path.join(save_dir, f"depth_image_{self.n_frames_processed}"),
-            depth_image,
-        )
 
 
 def main():

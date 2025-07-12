@@ -1,3 +1,4 @@
+from launch.actions import set_environment_variable
 import yaml
 import logging
 import os
@@ -90,6 +91,7 @@ class AeraSemiAutonomous(Node):
         self.declare_parameter("offset_y", 0.025)
         self.declare_parameter("offset_z", 0.1)
         self.declare_parameter("gripper_squeeze_factor", 0.2)
+        self.declare_parameter("debug_mode", False)
 
         self.logger = self.get_logger()
         self.debug_visualizations = False
@@ -160,6 +162,9 @@ class AeraSemiAutonomous(Node):
             self.get_parameter("gripper_squeeze_factor")
             .get_parameter_value()
             .double_value
+        )
+        self.debug_mode = (
+            self.get_parameter("debug_mode").get_parameter_value().bool_value
         )
         self.camera_intrinsics = None
         self.image_width = None
@@ -750,13 +755,13 @@ class AeraSemiAutonomous(Node):
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
 
-        self.grasp_at(grasp_pose, gripper_opening)
+        gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
+        gripper_pos = min(gripper_pos, 0.0)
+        self.grasp_at(grasp_pose, gripper_pos)
 
-    def grasp_at(self, msg: Pose, gripper_opening: float):
-        self.logger.info(f"Grasp at: {msg} with opening: {gripper_opening}")
-
-        self.gripper_interface.open()
-        self.gripper_interface.wait_until_executed()
+    def grasp_at(self, msg: Pose, gripper_pos: float):
+        self.logger.info(f"Grasp at: {msg} with opening: {gripper_pos}")
+        self.release_gripper()
 
         # move 5cm above the item first
         msg.position.z += 0.05
@@ -768,8 +773,6 @@ class AeraSemiAutonomous(Node):
         self.move_to(msg)
         time.sleep(0.05)
 
-        gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
-        gripper_pos = min(gripper_pos, 0.0)
         self.gripper_interface.move_to_position(gripper_pos)
         self.gripper_interface.wait_until_executed()
 
@@ -927,9 +930,7 @@ class AeraSemiAutonomous(Node):
         # good pose is 0, -0.3, 0.35
         self.logger.info(f"Releasing at: {msg}")
         self.move_to(msg)
-
-        self.gripper_interface.open()
-        self.gripper_interface.wait_until_executed()
+        self.release_gripper()
 
     def depth_callback(self, msg):
         self._last_depth_msg = msg

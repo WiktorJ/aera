@@ -504,7 +504,6 @@ class AeraSemiAutonomous(Node):
             return
 
         self.logger.info(f"Processing: {msg.data}")
-        self.logger.info(f"Initial Joint states: {self.moveit2.joint_state.position}")
         self._setup_debug_logging(msg.data)
 
         for action, object_to_detect in commands:
@@ -550,9 +549,6 @@ class AeraSemiAutonomous(Node):
                 return
 
             self.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image)
-            self.logger.info(
-                f"done picking object. Joint states: {self.moveit2.joint_state.position}"
-            )
             self._object_in_gripper = True
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
             detections = self.detect_objects(rgb_image, [object_to_detect])
@@ -781,6 +777,9 @@ class AeraSemiAutonomous(Node):
         msg.position.z += 0.12
         self.move_to(msg)
         time.sleep(0.05)
+        self.logger.info(
+            f"done graspin gobject. Joint states: {self.moveit2.joint_state.position}"
+        )
 
     def release_above(
         self, object_index: int, detections: sv.Detections, depth_image: np.ndarray
@@ -861,6 +860,8 @@ class AeraSemiAutonomous(Node):
         self.gripper_interface.wait_until_executed()
 
     def go_home(self):
+        if self.debug_mode:
+            return
         if self.moveit2.joint_state is None:
             self.logger.error("Cannot go home, arm joint state is not available.")
             return
@@ -910,6 +911,9 @@ class AeraSemiAutonomous(Node):
         if self.moveit2.joint_state is None:
             self.logger.error("Cannot move, arm joint state is not available.")
             return
+        self.logger.info(
+            f"Joint states before move: {self.moveit2.joint_state.position}"
+        )
 
         pose_goal = PoseStamped()
         pose_goal.header.frame_id = BASE_LINK_NAME
@@ -938,9 +942,13 @@ class AeraSemiAutonomous(Node):
         self.release_gripper()
 
     def depth_callback(self, msg):
+        if self.debug_mode and self._last_depth_msg is not None:
+            return
         self._last_depth_msg = msg
 
     def image_callback(self, msg):
+        if self.debug_mode and self._last_rgb_msg is not None:
+            return
         self._last_rgb_msg = msg
 
 

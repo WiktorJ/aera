@@ -178,10 +178,9 @@ class AeraSemiAutonomous(Node):
             self._camera_info_callback,
             10,
         )
-        # Add 3 second delay to this callback startup AI!
-        self.depth_sub = self.create_subscription(
-            Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
-        )
+        # Create depth subscription after 3 second delay
+        self.depth_sub = None
+        self.create_timer(3.0, self._create_delayed_depth_subscription)
 
         self.prompt_sub = self.create_subscription(
             String,
@@ -191,6 +190,14 @@ class AeraSemiAutonomous(Node):
             callback_group=prompt_callback_group,
         )
         self.logger.info("Aera Semi Autonomous node initialized.")
+
+    def _create_delayed_depth_subscription(self):
+        """Create the depth subscription after a delay."""
+        if self.depth_sub is None:
+            self.depth_sub = self.create_subscription(
+                Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
+            )
+            self.logger.info("Depth subscription created after 3 second delay.")
 
     def _camera_info_callback(self, msg: CameraInfo):
         if self.camera_intrinsics is None:

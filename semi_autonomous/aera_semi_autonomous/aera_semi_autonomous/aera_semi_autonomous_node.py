@@ -169,9 +169,9 @@ class AeraSemiAutonomous(Node):
         self.image_width = None
         self.image_height = None
 
-        self.image_sub = self.create_subscription(
-            Image, "/camera/camera/color/image_raw", self.image_callback, 10
-        )
+        # Create image subscription after 3 second delay
+        self.image_sub = None
+        self.create_timer(3.0, self._create_delayed_image_subscription)
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
             "/camera/camera/color/camera_info",
@@ -190,6 +190,14 @@ class AeraSemiAutonomous(Node):
             callback_group=prompt_callback_group,
         )
         self.logger.info("Aera Semi Autonomous node initialized.")
+
+    def _create_delayed_image_subscription(self):
+        """Create the image subscription after a delay."""
+        if self.image_sub is None:
+            self.image_sub = self.create_subscription(
+                Image, "/camera/camera/color/image_raw", self.image_callback, 10
+            )
+            self.logger.info("Image subscription created after 3 second delay.")
 
     def _create_delayed_depth_subscription(self):
         """Create the depth subscription after a delay."""

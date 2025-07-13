@@ -169,15 +169,15 @@ class AeraSemiAutonomous(Node):
         self.image_width = None
         self.image_height = None
 
-        # Create image subscription after 3 second delay
-        self.image_sub = None
-        self.create_timer(3.0, self._create_delayed_image_subscription)
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
             "/camera/camera/color/camera_info",
             self._camera_info_callback,
             10,
         )
+        # Create image subscription after 3 second delay
+        self.image_sub = None
+        self.create_timer(3.0, self._create_delayed_image_subscription)
         # Create depth subscription after 3 second delay
         self.depth_sub = None
         self.create_timer(3.0, self._create_delayed_depth_subscription)
@@ -663,34 +663,36 @@ class AeraSemiAutonomous(Node):
             return
 
         z_coords = points_base_frame[:, 2]
-        top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
-        if top_z_coords.size > 1:
-            mean_z = np.mean(top_z_coords)
-            std_z = np.std(top_z_coords)
-            # Discard points more than 1 std from the mean.
-            filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
-            if filtered_z_coords.size > 0:
-                self.logger.info(
-                    f"1. Top detection using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
-                )
-                grasp_z = np.mean(filtered_z_coords)
-            else:
-                # Fallback if all points were filtered out.
-                self.logger.info(
-                    "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
-                )
-                grasp_z = mean_z
-        else:
-            # Fallback if there are no points in the top percentile (e.g., all points are the same).
-            self.logger.info(
-                "4. Top detection no points in top percentile. Falling back to mean of all z-coords."
-            )
-            grasp_z = np.mean(z_coords)
+        grasp_z = np.mean(z_coords)
+        # top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
+        # if top_z_coords.size > 1:
+        #     mean_z = np.mean(top_z_coords)
+        #     std_z = np.std(top_z_coords)
+        #     # Discard points more than 1 std from the mean.
+        #     filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
+        #     if filtered_z_coords.size > 0:
+        #         self.logger.info(
+        #             f"1. Top detection using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
+        #         )
+        #         grasp_z = np.mean(filtered_z_coords)
+        #     else:
+        #         # Fallback if all points were filtered out.
+        #         self.logger.info(
+        #             "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
+        #         )
+        #         grasp_z = mean_z
+        # else:
+        #     # Fallback if there are no points in the top percentile (e.g., all points are the same).
+        #     self.logger.info(
+        #         "4. Top detection no points in top percentile. Falling back to mean of all z-coords."
+        #     )
+        #     grasp_z = np.mean(z_coords)
 
         # Filter points near this top surface
-        near_grasp_z_points = points_base_frame[
-            points_base_frame[:, 2] > grasp_z - 0.01
-        ]
+        # near_grasp_z_points = points_base_frame[
+        #     points_base_frame[:, 2] > grasp_z - 0.01
+        # ]
+        near_grasp_z_points = points_base_frame
 
         if len(near_grasp_z_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(

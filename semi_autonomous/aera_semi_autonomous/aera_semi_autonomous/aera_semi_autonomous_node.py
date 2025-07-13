@@ -178,6 +178,7 @@ class AeraSemiAutonomous(Node):
             self._camera_info_callback,
             10,
         )
+        # Add 3 second delay to this callback startup AI!
         self.depth_sub = self.create_subscription(
             Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
         )
@@ -638,7 +639,7 @@ class AeraSemiAutonomous(Node):
 
         # convert the masked depth image to a point cloud
         pcd.transform(self.cam_to_base_affine)
-        points_base_frame = np.asarray(pcd.points)
+        points_base_frame = np.asarray(pcd.points).astype(np.float32)
 
         if len(points_base_frame) == 0:
             self.logger.error(

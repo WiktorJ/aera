@@ -136,7 +136,7 @@ class AeraSemiAutonomous(Node):
         self.grounding_dino_model = Model(
             model_config_path=GROUNDING_DINO_CONFIG_PATH,
             model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH,
-            device="cuda" if torch.cuda.is_available() else "cpu",
+            device=DEVICE,
         )
         self.sam = sam_model_registry[SAM_ENCODER_VERSION](
             checkpoint=SAM_CHECKPOINT_PATH
@@ -566,18 +566,18 @@ class AeraSemiAutonomous(Node):
         self, image: np.ndarray, object_classes: List[str]
     ) -> sv.Detections:
         self.logger.info(f"Detecting objects of classes: {object_classes}")
-        rgb_image_for_dino = cv2.cvtColor(
-            image, cv2.COLOR_BGR2RGB
-        )  # DINO might prefer RGB
 
         detections: sv.Detections = self.grounding_dino_model.predict_with_classes(
-            image=rgb_image_for_dino,
+            image=image,
             classes=object_classes,
             box_threshold=BOX_THRESHOLD,
             text_threshold=TEXT_THRESHOLD,
         )
+        if len(detections.xyxy) == 0:  # Check after NMS
+            self.logger.warn("No detections.")
+            detections.mask = np.array([])
+            return detections
 
-        # NMS post process
         nms_idx = (
             torchvision.ops.nms(
                 torch.from_numpy(detections.xyxy),
@@ -595,38 +595,6 @@ class AeraSemiAutonomous(Node):
         detections.mask = segment(
             sam_predictor=self.sam_predictor,
             image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
-            xyxy=detections.xyxy,
-        )
-
-        if len(detections.xyxy) > 0:  # Check if there are any detections
-            nms_idx = (
-                torchvision.ops.nms(
-                    torch.from_numpy(detections.xyxy),
-                    torch.from_numpy(detections.confidence),
-                    NMS_THRESHOLD,
-                )
-                .numpy()
-                .tolist()
-            )
-            detections.xyxy = detections.xyxy[nms_idx]
-            detections.confidence = detections.confidence[nms_idx]
-            # Ensure class_id is numpy array for indexing if it's a tensor
-            if isinstance(detections.class_id, torch.Tensor):
-                detections.class_id = detections.class_id.cpu().numpy()
-            detections.class_id = detections.class_id[nms_idx]
-        else:
-            self.logger.warn("No initial detections before NMS.")
-            detections.mask = np.array([])  # Ensure mask is empty if no detections
-            return detections  # Return empty detections
-
-        if len(detections.xyxy) == 0:  # Check after NMS
-            self.logger.warn("No detections after NMS.")
-            detections.mask = np.array([])
-            return detections
-
-        detections.mask = segment(
-            sam_predictor=self.sam_predictor,
-            image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),  # SAM expects RGB
             xyxy=detections.xyxy,
         )
 
@@ -664,7 +632,7 @@ class AeraSemiAutonomous(Node):
         self._debug_visualize_masked_depth(masked_depth_image_mm, "Pick")
 
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
-            o3d.geometry.Image(masked_depth_image_mm.astype(np.float32)),
+            o3d.geometry.Image(masked_depth_image_mm),
             self.camera_intrinsics,
         )
 
@@ -806,7 +774,7 @@ class AeraSemiAutonomous(Node):
 
         # convert the masked depth image to a point cloud
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
-            o3d.geometry.Image(masked_depth_image.astype(np.uint16)),
+            o3d.geometry.Image(masked_depth_image),
             self.camera_intrinsics,
         )
         pcd.transform(self.cam_to_base_affine)

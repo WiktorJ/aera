@@ -382,6 +382,43 @@ class AeraSemiAutonomous(Node):
             plt.show(block=False)  # Use block=False for non-blocking
             plt.pause(0.01)  # Allow plot to render
 
+    def _debug_visualize_all_minarearects(
+        self, points_base_frame: np.ndarray, operation_name: str
+    ):
+        """Debug visualization for minAreaRect calculations on all axis pairs."""
+        if not (self.debug_visualizations or self.save_debug_images):
+            return
+
+        if len(points_base_frame) < 3:
+            self.logger.warn(
+                f"Not enough points ({len(points_base_frame)}) for minAreaRect visualizations."
+            )
+            return
+
+        # XY plane (looking down from above)
+        xy_points = points_base_frame[:, :2].astype(np.float32)
+        center_xy, dimensions_xy, theta_xy = cv2.minAreaRect(xy_points)
+        grasp_z = np.mean(points_base_frame[:, 2])
+        self._debug_visualize_minarearect(
+            xy_points, center_xy, dimensions_xy, theta_xy, grasp_z, ("x", "y"), operation_name
+        )
+
+        # XZ plane (side view)
+        xz_points = points_base_frame[:, [0, 2]].astype(np.float32)
+        if len(xz_points) >= 3:
+            center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
+            self._debug_visualize_minarearect(
+                xz_points, center_xz, dimensions_xz, theta_xz, center_xy[1], ("x", "z"), operation_name
+            )
+
+        # YZ plane (side view)
+        yz_points = points_base_frame[:, [1, 2]].astype(np.float32)
+        if len(yz_points) >= 3:
+            center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
+            self._debug_visualize_minarearect(
+                yz_points, center_yz, dimensions_yz, theta_yz, center_xy[0], ("y", "z"), operation_name
+            )
+
     def _debug_visualize_detections(
         self, image: np.ndarray, detections: sv.Detections, object_classes: List[str]
     ):
@@ -705,29 +742,14 @@ class AeraSemiAutonomous(Node):
                 f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
             return  # No points at all
+        self._debug_visualize_all_minarearects(near_grasp_z_points, "Pick")
+
         xy_points = near_grasp_z_points[:, :2].astype(
             np.float32
         )  # Get XY coords in base frame
         center, dimensions, theta = cv2.minAreaRect(
             xy_points
         )  # center is (x,y) tuple in base frame
-        self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, grasp_z, ("x", "y"), "Pick"
-        )
-
-        xz_points = near_grasp_z_points[:, [0, 2]].astype(np.float32)  # X and Z coords
-        if len(xz_points) >= 3:
-            center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
-            self._debug_visualize_minarearect(
-                xz_points, center_xz, dimensions_xz, theta_xz, center[1], ("x", "z"), "Pick"
-            )
-
-        yz_points = near_grasp_z_points[:, [1, 2]].astype(np.float32)  # Y and Z coords
-        if len(yz_points) >= 3:
-            center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
-            self._debug_visualize_minarearect(
-                yz_points, center_yz, dimensions_yz, theta_yz, center[0], ("y", "z"), "Pick"
-            )
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:
@@ -840,23 +862,7 @@ class AeraSemiAutonomous(Node):
 
         center, dimensions, theta = cv2.minAreaRect(xy_points)
 
-        self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, drop_z, ("x", "y"), "Release"
-        )
-
-        xz_points = points[:, [0, 2]].astype(np.float32)  # X and Z coords
-        if len(xz_points) >= 3:
-            center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
-            self._debug_visualize_minarearect(
-                xz_points, center_xz, dimensions_xz, theta_xz, center[1], ("x", "z"), "Release"
-            )
-
-        yz_points = points[:, [1, 2]].astype(np.float32)  # Y and Z coords
-        if len(yz_points) >= 3:
-            center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
-            self._debug_visualize_minarearect(
-                yz_points, center_yz, dimensions_yz, theta_yz, center[0], ("y", "z"), "Release"
-            )
+        self._debug_visualize_all_minarearects(points, "Release")
 
         drop_pose = Pose()
         drop_pose.position.x = center[0] + self.offset_x

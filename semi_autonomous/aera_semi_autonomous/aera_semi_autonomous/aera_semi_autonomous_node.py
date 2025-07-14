@@ -705,7 +705,7 @@ class AeraSemiAutonomous(Node):
         center, dimensions, theta = cv2.minAreaRect(
             xy_points
         )  # center is (x,y) tuple in base frame
-
+        # In addition to xy_points also log debug minAreaRect for xz and yz AI!
         self._debug_visualize_minarearect(
             xy_points, center, dimensions, theta, grasp_z, "Pick"
         )

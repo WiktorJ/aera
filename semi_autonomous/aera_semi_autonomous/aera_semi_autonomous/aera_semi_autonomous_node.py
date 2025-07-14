@@ -370,7 +370,7 @@ class AeraSemiAutonomous(Node):
         plt.grid(True)
         if self.save_debug_images:
             self._save_debug_plot(
-                f"debug_minarearect_xy_{operation_name.lower()}_{self.n_frames_processed}.png"
+                f"debug_minarearect_{operation_name.lower()}_{self.n_frames_processed}.png"
             )
         if self.debug_visualizations:
             plt.show(block=False)  # Use block=False for non-blocking
@@ -706,7 +706,7 @@ class AeraSemiAutonomous(Node):
             xy_points
         )  # center is (x,y) tuple in base frame
         self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, grasp_z, "Pick"
+            xy_points, center, dimensions, theta, grasp_z, "Pick_XY"
         )
 
         xz_points = near_grasp_z_points[:, [0, 2]].astype(np.float32)  # X and Z coords
@@ -835,7 +835,7 @@ class AeraSemiAutonomous(Node):
         center, dimensions, theta = cv2.minAreaRect(xy_points)
 
         self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, drop_z, "Release"
+            xy_points, center, dimensions, theta, drop_z, "Release_XY"
         )
 
         xz_points = points[:, [0, 2]].astype(np.float32)  # X and Z coords

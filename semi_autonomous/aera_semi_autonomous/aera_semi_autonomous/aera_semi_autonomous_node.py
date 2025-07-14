@@ -336,20 +336,18 @@ class AeraSemiAutonomous(Node):
         if not (self.debug_visualizations or self.save_debug_images):
             return
 
-        axis1, axis2 = axes
-        axis_names = {0: 'X', 1: 'Y', 2: 'Z'}
-        axis1_name = axis_names[axis1]
-        axis2_name = axis_names[axis2]
-        third_axis = {0, 1, 2} - {axis1, axis2}
-        third_axis_name = axis_names[list(third_axis)[0]]
+        axis1_name, axis2_name = axes
+        # Determine the third axis name
+        all_axes = {"x", "y", "z"}
+        third_axis_name = list(all_axes - {axis1_name.lower(), axis2_name.lower()})[0]
 
-        plt.figure(f"{axis1_name}{axis2_name} points for minAreaRect (Base Frame) - {operation_name}")
+        plt.figure(f"{axis1_name.upper()}{axis2_name.upper()} points for minAreaRect (Base Frame) - {operation_name}")
         plt.clf()  # Clear previous plot
         plt.scatter(
             points[:, 0],
             points[:, 1],
             s=5,
-            label=f"Object {axis1_name}{axis2_name} Points",
+            label=f"Object {axis1_name.upper()}{axis2_name.upper()} Points",
         )
 
         # Reconstruct the rotated rectangle from minAreaRect output
@@ -368,10 +366,10 @@ class AeraSemiAutonomous(Node):
             marker="x",
             label="Calculated Center (Base Frame)",
         )
-        plt.xlabel(f"{axis1_name} (Base Frame)")
-        plt.ylabel(f"{axis2_name} (Base Frame)")
+        plt.xlabel(f"{axis1_name.upper()} (Base Frame)")
+        plt.ylabel(f"{axis2_name.upper()} (Base Frame)")
         plt.title(
-            f"Object {axis1_name}{axis2_name} in Base Frame ({third_axis_name} ~ {third_coord:.3f}m) - {operation_name}"
+            f"Object {axis1_name.upper()}{axis2_name.upper()} in Base Frame ({third_axis_name.upper()} ~ {third_coord:.3f}m) - {operation_name}"
         )
         plt.axis("equal")  # Important for correct aspect ratio
         plt.legend()
@@ -714,21 +712,21 @@ class AeraSemiAutonomous(Node):
             xy_points
         )  # center is (x,y) tuple in base frame
         self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, grasp_z, (0, 1), "Pick"
+            xy_points, center, dimensions, theta, grasp_z, ("x", "y"), "Pick"
         )
 
         xz_points = near_grasp_z_points[:, [0, 2]].astype(np.float32)  # X and Z coords
         if len(xz_points) >= 3:
             center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
             self._debug_visualize_minarearect(
-                xz_points, center_xz, dimensions_xz, theta_xz, center[1], (0, 2), "Pick"
+                xz_points, center_xz, dimensions_xz, theta_xz, center[1], ("x", "z"), "Pick"
             )
 
         yz_points = near_grasp_z_points[:, [1, 2]].astype(np.float32)  # Y and Z coords
         if len(yz_points) >= 3:
             center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
             self._debug_visualize_minarearect(
-                yz_points, center_yz, dimensions_yz, theta_yz, center[0], (1, 2), "Pick"
+                yz_points, center_yz, dimensions_yz, theta_yz, center[0], ("y", "z"), "Pick"
             )
 
         gripper_rotation = theta
@@ -843,21 +841,21 @@ class AeraSemiAutonomous(Node):
         center, dimensions, theta = cv2.minAreaRect(xy_points)
 
         self._debug_visualize_minarearect(
-            xy_points, center, dimensions, theta, drop_z, (0, 1), "Release"
+            xy_points, center, dimensions, theta, drop_z, ("x", "y"), "Release"
         )
 
         xz_points = points[:, [0, 2]].astype(np.float32)  # X and Z coords
         if len(xz_points) >= 3:
             center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
             self._debug_visualize_minarearect(
-                xz_points, center_xz, dimensions_xz, theta_xz, center[1], (0, 2), "Release"
+                xz_points, center_xz, dimensions_xz, theta_xz, center[1], ("x", "z"), "Release"
             )
 
         yz_points = points[:, [1, 2]].astype(np.float32)  # Y and Z coords
         if len(yz_points) >= 3:
             center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
             self._debug_visualize_minarearect(
-                yz_points, center_yz, dimensions_yz, theta_yz, center[0], (1, 2), "Release"
+                yz_points, center_yz, dimensions_yz, theta_yz, center[0], ("y", "z"), "Release"
             )
 
         drop_pose = Pose()

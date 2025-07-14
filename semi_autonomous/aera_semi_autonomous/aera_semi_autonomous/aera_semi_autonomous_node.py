@@ -341,7 +341,9 @@ class AeraSemiAutonomous(Node):
         all_axes = {"x", "y", "z"}
         third_axis_name = list(all_axes - {axis1_name.lower(), axis2_name.lower()})[0]
 
-        plt.figure(f"{axis1_name.upper()}{axis2_name.upper()} points for minAreaRect (Base Frame) - {operation_name}")
+        plt.figure(
+            f"{axis1_name.upper()}{axis2_name.upper()} points for minAreaRect (Base Frame) - {operation_name}"
+        )
         plt.clf()  # Clear previous plot
         plt.scatter(
             points[:, 0],
@@ -400,7 +402,13 @@ class AeraSemiAutonomous(Node):
         center_xy, dimensions_xy, theta_xy = cv2.minAreaRect(xy_points)
         grasp_z = np.mean(points_base_frame[:, 2])
         self._debug_visualize_minarearect(
-            xy_points, center_xy, dimensions_xy, theta_xy, grasp_z, ("x", "y"), operation_name
+            xy_points,
+            center_xy,
+            dimensions_xy,
+            theta_xy,
+            grasp_z,
+            ("x", "y"),
+            operation_name,
         )
 
         # XZ plane (side view)
@@ -408,7 +416,13 @@ class AeraSemiAutonomous(Node):
         if len(xz_points) >= 3:
             center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
             self._debug_visualize_minarearect(
-                xz_points, center_xz, dimensions_xz, theta_xz, center_xy[1], ("x", "z"), operation_name
+                xz_points,
+                center_xz,
+                dimensions_xz,
+                theta_xz,
+                center_xy[1],
+                ("x", "z"),
+                operation_name,
             )
 
         # YZ plane (side view)
@@ -416,7 +430,13 @@ class AeraSemiAutonomous(Node):
         if len(yz_points) >= 3:
             center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
             self._debug_visualize_minarearect(
-                yz_points, center_yz, dimensions_yz, theta_yz, center_xy[0], ("y", "z"), operation_name
+                yz_points,
+                center_yz,
+                dimensions_yz,
+                theta_yz,
+                center_xy[0],
+                ("y", "z"),
+                operation_name,
             )
 
     def _debug_visualize_detections(
@@ -704,6 +724,7 @@ class AeraSemiAutonomous(Node):
                 "No points in point cloud after transform to base frame for pick_object. Check TF or if mask resulted in empty depth."
             )
             return
+        self._debug_visualize_all_minarearects(points_base_frame, "Pick")
 
         z_coords = points_base_frame[:, 2]
         grasp_z = np.mean(z_coords)
@@ -742,7 +763,6 @@ class AeraSemiAutonomous(Node):
                 f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
             return  # No points at all
-        self._debug_visualize_all_minarearects(near_grasp_z_points, "Pick")
 
         xy_points = near_grasp_z_points[:, :2].astype(
             np.float32
@@ -760,10 +780,14 @@ class AeraSemiAutonomous(Node):
             gripper_rotation -= 180
 
         gripper_opening = min(dimensions)
+        gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
+        gripper_pos = min(gripper_pos, 0.0)
+
         grasp_pose = Pose()
         grasp_pose.position.x = center[0] + self.offset_x
         grasp_pose.position.y = center[1] + self.offset_y
         grasp_pose.position.z = grasp_z + self.offset_z
+
         top_down_rot = Rotation.from_quat([0, 1, 0, 0])
         extra_rot = Rotation.from_euler("z", gripper_rotation, degrees=True)
         grasp_quat = (extra_rot * top_down_rot).as_quat()
@@ -777,8 +801,6 @@ class AeraSemiAutonomous(Node):
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
 
-        gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
-        gripper_pos = min(gripper_pos, 0.0)
         self.grasp_at(grasp_pose, gripper_pos)
 
     def grasp_at(self, msg: Pose, gripper_pos: float):
@@ -840,6 +862,8 @@ class AeraSemiAutonomous(Node):
 
         points = np.asarray(pcd.points).astype(np.float32)
 
+        self._debug_visualize_all_minarearects(points, "Release")
+
         if len(points) == 0:
             self.logger.error(
                 "No points in point cloud after transform to base frame for release_above. Check TF or if mask resulted in empty depth."
@@ -848,7 +872,6 @@ class AeraSemiAutonomous(Node):
 
         # release 5cm above the object
         drop_z = np.percentile(points[:, 2], 95) + 0.02
-        median_z = np.median(np.percentile(points[:, 2], 5))
 
         # xy_points = points[points[:, 2] > median_z - 0.01, :2]
         xy_points = points[:, :2]
@@ -861,8 +884,6 @@ class AeraSemiAutonomous(Node):
             return
 
         center, dimensions, theta = cv2.minAreaRect(xy_points)
-
-        self._debug_visualize_all_minarearects(points, "Release")
 
         drop_pose = Pose()
         drop_pose.position.x = center[0] + self.offset_x

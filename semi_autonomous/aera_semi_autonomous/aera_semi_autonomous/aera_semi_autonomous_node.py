@@ -710,66 +710,43 @@ class AeraSemiAutonomous(Node):
 
         self._debug_visualize_masked_depth(masked_depth_image_mm, "Pick")
 
+        # Create point cloud in camera frame
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image_mm),
             self.camera_intrinsics,
         )
 
-        # convert the masked depth image to a point cloud
-        pcd.transform(self.cam_to_base_affine)
-        points_base_frame = np.asarray(pcd.points).astype(np.float32)
+        # Work with points in camera frame first
+        points_camera_frame = np.asarray(pcd.points).astype(np.float32)
 
-        if len(points_base_frame) == 0:
+        if len(points_camera_frame) == 0:
             self.logger.error(
-                "No points in point cloud after transform to base frame for pick_object. Check TF or if mask resulted in empty depth."
+                "No points in point cloud in camera frame for pick_object. Check if mask resulted in empty depth."
             )
             return
-        self._debug_visualize_all_minarearects(points_base_frame, "Pick")
 
-        z_coords = points_base_frame[:, 2]
-        grasp_z = np.mean(z_coords)
-        # top_z_coords = z_coords[z_coords >= np.percentile(z_coords, 50)]
-        # if top_z_coords.size > 1:
-        #     mean_z = np.mean(top_z_coords)
-        #     std_z = np.std(top_z_coords)
-        #     # Discard points more than 1 std from the mean.
-        #     filtered_z_coords = top_z_coords[np.abs(top_z_coords - mean_z) <= std_z]
-        #     if filtered_z_coords.size > 0:
-        #         self.logger.info(
-        #             f"1. Top detection using mean of filtered top z-coords ({filtered_z_coords.size} points) for grasp_z."
-        #         )
-        #         grasp_z = np.mean(filtered_z_coords)
-        #     else:
-        #         # Fallback if all points were filtered out.
-        #         self.logger.info(
-        #             "2. Top detection all top z-coords were outliers. Falling back to mean of unfiltered top z-coords."
-        #         )
-        #         grasp_z = mean_z
-        # else:
-        #     # Fallback if there are no points in the top percentile (e.g., all points are the same).
-        #     self.logger.info(
-        #         "4. Top detection no points in top percentile. Falling back to mean of all z-coords."
-        #     )
-        #     grasp_z = np.mean(z_coords)
+        # Calculate grasp_z in camera frame
+        z_coords = points_camera_frame[:, 2]
+        grasp_z_camera = np.mean(z_coords)
 
-        # Filter points near this top surface
-        # near_grasp_z_points = points_base_frame[
-        #     points_base_frame[:, 2] > grasp_z - 0.01
-        # ]
-        near_grasp_z_points = points_base_frame
+        # Filter points near this top surface in camera frame
+        near_grasp_z_points = points_camera_frame
 
         if len(near_grasp_z_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
                 f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
-            return  # No points at all
+            return
 
-        xy_points = near_grasp_z_points[:, :2].astype(
-            np.float32
-        )  # Get XY coords in base frame
-        center, dimensions, theta = cv2.minAreaRect(
-            xy_points
-        )  # center is (x,y) tuple in base frame
+        # Calculate center in camera frame (XY plane)
+        xy_points_camera = near_grasp_z_points[:, :2].astype(np.float32)
+        center_camera, dimensions, theta = cv2.minAreaRect(xy_points_camera)
+
+        # Create grasp pose in camera frame
+        grasp_pose_camera = np.array([center_camera[0], center_camera[1], grasp_z_camera, 1.0])
+        
+        # Transform grasp pose to base frame
+        grasp_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
         gripper_rotation = theta
         if dimensions[0] > dimensions[1]:
@@ -783,10 +760,11 @@ class AeraSemiAutonomous(Node):
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
 
+        # Create final grasp pose in base frame
         grasp_pose = Pose()
-        grasp_pose.position.x = center[0] + self.offset_x
-        grasp_pose.position.y = center[1] + self.offset_y
-        grasp_pose.position.z = grasp_z + self.offset_z
+        grasp_pose.position.x = grasp_pose_base[0] + self.offset_x
+        grasp_pose.position.y = grasp_pose_base[1] + self.offset_y
+        grasp_pose.position.z = grasp_pose_base[2] + self.offset_z
 
         top_down_rot = Rotation.from_quat([0, 1, 0, 0])
         extra_rot = Rotation.from_euler("z", gripper_rotation, degrees=True)
@@ -797,6 +775,12 @@ class AeraSemiAutonomous(Node):
         grasp_pose.orientation.w = grasp_quat[3]
 
         self._debug_log_pose_info(grasp_pose, gripper_opening, "Grasp")
+
+        # For debug visualization, transform points to base frame
+        if self.debug_visualizations or self.save_debug_images:
+            pcd.transform(self.cam_to_base_affine)
+            points_base_frame = np.asarray(pcd.points).astype(np.float32)
+            self._debug_visualize_all_minarearects(points_base_frame, "Pick")
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update

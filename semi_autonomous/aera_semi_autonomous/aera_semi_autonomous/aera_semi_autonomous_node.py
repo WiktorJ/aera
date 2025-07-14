@@ -776,9 +776,27 @@ class AeraSemiAutonomous(Node):
         # Transform grasp pose to base frame
         grasp_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
-        gripper_rotation = theta
+        # Transform gripper rotation from camera frame to base frame
+        # Extract rotation matrix from camera to base transform
+        cam_to_base_rotation = self.cam_to_base_affine[:3, :3]
+        
+        # Create a unit vector in camera frame representing the gripper orientation
+        gripper_angle_camera = theta
         if dimensions[0] > dimensions[1]:
-            gripper_rotation -= 90
+            gripper_angle_camera -= 90
+            
+        # Convert angle to unit vector in camera frame
+        gripper_vec_camera = np.array([np.cos(np.radians(gripper_angle_camera)), 
+                                      np.sin(np.radians(gripper_angle_camera)), 
+                                      0.0])
+        
+        # Transform the vector to base frame
+        gripper_vec_base = cam_to_base_rotation @ gripper_vec_camera
+        
+        # Convert back to angle in base frame
+        gripper_rotation = np.degrees(np.arctan2(gripper_vec_base[1], gripper_vec_base[0]))
+        
+        # Normalize angle to [-90, 90] range
         if gripper_rotation < -90:
             gripper_rotation += 180
         elif gripper_rotation > 90:

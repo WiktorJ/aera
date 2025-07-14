@@ -413,31 +413,29 @@ class AeraSemiAutonomous(Node):
 
         # XZ plane (side view)
         xz_points = points_base_frame[:, [0, 2]].astype(np.float32)
-        if len(xz_points) >= 3:
-            center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
-            self._debug_visualize_minarearect(
-                xz_points,
-                center_xz,
-                dimensions_xz,
-                theta_xz,
-                center_xy[1],
-                ("x", "z"),
-                operation_name,
-            )
+        center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
+        self._debug_visualize_minarearect(
+            xz_points,
+            center_xz,
+            dimensions_xz,
+            theta_xz,
+            center_xy[1],
+            ("x", "z"),
+            operation_name,
+        )
 
         # YZ plane (side view)
         yz_points = points_base_frame[:, [1, 2]].astype(np.float32)
-        if len(yz_points) >= 3:
-            center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
-            self._debug_visualize_minarearect(
-                yz_points,
-                center_yz,
-                dimensions_yz,
-                theta_yz,
-                center_xy[0],
-                ("y", "z"),
-                operation_name,
-            )
+        center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
+        self._debug_visualize_minarearect(
+            yz_points,
+            center_yz,
+            dimensions_yz,
+            theta_yz,
+            center_xy[0],
+            ("y", "z"),
+            operation_name,
+        )
 
     def _debug_visualize_detections(
         self, image: np.ndarray, detections: sv.Detections, object_classes: List[str]
@@ -884,11 +882,12 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        # release 5cm above the object
-        drop_z = np.percentile(points[:, 2], 95) + 0.02
+        # release 3cm above the object
+        drop_z = np.percentile(points[:, 2], 95) + 0.03
+        median_z = np.median(points[:, 2])
 
-        # xy_points = points[points[:, 2] > median_z - 0.01, :2]
-        xy_points = points[:, :2]
+        xy_points = points[points[:, 2] > median_z - 0.01, :2]
+        # xy_points = points[:, :2]
         xy_points = xy_points.astype(np.float32)
 
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points

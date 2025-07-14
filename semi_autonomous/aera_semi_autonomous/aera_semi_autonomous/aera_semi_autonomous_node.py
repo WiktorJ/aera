@@ -708,15 +708,14 @@ class AeraSemiAutonomous(Node):
         self._debug_visualize_minarearect(
             xy_points, center, dimensions, theta, grasp_z, "Pick"
         )
-        
-        # Debug visualize XZ and YZ projections as well
+
         xz_points = near_grasp_z_points[:, [0, 2]].astype(np.float32)  # X and Z coords
         if len(xz_points) >= 3:
             center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
             self._debug_visualize_minarearect(
                 xz_points, center_xz, dimensions_xz, theta_xz, center[1], "Pick_XZ"
             )
-        
+
         yz_points = near_grasp_z_points[:, [1, 2]].astype(np.float32)  # Y and Z coords
         if len(yz_points) >= 3:
             center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
@@ -838,6 +837,20 @@ class AeraSemiAutonomous(Node):
         self._debug_visualize_minarearect(
             xy_points, center, dimensions, theta, drop_z, "Release"
         )
+
+        xz_points = points[:, [0, 2]].astype(np.float32)  # X and Z coords
+        if len(xz_points) >= 3:
+            center_xz, dimensions_xz, theta_xz = cv2.minAreaRect(xz_points)
+            self._debug_visualize_minarearect(
+                xz_points, center_xz, dimensions_xz, theta_xz, center[1], "Pick_XZ"
+            )
+
+        yz_points = points[:, [1, 2]].astype(np.float32)  # Y and Z coords
+        if len(yz_points) >= 3:
+            center_yz, dimensions_yz, theta_yz = cv2.minAreaRect(yz_points)
+            self._debug_visualize_minarearect(
+                yz_points, center_yz, dimensions_yz, theta_yz, center[0], "Pick_YZ"
+            )
 
         drop_pose = Pose()
         drop_pose.position.x = center[0] + self.offset_x

@@ -574,6 +574,47 @@ class AeraSemiAutonomous(Node):
             self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
             return None
 
+    def _get_pose_and_angle_camera_base(self, points_camera_frame: np.ndarray):
+        # TODO: Try with max
+        grasp_z_camera = np.mean(points_camera_frame[:, 2])
+
+        # Calculate center in camera frame (XY plane)
+        xy_points_camera = points_camera_frame[:, :2].astype(np.float32)
+        center_camera, dimensions, theta = cv2.minAreaRect(xy_points_camera)
+
+        # Create grasp pose in camera frame
+        grasp_pose_camera = np.array(
+            [center_camera[0], center_camera[1], grasp_z_camera, 1.0]
+        )
+
+        # TODO: Try this after change of base
+        gripper_angle_camera = theta
+        if dimensions[0] > dimensions[1]:
+            gripper_angle_camera -= 90
+
+        gripper_opening = min(dimensions)
+
+        return grasp_pose_camera, gripper_angle_camera, gripper_opening
+
+    def _transform_gripper_angle_to_base_frame(self, gripper_angle_camera):
+        gripper_vec_camera = np.array(
+            [
+                np.cos(np.radians(gripper_angle_camera)),
+                np.sin(np.radians(gripper_angle_camera)),
+                0.0,
+            ]
+        )
+        cam_to_base_rotation = self.cam_to_base_affine[:3, :3]
+        # Transform the vector to base frame
+        gripper_vec_base = cam_to_base_rotation @ gripper_vec_camera
+
+        # Convert back to angle in base frame
+        gripper_rotation = np.degrees(
+            np.arctan2(gripper_vec_base[1], gripper_vec_base[0])
+        )
+
+        return gripper_rotation
+
     def start(self, msg: String):
         commands = self._parse_prompt_message(msg.data)
         if not commands:
@@ -714,7 +755,6 @@ class AeraSemiAutonomous(Node):
             self.camera_intrinsics,
         )
 
-        # Work with points in camera frame first
         points_camera_frame = np.asarray(pcd.points).astype(np.float32)
 
         if len(points_camera_frame) < 3:  # minAreaRect needs at least 3 points
@@ -723,54 +763,21 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        # TODO: Try with max
-        grasp_z_camera = np.mean(points_camera_frame[:, 2])
-
-        # Calculate center in camera frame (XY plane)
-        xy_points_camera = points_camera_frame[:, :2].astype(np.float32)
-        center_camera, dimensions, theta = cv2.minAreaRect(xy_points_camera)
-
-        # Create grasp pose in camera frame
-        grasp_pose_camera = np.array(
-            [center_camera[0], center_camera[1], grasp_z_camera, 1.0]
+        grasp_pose_camera, gripper_angle_camera, gripper_opening = (
+            self._get_pose_and_angle_camera_base(points_camera_frame)
         )
-
-        # Transform grasp pose to base frame
         grasp_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
-        # Transform gripper rotation from camera frame to base frame
-        # Extract rotation matrix from camera to base transform
-        cam_to_base_rotation = self.cam_to_base_affine[:3, :3]
-
-        # TODO: Try this after change of base
-        gripper_angle_camera = theta
-        if dimensions[0] > dimensions[1]:
-            gripper_angle_camera -= 90
-
         # Convert angle to unit vector in camera frame
-        gripper_vec_camera = np.array(
-            [
-                np.cos(np.radians(gripper_angle_camera)),
-                np.sin(np.radians(gripper_angle_camera)),
-                0.0,
-            ]
+        gripper_rotation = self._transform_gripper_angle_to_base_frame(
+            gripper_angle_camera
         )
-
-        # Transform the vector to base frame
-        gripper_vec_base = cam_to_base_rotation @ gripper_vec_camera
-
-        # Convert back to angle in base frame
-        gripper_rotation = np.degrees(
-            np.arctan2(gripper_vec_base[1], gripper_vec_base[0])
-        )
-
         # Normalize angle to [-90, 90] range
         if gripper_rotation < -90:
             gripper_rotation += 180
         elif gripper_rotation > 90:
             gripper_rotation -= 180
 
-        gripper_opening = min(dimensions)
         gripper_pos = -gripper_opening / 2.0 * self.gripper_squeeze_factor
         gripper_pos = min(gripper_pos, 0.0)
 
@@ -856,25 +863,11 @@ class AeraSemiAutonomous(Node):
             o3d.geometry.Image(masked_depth_image),
             self.camera_intrinsics,
         )
-        pcd.transform(self.cam_to_base_affine)
-
         points = np.asarray(pcd.points).astype(np.float32)
 
         self._debug_visualize_all_minarearects(points, "Release")
 
-        if len(points) == 0:
-            self.logger.error(
-                "No points in point cloud after transform to base frame for release_above. Check TF or if mask resulted in empty depth."
-            )
-            return
-
-        # release 3cm above the object
-        drop_z = np.percentile(points[:, 2], 95) + 0.03
-        median_z = np.median(points[:, 2])
-
-        xy_points = points[points[:, 2] > median_z - 0.01, :2]
-        # xy_points = points[:, :2]
-        xy_points = xy_points.astype(np.float32)
+        xy_points = points[:, :2]
 
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
@@ -882,12 +875,16 @@ class AeraSemiAutonomous(Node):
             )
             return
 
-        center, dimensions, theta = cv2.minAreaRect(xy_points)
+        center_camera, _, _ = cv2.minAreaRect(xy_points)
+        drop_z = np.percentile(points[:, 2], 95) + 0.022
+        grasp_pose_camera = np.array([center_camera[0], center_camera[1], drop_z, 1.0])
+        drop_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
         drop_pose = Pose()
-        drop_pose.position.x = center[0] + self.offset_x
-        drop_pose.position.y = center[1] + self.offset_y
-        drop_pose.position.z = drop_z + self.offset_z
+        drop_pose.position.x = drop_pose_base[0] + self.offset_x
+        drop_pose.position.y = drop_pose_base[1] + self.offset_y
+        drop_pose.position.z = drop_pose_base[2] + self.offset_z
+
         # Straight down pose
         drop_pose.orientation.x = 0.0
         drop_pose.orientation.y = 1.0

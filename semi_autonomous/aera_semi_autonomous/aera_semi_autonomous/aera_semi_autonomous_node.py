@@ -757,6 +757,8 @@ class AeraSemiAutonomous(Node):
 
         points_camera_frame = np.asarray(pcd.points).astype(np.float32)
 
+        self._debug_visualize_all_minarearects(points_camera_frame, "Pick_Camera")
+
         if len(points_camera_frame) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
                 f"Not enough points ({len(points_camera_frame)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
@@ -797,11 +799,10 @@ class AeraSemiAutonomous(Node):
 
         self._debug_log_pose_info(grasp_pose, gripper_opening, "Grasp")
 
-        # For debug visualization, transform points to base frame
         if self.debug_visualizations or self.save_debug_images:
             pcd.transform(self.cam_to_base_affine)
             points_base_frame = np.asarray(pcd.points).astype(np.float32)
-            self._debug_visualize_all_minarearects(points_base_frame, "Pick")
+            self._debug_visualize_all_minarearects(points_base_frame, "Pick_Base")
 
         if self.debug_visualizations:
             cv2.waitKey(1)  # Give OpenCV windows a chance to update
@@ -865,7 +866,7 @@ class AeraSemiAutonomous(Node):
         )
         points = np.asarray(pcd.points).astype(np.float32)
 
-        self._debug_visualize_all_minarearects(points, "Release")
+        self._debug_visualize_all_minarearects(points, "Release_Camera")
 
         xy_points = points[:, :2]
 
@@ -876,7 +877,7 @@ class AeraSemiAutonomous(Node):
             return
 
         center_camera, _, _ = cv2.minAreaRect(xy_points)
-        drop_z = np.percentile(points[:, 2], 95) + 0.022
+        drop_z = np.percentile(points[:, 2], 95) + 0.02
         grasp_pose_camera = np.array([center_camera[0], center_camera[1], drop_z, 1.0])
         drop_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
@@ -892,6 +893,10 @@ class AeraSemiAutonomous(Node):
         drop_pose.orientation.w = 0.0
 
         self._debug_log_pose_info(drop_pose, operation_name="Drop")
+        if self.debug_visualizations or self.save_debug_images:
+            pcd.transform(self.cam_to_base_affine)
+            points_base_frame = np.asarray(pcd.points).astype(np.float32)
+            self._debug_visualize_all_minarearects(points_base_frame, "Release_Base")
 
         self.release_at(drop_pose)
 

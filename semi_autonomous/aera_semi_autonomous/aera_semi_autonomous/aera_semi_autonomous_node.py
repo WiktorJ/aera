@@ -87,8 +87,8 @@ class AeraSemiAutonomous(Node):
     def __init__(self):
         super().__init__("aera_semi_autonomous_node")
 
-        self.declare_parameter("offset_x", 0.04)
-        self.declare_parameter("offset_y", 0.025)
+        self.declare_parameter("offset_x", 0.045)
+        self.declare_parameter("offset_y", 0.05)
         self.declare_parameter("offset_z", 0.1)
         self.declare_parameter("gripper_squeeze_factor", 0.2)
         self.declare_parameter("debug_mode", False)
@@ -717,26 +717,17 @@ class AeraSemiAutonomous(Node):
         # Work with points in camera frame first
         points_camera_frame = np.asarray(pcd.points).astype(np.float32)
 
-        if len(points_camera_frame) == 0:
+        if len(points_camera_frame) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
-                "No points in point cloud in camera frame for pick_object. Check if mask resulted in empty depth."
+                f"Not enough points ({len(points_camera_frame)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
             return
 
-        # Calculate grasp_z in camera frame
-        z_coords = points_camera_frame[:, 2]
-        grasp_z_camera = np.mean(z_coords)
-
-        near_grasp_z_points = points_camera_frame
-
-        if len(near_grasp_z_points) < 3:  # minAreaRect needs at least 3 points
-            self.logger.error(
-                f"Not enough points ({len(near_grasp_z_points)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
-            )
-            return
+        # TODO: Try with max
+        grasp_z_camera = np.mean(points_camera_frame[:, 2])
 
         # Calculate center in camera frame (XY plane)
-        xy_points_camera = near_grasp_z_points[:, :2].astype(np.float32)
+        xy_points_camera = points_camera_frame[:, :2].astype(np.float32)
         center_camera, dimensions, theta = cv2.minAreaRect(xy_points_camera)
 
         # Create grasp pose in camera frame
@@ -751,7 +742,7 @@ class AeraSemiAutonomous(Node):
         # Extract rotation matrix from camera to base transform
         cam_to_base_rotation = self.cam_to_base_affine[:3, :3]
 
-        # Create a unit vector in camera frame representing the gripper orientation
+        # TODO: Try this after change of base
         gripper_angle_camera = theta
         if dimensions[0] > dimensions[1]:
             gripper_angle_camera -= 90

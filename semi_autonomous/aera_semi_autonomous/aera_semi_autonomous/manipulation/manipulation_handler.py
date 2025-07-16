@@ -4,9 +4,19 @@ from scipy.spatial.transform import Rotation
 
 
 class ManipulationHandler:
-    def __init__(self, point_cloud_processor, robot_controller, debug_utils, 
-                 camera_intrinsics, cam_to_base_affine, offset_x, offset_y, offset_z, 
-                 gripper_squeeze_factor, n_frames_processed=0):
+    def __init__(
+        self,
+        point_cloud_processor,
+        robot_controller,
+        debug_utils,
+        camera_intrinsics,
+        cam_to_base_affine,
+        offset_x,
+        offset_y,
+        offset_z,
+        gripper_squeeze_factor,
+        n_frames_processed=0,
+    ):
         self.point_cloud_processor = point_cloud_processor
         self.robot_controller = robot_controller
         self.debug_utils = debug_utils
@@ -31,21 +41,27 @@ class ManipulationHandler:
             )
             return
 
-        self.debug_utils.debug_visualize_selected_mask(detections, object_index, "Pick", None)
+        self.debug_utils.debug_visualize_selected_mask(
+            detections, object_index, "Pick", None
+        )
 
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image_mm[mask] = depth_image[mask]  # Apply mask
         masked_depth_image_mm /= 1000.0
 
-        self.debug_utils.debug_visualize_masked_depth(masked_depth_image_mm, "Pick", self.n_frames_processed)
+        self.debug_utils.debug_visualize_masked_depth(
+            masked_depth_image_mm, "Pick", self.n_frames_processed
+        )
 
         # Create point cloud in camera frame
         points_camera_frame = self.point_cloud_processor.create_point_cloud_from_depth(
             masked_depth_image_mm, self.camera_intrinsics
         )
 
-        self.debug_utils.debug_visualize_all_minarearects(points_camera_frame, "Pick_Camera", self.n_frames_processed)
+        self.debug_utils.debug_visualize_all_minarearects(
+            points_camera_frame, "Pick_Camera", self.n_frames_processed
+        )
 
         if len(points_camera_frame) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(
@@ -54,13 +70,17 @@ class ManipulationHandler:
             return
 
         grasp_pose_camera, gripper_angle_camera, gripper_opening = (
-            self.point_cloud_processor.get_pose_and_angle_camera_base(points_camera_frame)
+            self.point_cloud_processor.get_pose_and_angle_camera_base(
+                points_camera_frame
+            )
         )
         grasp_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
         # Convert angle to unit vector in camera frame
-        gripper_rotation = self.point_cloud_processor.transform_gripper_angle_to_base_frame(
-            gripper_angle_camera, self.cam_to_base_affine
+        gripper_rotation = (
+            self.point_cloud_processor.transform_gripper_angle_to_base_frame(
+                gripper_angle_camera, self.cam_to_base_affine
+            )
         )
         # Normalize angle to [-90, 90] range
         if gripper_rotation < -90:
@@ -89,12 +109,16 @@ class ManipulationHandler:
 
         if self.debug_utils.debug_visualizations or self.debug_utils.save_debug_images:
             # Transform points to base frame for visualization
-            points_base_frame = np.column_stack([
-                points_camera_frame, 
-                np.ones(len(points_camera_frame))
-            ]) @ self.cam_to_base_affine.T
+            points_base_frame = (
+                np.column_stack(
+                    [points_camera_frame, np.ones(len(points_camera_frame))]
+                )
+                @ self.cam_to_base_affine.T
+            )
             points_base_frame = points_base_frame[:, :3]
-            self.debug_utils.debug_visualize_all_minarearects(points_base_frame, "Pick_Base", self.n_frames_processed)
+            self.debug_utils.debug_visualize_all_minarearects(
+                points_base_frame, "Pick_Base", self.n_frames_processed
+            )
 
         self.robot_controller.grasp_at(grasp_pose, gripper_pos)
 
@@ -110,21 +134,27 @@ class ManipulationHandler:
             )
             return
 
-        self.debug_utils.debug_visualize_selected_mask(detections, object_index, "Release", None)
+        self.debug_utils.debug_visualize_selected_mask(
+            detections, object_index, "Release", None
+        )
 
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)
         mask = detections.mask[object_index]
         masked_depth_image[mask] = depth_image[mask]
         masked_depth_image /= 1000.0
 
-        self.debug_utils.debug_visualize_masked_depth(masked_depth_image, "Release", self.n_frames_processed)
+        self.debug_utils.debug_visualize_masked_depth(
+            masked_depth_image, "Release", self.n_frames_processed
+        )
 
         # convert the masked depth image to a point cloud
         points = self.point_cloud_processor.create_point_cloud_from_depth(
             masked_depth_image, self.camera_intrinsics
         )
 
-        self.debug_utils.debug_visualize_all_minarearects(points, "Release_Camera", self.n_frames_processed)
+        self.debug_utils.debug_visualize_all_minarearects(
+            points, "Release_Camera", self.n_frames_processed
+        )
 
         grasp_pose_camera = self.point_cloud_processor.get_drop_pose_from_points(points)
         if grasp_pose_camera is None:
@@ -146,11 +176,13 @@ class ManipulationHandler:
         self.debug_utils.debug_log_pose_info(drop_pose, operation_name="Drop")
         if self.debug_utils.debug_visualizations or self.debug_utils.save_debug_images:
             # Transform points to base frame for visualization
-            points_base_frame = np.column_stack([
-                points, 
-                np.ones(len(points))
-            ]) @ self.cam_to_base_affine.T
+            points_base_frame = (
+                np.column_stack([points, np.ones(len(points))])
+                @ self.cam_to_base_affine.T
+            )
             points_base_frame = points_base_frame[:, :3]
-            self.debug_utils.debug_visualize_all_minarearects(points_base_frame, "Release_Base", self.n_frames_processed)
+            self.debug_utils.debug_visualize_all_minarearects(
+                points_base_frame, "Release_Base", self.n_frames_processed
+            )
 
         self.robot_controller.release_at(drop_pose)

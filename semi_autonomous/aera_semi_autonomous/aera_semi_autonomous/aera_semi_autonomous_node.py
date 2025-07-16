@@ -38,13 +38,23 @@ class AeraSemiAutonomous(Node):
         self.declare_parameter("debug_mode", False)
 
         # Get parameter values
-        self.offset_x = self.get_parameter("offset_x").get_parameter_value().double_value
-        self.offset_y = self.get_parameter("offset_y").get_parameter_value().double_value
-        self.offset_z = self.get_parameter("offset_z").get_parameter_value().double_value
-        self.gripper_squeeze_factor = (
-            self.get_parameter("gripper_squeeze_factor").get_parameter_value().double_value
+        self.offset_x = (
+            self.get_parameter("offset_x").get_parameter_value().double_value
         )
-        self.debug_mode = self.get_parameter("debug_mode").get_parameter_value().bool_value
+        self.offset_y = (
+            self.get_parameter("offset_y").get_parameter_value().double_value
+        )
+        self.offset_z = (
+            self.get_parameter("offset_z").get_parameter_value().double_value
+        )
+        self.gripper_squeeze_factor = (
+            self.get_parameter("gripper_squeeze_factor")
+            .get_parameter_value()
+            .double_value
+        )
+        self.debug_mode = (
+            self.get_parameter("debug_mode").get_parameter_value().bool_value
+        )
 
         # Initialize basic components
         self.logger = self.get_logger()
@@ -64,9 +74,16 @@ class AeraSemiAutonomous(Node):
 
         # Initialize arm joint names
         self.arm_joint_names = [
-            "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"
+            "joint_1",
+            "joint_2",
+            "joint_3",
+            "joint_4",
+            "joint_5",
+            "joint_6",
         ]
-        self.arm_joint_names = [f"{_TF_PREFIX}{joint_name}" for joint_name in self.arm_joint_names]
+        self.arm_joint_names = [
+            f"{_TF_PREFIX}{joint_name}" for joint_name in self.arm_joint_names
+        ]
 
         # Initialize TF components
         self.tf_buffer = tf2_ros.Buffer()
@@ -79,9 +96,7 @@ class AeraSemiAutonomous(Node):
             self, self.arm_joint_names, _TF_PREFIX, self.debug_mode
         )
         self.debug_utils = DebugUtils(
-            self.logger, 
-            save_debug_images=True, 
-            debug_visualizations=False
+            self.logger, save_debug_images=True, debug_visualizations=False
         )
         self.command_processor = CommandProcessor(self.logger)
 
@@ -92,7 +107,7 @@ class AeraSemiAutonomous(Node):
             self._camera_info_callback,
             10,
         )
-        
+
         # Create delayed subscriptions
         self.image_sub = None
         self.depth_sub = None
@@ -106,7 +121,7 @@ class AeraSemiAutonomous(Node):
             10,
             callback_group=prompt_callback_group,
         )
-        
+
         self.logger.info("Aera Semi Autonomous node initialized.")
 
     def _create_delayed_image_subscription(self):
@@ -149,7 +164,7 @@ class AeraSemiAutonomous(Node):
         """Initialize the manipulation handler with current parameters."""
         if self.camera_intrinsics is None:
             return None
-        
+
         return ManipulationHandler(
             self.point_cloud_processor,
             self.robot_controller,
@@ -176,7 +191,9 @@ class AeraSemiAutonomous(Node):
         # Initialize manipulation handler
         manipulation_handler = self._initialize_manipulation_handler()
         if manipulation_handler is None:
-            self.logger.error("Cannot initialize manipulation handler without camera intrinsics.")
+            self.logger.error(
+                "Cannot initialize manipulation handler without camera intrinsics."
+            )
             return
 
         for action, object_to_detect in commands:
@@ -194,7 +211,7 @@ class AeraSemiAutonomous(Node):
             self.logger.info(
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
-            
+
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(
                 action,
@@ -209,7 +226,6 @@ class AeraSemiAutonomous(Node):
 
         self.robot_controller.go_home()
         self.logger.info("Task completed.")
-
 
     @cached_property
     def cam_to_base_affine(self):
@@ -239,7 +255,6 @@ class AeraSemiAutonomous(Node):
         affine[:3, :3] = cam_to_base_rot.as_matrix()
         affine[:3, 3] = cam_to_base_pos
         return affine
-
 
     def depth_callback(self, msg):
         """Callback for depth image messages."""

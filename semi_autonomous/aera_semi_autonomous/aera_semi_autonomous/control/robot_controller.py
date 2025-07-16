@@ -2,6 +2,7 @@ import time
 from geometry_msgs.msg import Pose, PoseStamped
 from pymoveit2 import GripperInterface, MoveIt2
 from scipy.spatial.transform import Rotation
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 from ..config.constants import BASE_LINK_NAME
 
@@ -11,7 +12,10 @@ class RobotController:
         self.node = node
         self.logger = node.get_logger()
         self.debug_mode = debug_mode
-        
+
+        arm_callback_group = ReentrantCallbackGroup()
+        gripper_callback_group = ReentrantCallbackGroup()
+
         # Initialize MoveIt2 interface
         self.moveit2 = MoveIt2(
             node=node,
@@ -19,9 +23,10 @@ class RobotController:
             base_link_name=BASE_LINK_NAME,
             end_effector_name=f"{tf_prefix}link_6",
             group_name="ar_manipulator",
+            callback_group=arm_callback_group,
         )
         self.moveit2.planner_id = "RRTConnectkConfigDefault"
-        
+
         # Initialize gripper interface
         self.gripper_interface = GripperInterface(
             node=node,
@@ -30,6 +35,7 @@ class RobotController:
             closed_gripper_joint_positions=[0.0],
             gripper_group_name="ar_gripper",
             gripper_command_action_name="/gripper_controller/gripper_cmd",
+            callback_group=gripper_callback_group,
         )
 
     def move_to(self, pose: Pose):
@@ -37,7 +43,7 @@ class RobotController:
         if self.moveit2.joint_state is None:
             self.logger.error("Cannot move, arm joint state is not available.")
             return
-        
+
         self.logger.info(
             f"Joint states before move: {self.moveit2.joint_state.position}"
         )
@@ -67,7 +73,7 @@ class RobotController:
         self.logger.info(f"Grasp at: {pose} with opening: {gripper_pos}")
         if self.debug_mode:
             return
-        
+
         self.release_gripper()
 
         # move 5cm above the item first
@@ -108,7 +114,7 @@ class RobotController:
         if self.moveit2.joint_state is None:
             self.logger.error("Cannot go home, arm joint state is not available.")
             return
-        
+
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         trajectory = self.moveit2.plan(
             joint_positions=joint_positions,

@@ -1,10 +1,11 @@
 import time
 from geometry_msgs.msg import Pose, PoseStamped
 from pymoveit2 import GripperInterface, MoveIt2
-from scipy.spatial.transform import Rotation
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.time import Time
+from scipy.spatial.transform import Rotation
+from sensor_msgs.msg import JointState
 
 from ..config.constants import BASE_LINK_NAME
 
@@ -121,7 +122,6 @@ class RobotController:
             joint_state = self.moveit2.joint_state
         else:
             # Create joint state from provided positions
-            from sensor_msgs.msg import JointState
             joint_state = JointState()
             joint_state.name = self.node.arm_joint_names
             joint_state.position = joint_positions
@@ -148,7 +148,6 @@ class RobotController:
                 timeout=Duration(seconds=1.0)
             )
             
-            from geometry_msgs.msg import Pose
             pose = Pose()
             pose.position.x = transform.transform.translation.x
             pose.position.y = transform.transform.translation.y

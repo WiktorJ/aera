@@ -68,8 +68,8 @@ class AeraSemiAutonomous(Node):
         self.image_height = None
         
         # Feedback tracking for infrequent logging
-        self._feedback_call_count = 0
-        self._feedback_log_interval = 100  # Log every 100 feedback calls
+        self._last_feedback_log_time = 0.0
+        self._feedback_log_interval_seconds = 5.0  # Log every 5 seconds
 
         # Initialize callback groups
         arm_callback_group = ReentrantCallbackGroup()
@@ -130,9 +130,10 @@ class AeraSemiAutonomous(Node):
 
     def _moveit_feedback_callback(self, feedback):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
-        self._feedback_call_count += 1
-        if self._feedback_call_count % self._feedback_log_interval == 0:
-            self.logger.info(f"MoveIt2 feedback (call #{self._feedback_call_count}): {feedback}")
+        current_time = time.time()
+        if current_time - self._last_feedback_log_time >= self._feedback_log_interval_seconds:
+            self.logger.info(f"MoveIt2 feedback: {feedback}")
+            self._last_feedback_log_time = current_time
 
     def _create_delayed_image_subscription(self):
         """Create the image subscription after a delay."""

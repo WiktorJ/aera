@@ -66,6 +66,10 @@ class AeraSemiAutonomous(Node):
         self.camera_intrinsics = None
         self.image_width = None
         self.image_height = None
+        
+        # Feedback tracking for infrequent logging
+        self._feedback_call_count = 0
+        self._feedback_log_interval = 100  # Log every 100 feedback calls
 
         # Initialize callback groups
         arm_callback_group = ReentrantCallbackGroup()
@@ -93,7 +97,7 @@ class AeraSemiAutonomous(Node):
         self.object_detector = ObjectDetector(self.logger)
         self.point_cloud_processor = PointCloudProcessor(self.logger)
         self.robot_controller = RobotController(
-            self, self.arm_joint_names, _TF_PREFIX, self.debug_mode
+            self, self.arm_joint_names, _TF_PREFIX, self.debug_mode, self._moveit_feedback_callback
         )
         self.debug_utils = DebugUtils(
             self.logger, save_debug_images=True, debug_visualizations=False
@@ -123,6 +127,12 @@ class AeraSemiAutonomous(Node):
         )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
+
+    def _moveit_feedback_callback(self, feedback):
+        """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
+        self._feedback_call_count += 1
+        if self._feedback_call_count % self._feedback_log_interval == 0:
+            self.logger.info(f"MoveIt2 feedback (call #{self._feedback_call_count}): {feedback}")
 
     def _create_delayed_image_subscription(self):
         """Create the image subscription after a delay."""

@@ -8,10 +8,11 @@ from ..config.constants import BASE_LINK_NAME
 
 
 class RobotController:
-    def __init__(self, node, arm_joint_names, tf_prefix, debug_mode=False):
+    def __init__(self, node, arm_joint_names, tf_prefix, debug_mode=False, feedback_callback=None):
         self.node = node
         self.logger = node.get_logger()
         self.debug_mode = debug_mode
+        self.feedback_callback = feedback_callback
 
         arm_callback_group = ReentrantCallbackGroup()
         gripper_callback_group = ReentrantCallbackGroup()
@@ -56,7 +57,7 @@ class RobotController:
             pose=pose_goal, start_joint_state=self.moveit2.joint_state
         )
         if trajectory:
-            self.moveit2.execute(trajectory)
+            self.moveit2.execute(trajectory, feedback_callable=self.feedback_callback)
             self.moveit2.wait_until_executed()
         else:
             self.logger.error("Failed to plan trajectory for move_to.")
@@ -123,7 +124,7 @@ class RobotController:
             start_joint_state=self.moveit2.joint_state,
         )
         if trajectory:
-            self.moveit2.execute(trajectory)
+            self.moveit2.execute(trajectory, feedback_callable=self.feedback_callback)
             self.moveit2.wait_until_executed()
         else:
             self.logger.error("Failed to plan trajectory for go_home.")

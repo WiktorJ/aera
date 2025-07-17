@@ -3,6 +3,8 @@ from geometry_msgs.msg import Pose, PoseStamped
 from pymoveit2 import GripperInterface, MoveIt2
 from scipy.spatial.transform import Rotation
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.duration import Duration
+from rclpy.time import Time
 
 from ..config.constants import BASE_LINK_NAME
 
@@ -13,6 +15,7 @@ class RobotController:
         self.logger = node.get_logger()
         self.debug_mode = debug_mode
         self.feedback_callback = feedback_callback
+        self.tf_prefix = tf_prefix
 
         arm_callback_group = ReentrantCallbackGroup()
         gripper_callback_group = ReentrantCallbackGroup()
@@ -107,6 +110,55 @@ class RobotController:
             return
         self.move_to(pose)
         self.release_gripper()
+
+    def compute_end_effector_pose(self, joint_positions=None):
+        """Compute end-effector pose from joint positions using MoveIt2 forward kinematics."""
+        if joint_positions is None:
+            # Use current joint state if no specific positions provided
+            if self.moveit2.joint_state is None:
+                self.logger.error("Joint state not available for FK computation")
+                return None
+            joint_state = self.moveit2.joint_state
+        else:
+            # Create joint state from provided positions
+            from sensor_msgs.msg import JointState
+            joint_state = JointState()
+            joint_state.name = self.node.arm_joint_names
+            joint_state.position = joint_positions
+
+        # Compute forward kinematics using MoveIt2
+        pose_stamped = self.moveit2.compute_fk(
+            joint_state=joint_state,
+            fk_link_names=[f"{self.tf_prefix}link_6"]
+        )
+        
+        if pose_stamped:
+            return pose_stamped.pose if hasattr(pose_stamped, 'pose') else pose_stamped[0].pose
+        else:
+            self.logger.error("Failed to compute forward kinematics")
+            return None
+
+    def get_current_end_effector_pose(self):
+        """Get current end-effector pose using TF."""
+        try:
+            transform = self.node.tf_buffer.lookup_transform(
+                target_frame=BASE_LINK_NAME,
+                source_frame=f"{self.tf_prefix}link_6",
+                time=self.node.get_clock().now(),
+                timeout=Duration(seconds=1.0)
+            )
+            
+            from geometry_msgs.msg import Pose
+            pose = Pose()
+            pose.position.x = transform.transform.translation.x
+            pose.position.y = transform.transform.translation.y
+            pose.position.z = transform.transform.translation.z
+            pose.orientation = transform.transform.rotation
+            
+            return pose
+        except Exception as e:
+            self.logger.error(f"Failed to get end-effector pose via TF: {e}")
+            return None
 
     def go_home(self):
         """Move the robot arm to the home position."""

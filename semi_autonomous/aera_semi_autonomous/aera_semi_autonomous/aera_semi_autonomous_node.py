@@ -91,7 +91,10 @@ class AeraSemiAutonomous(Node):
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Initialize modular components
-        self.object_detector = ObjectDetector(self.logger)
+        self.debug_utils = DebugUtils(
+            self.logger, save_debug_images=True, debug_visualizations=False
+        )
+        self.object_detector = ObjectDetector(self.logger, self.debug_utils)
         self.point_cloud_processor = PointCloudProcessor(self.logger)
         self.robot_controller = RobotController(
             self,
@@ -99,9 +102,6 @@ class AeraSemiAutonomous(Node):
             _TF_PREFIX,
             self.debug_mode,
             self._moveit_feedback_callback,
-        )
-        self.debug_utils = DebugUtils(
-            self.logger, save_debug_images=True, debug_visualizations=False
         )
         self.command_processor = CommandProcessor(self.logger)
 

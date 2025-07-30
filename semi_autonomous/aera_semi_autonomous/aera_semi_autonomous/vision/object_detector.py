@@ -33,8 +33,9 @@ def segment(
 
 
 class ObjectDetector:
-    def __init__(self, logger):
+    def __init__(self, logger, debug_utils=None):
         self.logger = logger
+        self.debug_utils = debug_utils
         
         # Initialize GroundingDINO model
         self.grounding_dino_model = Model(
@@ -90,4 +91,11 @@ class ObjectDetector:
 
         self.logger.info(f"Detected {detections}.")
         self.logger.info(f"detection confidence: {detections.confidence}")
+        
+        # Debug visualization
+        if self.debug_utils and (self.debug_utils.debug_visualizations or self.debug_utils.save_debug_images):
+            self.debug_utils.debug_visualize_detections(
+                image, detections, object_classes, frame_count=0
+            )
+        
         return detections

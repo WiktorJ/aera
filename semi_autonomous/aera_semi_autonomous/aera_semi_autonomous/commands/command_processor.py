@@ -1,8 +1,13 @@
 import yaml
 import logging
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 import numpy as np
 from sensor_msgs.msg import Image
+
+if TYPE_CHECKING:
+    from aera_semi_autonomous.vision.object_detector import ObjectDetector
+    from aera_semi_autonomous.control.robot_controller import RobotController
+    from aera_semi_autonomous.manipulation.manipulation_handler import ManipulationHandler
 
 from aera_semi_autonomous.config.constants import (
     _AVAILABLE_ACTIONS,

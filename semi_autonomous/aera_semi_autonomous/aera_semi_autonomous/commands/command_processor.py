@@ -2,7 +2,7 @@ import yaml
 import logging
 from typing import List, Tuple, Optional
 
-from ..config.constants import (
+from aera_semi_autonomous.config.constants import (
     _AVAILABLE_ACTIONS,
     _PICK_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,

@@ -7,7 +7,7 @@ from groundingdino.util.inference import Model
 from segment_anything import SamPredictor, sam_model_registry
 from typing import List
 
-from ..config.constants import (
+from aera_semi_autonomous.config.constants import (
     DEVICE,
     GROUNDING_DINO_CONFIG_PATH,
     GROUNDING_DINO_CHECKPOINT_PATH,

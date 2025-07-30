@@ -16,13 +16,13 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import String
 
-from .config.constants import _TF_PREFIX, BASE_LINK_NAME
-from .vision.object_detector import ObjectDetector
-from .vision.point_cloud_processor import PointCloudProcessor
-from .control.robot_controller import RobotController
-from .utils.debug_utils import DebugUtils
-from .commands.command_processor import CommandProcessor
-from .manipulation.manipulation_handler import ManipulationHandler
+from aera_semi_autonomous.config.constants import _TF_PREFIX, BASE_LINK_NAME
+from aera_semi_autonomous.vision.object_detector import ObjectDetector
+from aera_semi_autonomous.vision.point_cloud_processor import PointCloudProcessor
+from aera_semi_autonomous.control.robot_controller import RobotController
+from aera_semi_autonomous.utils.debug_utils import DebugUtils
+from aera_semi_autonomous.commands.command_processor import CommandProcessor
+from aera_semi_autonomous.manipulation.manipulation_handler import ManipulationHandler
 
 
 class AeraSemiAutonomous(Node):

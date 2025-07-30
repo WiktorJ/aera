@@ -7,7 +7,7 @@ from rclpy.time import Time
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import JointState
 
-from ..config.constants import BASE_LINK_NAME
+from aera_semi_autonomous.config.constants import BASE_LINK_NAME
 
 
 class RobotController:

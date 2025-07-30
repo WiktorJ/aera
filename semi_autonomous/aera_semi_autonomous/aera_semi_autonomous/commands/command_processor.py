@@ -1,6 +1,8 @@
 import yaml
 import logging
 from typing import List, Tuple, Optional
+import numpy as np
+from sensor_msgs.msg import Image
 
 from aera_semi_autonomous.config.constants import (
     _AVAILABLE_ACTIONS,
@@ -53,13 +55,13 @@ class CommandProcessor:
         self,
         tool_call: str,
         object_to_detect: str,
-        object_detector,
-        robot_controller,
-        manipulation_handler,
-        rgb_image,
-        depth_image,
+        object_detector: 'ObjectDetector',
+        robot_controller: 'RobotController', 
+        manipulation_handler: 'ManipulationHandler',
+        rgb_image: np.ndarray,
+        depth_image: np.ndarray,
         object_in_gripper: bool,
-        last_rgb_msg=None,
+        last_rgb_msg: Optional[Image] = None,
     ) -> bool:
         """Handle a single tool call and return updated object_in_gripper status."""
         if tool_call == _PICK_OBJECT:

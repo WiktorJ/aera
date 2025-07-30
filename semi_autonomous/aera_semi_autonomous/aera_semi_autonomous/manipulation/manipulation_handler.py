@@ -29,7 +29,7 @@ class ManipulationHandler:
         self.n_frames_processed = n_frames_processed
         self.logger = robot_controller.logger
 
-    def pick_object(self, object_index: int, detections, depth_image: np.ndarray):
+    def pick_object(self, object_index: int, detections, depth_image: np.ndarray, last_rgb_msg=None):
         """Perform a top-down grasp on the object."""
         if (
             detections is None
@@ -42,7 +42,7 @@ class ManipulationHandler:
             return
 
         self.debug_utils.debug_visualize_selected_mask(
-            detections, object_index, "Pick", None
+            detections, object_index, "Pick", last_rgb_msg
         )
 
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
@@ -122,7 +122,7 @@ class ManipulationHandler:
 
         self.robot_controller.grasp_at(grasp_pose, gripper_pos)
 
-    def release_above(self, object_index: int, detections, depth_image: np.ndarray):
+    def release_above(self, object_index: int, detections, depth_image: np.ndarray, last_rgb_msg=None):
         """Move the robot arm above the object and release the gripper."""
         if (
             detections is None
@@ -135,7 +135,7 @@ class ManipulationHandler:
             return
 
         self.debug_utils.debug_visualize_selected_mask(
-            detections, object_index, "Release", None
+            detections, object_index, "Release", last_rgb_msg
         )
 
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)

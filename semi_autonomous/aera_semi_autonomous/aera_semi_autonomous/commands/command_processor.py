@@ -59,6 +59,7 @@ class CommandProcessor:
         rgb_image,
         depth_image,
         object_in_gripper: bool,
+        last_rgb_msg=None,
     ) -> bool:
         """Handle a single tool call and return updated object_in_gripper status."""
         if tool_call == _PICK_OBJECT:
@@ -72,7 +73,7 @@ class CommandProcessor:
                 logging.error("Object in gripper")
                 return object_in_gripper
 
-            manipulation_handler.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image)
+            manipulation_handler.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg)
             return True
             
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
@@ -82,7 +83,7 @@ class CommandProcessor:
                     f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )
                 return object_in_gripper
-            manipulation_handler.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image)
+            manipulation_handler.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg)
             return False
             
         elif tool_call == _RELEASE_GRIPPER:

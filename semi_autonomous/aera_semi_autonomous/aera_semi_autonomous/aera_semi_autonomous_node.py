@@ -7,7 +7,7 @@ import open3d as o3d
 import rclpy
 import tf2_ros
 from cv_bridge import CvBridge
-from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -16,7 +16,6 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import String
 
-from .point_cloud_conversion import point_cloud_to_msg
 from .config.constants import _TF_PREFIX, BASE_LINK_NAME
 from .vision.object_detector import ObjectDetector
 from .vision.point_cloud_processor import PointCloudProcessor
@@ -66,14 +65,12 @@ class AeraSemiAutonomous(Node):
         self.camera_intrinsics = None
         self.image_width = None
         self.image_height = None
-        
+
         # Feedback tracking for infrequent logging
         self._last_feedback_log_time = 0.0
         self._feedback_log_interval_seconds = 5.0  # Log every 5 seconds
 
         # Initialize callback groups
-        arm_callback_group = ReentrantCallbackGroup()
-        gripper_callback_group = ReentrantCallbackGroup()
         prompt_callback_group = MutuallyExclusiveCallbackGroup()
 
         # Initialize arm joint names
@@ -97,7 +94,11 @@ class AeraSemiAutonomous(Node):
         self.object_detector = ObjectDetector(self.logger)
         self.point_cloud_processor = PointCloudProcessor(self.logger)
         self.robot_controller = RobotController(
-            self, self.arm_joint_names, _TF_PREFIX, self.debug_mode, self._moveit_feedback_callback
+            self,
+            self.arm_joint_names,
+            _TF_PREFIX,
+            self.debug_mode,
+            self._moveit_feedback_callback,
         )
         self.debug_utils = DebugUtils(
             self.logger, save_debug_images=True, debug_visualizations=False
@@ -131,7 +132,11 @@ class AeraSemiAutonomous(Node):
     def _moveit_feedback_callback(self, feedback):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
         current_time = time.time()
-        if current_time - self._last_feedback_log_time >= self._feedback_log_interval_seconds:
+        if (
+            current_time - self._last_feedback_log_time
+            >= self._feedback_log_interval_seconds
+        ):
+            self.logger.info(f"MoveIt2 feedback arg type: {type(feedback)}")
             self.logger.info(f"MoveIt2 feedback: {feedback}")
             self._last_feedback_log_time = current_time
 

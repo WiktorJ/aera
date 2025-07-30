@@ -1,22 +1,30 @@
+from typing import Optional
 import numpy as np
 from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation
+import open3d as o3d
+import supervision as sv
+from sensor_msgs.msg import Image
+
+from aera_semi_autonomous.vision.point_cloud_processor import PointCloudProcessor
+from aera_semi_autonomous.control.robot_controller import RobotController
+from aera_semi_autonomous.utils.debug_utils import DebugUtils
 
 
 class ManipulationHandler:
     def __init__(
         self,
-        point_cloud_processor,
-        robot_controller,
-        debug_utils,
-        camera_intrinsics,
-        cam_to_base_affine,
-        offset_x,
-        offset_y,
-        offset_z,
-        gripper_squeeze_factor,
-        n_frames_processed=0,
-    ):
+        point_cloud_processor: PointCloudProcessor,
+        robot_controller: RobotController,
+        debug_utils: DebugUtils,
+        camera_intrinsics: o3d.camera.PinholeCameraIntrinsic,
+        cam_to_base_affine: np.ndarray,
+        offset_x: float,
+        offset_y: float,
+        offset_z: float,
+        gripper_squeeze_factor: float,
+        n_frames_processed: int = 0,
+    ) -> None:
         self.point_cloud_processor = point_cloud_processor
         self.robot_controller = robot_controller
         self.debug_utils = debug_utils
@@ -29,7 +37,7 @@ class ManipulationHandler:
         self.n_frames_processed = n_frames_processed
         self.logger = robot_controller.logger
 
-    def pick_object(self, object_index: int, detections, depth_image: np.ndarray, last_rgb_msg=None):
+    def pick_object(self, object_index: int, detections: sv.Detections, depth_image: np.ndarray, last_rgb_msg: Optional[Image] = None) -> None:
         """Perform a top-down grasp on the object."""
         if (
             detections is None
@@ -122,7 +130,7 @@ class ManipulationHandler:
 
         self.robot_controller.grasp_at(grasp_pose, gripper_pos)
 
-    def release_above(self, object_index: int, detections, depth_image: np.ndarray, last_rgb_msg=None):
+    def release_above(self, object_index: int, detections: sv.Detections, depth_image: np.ndarray, last_rgb_msg: Optional[Image] = None) -> None:
         """Move the robot arm above the object and release the gripper."""
         if (
             detections is None

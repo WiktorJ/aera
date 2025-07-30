@@ -11,7 +11,9 @@ from aera_semi_autonomous.config.constants import BASE_LINK_NAME
 
 
 class RobotController:
-    def __init__(self, node, arm_joint_names, tf_prefix, debug_mode=False, feedback_callback=None):
+    def __init__(
+        self, node, arm_joint_names, tf_prefix, debug_mode=False, feedback_callback=None
+    ):
         self.node = node
         self.logger = node.get_logger()
         self.debug_mode = debug_mode
@@ -61,7 +63,7 @@ class RobotController:
             pose=pose_goal, start_joint_state=self.moveit2.joint_state
         )
         if trajectory:
-            self.moveit2.execute(trajectory, feedback_callable=self.feedback_callback)
+            self.moveit2.execute(trajectory, feedback_callback=self.feedback_callback)
             self.moveit2.wait_until_executed()
         else:
             self.logger.error("Failed to plan trajectory for move_to.")
@@ -128,12 +130,15 @@ class RobotController:
 
         # Compute forward kinematics using MoveIt2
         pose_stamped = self.moveit2.compute_fk(
-            joint_state=joint_state,
-            fk_link_names=[f"{self.tf_prefix}link_6"]
+            joint_state=joint_state, fk_link_names=[f"{self.tf_prefix}link_6"]
         )
-        
+
         if pose_stamped:
-            return pose_stamped.pose if hasattr(pose_stamped, 'pose') else pose_stamped[0].pose
+            return (
+                pose_stamped.pose
+                if hasattr(pose_stamped, "pose")
+                else pose_stamped[0].pose
+            )
         else:
             self.logger.error("Failed to compute forward kinematics")
             return None
@@ -145,15 +150,15 @@ class RobotController:
                 target_frame=BASE_LINK_NAME,
                 source_frame=f"{self.tf_prefix}link_6",
                 time=self.node.get_clock().now(),
-                timeout=Duration(seconds=1.0)
+                timeout=Duration(seconds=1.0),
             )
-            
+
             pose = Pose()
             pose.position.x = transform.transform.translation.x
             pose.position.y = transform.transform.translation.y
             pose.position.z = transform.transform.translation.z
             pose.orientation = transform.transform.rotation
-            
+
             return pose
         except Exception as e:
             self.logger.error(f"Failed to get end-effector pose via TF: {e}")
@@ -175,7 +180,7 @@ class RobotController:
             start_joint_state=self.moveit2.joint_state,
         )
         if trajectory:
-            self.moveit2.execute(trajectory, feedback_callable=self.feedback_callback)
+            self.moveit2.execute(trajectory, feedback_callback=self.feedback_callback)
             self.moveit2.wait_until_executed()
         else:
             self.logger.error("Failed to plan trajectory for go_home.")

@@ -132,7 +132,6 @@ class TrajectoryDataCollector:
         # Extract arm joint data
         arm_positions = []
         arm_velocities = []
-        arm_efforts = []
 
         for joint_name in self.arm_joint_names:
             if joint_name in joint_state.name:
@@ -141,14 +140,10 @@ class TrajectoryDataCollector:
                 arm_velocities.append(
                     joint_state.velocity[idx] if joint_state.velocity else 0.0
                 )
-                arm_efforts.append(
-                    joint_state.effort[idx] if joint_state.effort else 0.0
-                )
 
         # Extract gripper joint data
         gripper_positions = []
         gripper_velocities = []
-        gripper_efforts = []
 
         for joint_name in self.gripper_joint_names:
             if joint_name in joint_state.name:
@@ -156,9 +151,6 @@ class TrajectoryDataCollector:
                 gripper_positions.append(joint_state.position[idx])
                 gripper_velocities.append(
                     joint_state.velocity[idx] if joint_state.velocity else 0.0
-                )
-                gripper_efforts.append(
-                    joint_state.effort[idx] if joint_state.effort else 0.0
                 )
 
         # Only record if we have complete arm data
@@ -169,10 +161,8 @@ class TrajectoryDataCollector:
                 + joint_state.header.stamp.nanosec * 1e-9,
                 "arm_joint_positions": arm_positions,
                 "arm_joint_velocities": arm_velocities,
-                "arm_joint_efforts": arm_efforts,
                 "gripper_joint_positions": gripper_positions,
                 "gripper_joint_velocities": gripper_velocities,
-                "gripper_joint_efforts": gripper_efforts,
             }
             self.trajectory_data.append(data_point)
 

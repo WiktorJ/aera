@@ -23,6 +23,7 @@ from aera_semi_autonomous.control.robot_controller import RobotController
 from aera_semi_autonomous.utils.debug_utils import DebugUtils
 from aera_semi_autonomous.commands.command_processor import CommandProcessor
 from aera_semi_autonomous.manipulation.manipulation_handler import ManipulationHandler
+from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 
 
 class AeraSemiAutonomous(Node):
@@ -85,6 +86,9 @@ class AeraSemiAutonomous(Node):
         self.arm_joint_names = [
             f"{_TF_PREFIX}{joint_name}" for joint_name in self.arm_joint_names
         ]
+        
+        # Initialize gripper joint names
+        self.gripper_joint_names = [f"{_TF_PREFIX}gripper_jaw1_joint"]
 
         # Initialize TF components
         self.tf_buffer = tf2_ros.Buffer()
@@ -104,6 +108,11 @@ class AeraSemiAutonomous(Node):
             self._moveit_feedback_callback,
         )
         self.command_processor = CommandProcessor(self.logger)
+        self.trajectory_collector = TrajectoryDataCollector(
+            self.logger,
+            self.arm_joint_names,
+            self.gripper_joint_names
+        )
 
         # Initialize subscriptions
         self.camera_info_sub = self.create_subscription(
@@ -126,8 +135,20 @@ class AeraSemiAutonomous(Node):
             10,
             callback_group=prompt_callback_group,
         )
+        
+        # Subscribe to joint states for RL data collection
+        self.joint_state_sub = self.create_subscription(
+            JointState,
+            "/joint_states",
+            self._joint_state_callback_for_rl,
+            10
+        )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
+
+    def _joint_state_callback_for_rl(self, msg: JointState):
+        """Callback for joint state updates for RL data collection."""
+        self.trajectory_collector.record_joint_state(msg)
 
     def _moveit_feedback_callback(self, feedback_msg):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
@@ -205,6 +226,9 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info(f"Processing: {msg.data}")
         self.debug_utils.setup_debug_logging(msg.data, self.camera_intrinsics)
+        
+        # Start RL data collection
+        episode_id = self.trajectory_collector.start_episode(msg.data)
 
         # Initialize manipulation handler
         manipulation_handler = self._initialize_manipulation_handler()
@@ -230,6 +254,12 @@ class AeraSemiAutonomous(Node):
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
 
+            # Record camera data for RL
+            self.trajectory_collector.record_camera_data(self._last_rgb_msg)
+            
+            # Record action for RL
+            self.trajectory_collector.record_action(action, object_to_detect)
+            
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(
                 action,
@@ -244,7 +274,11 @@ class AeraSemiAutonomous(Node):
             )
 
         self.robot_controller.go_home()
-        self.logger.info("Task completed.")
+        
+        # Stop RL data collection and get summary
+        episode_data = self.trajectory_collector.stop_episode()
+        summary = self.trajectory_collector.get_episode_summary()
+        self.logger.info(f"Task completed. RL data summary: {summary}")
 
     @cached_property
     def cam_to_base_affine(self):

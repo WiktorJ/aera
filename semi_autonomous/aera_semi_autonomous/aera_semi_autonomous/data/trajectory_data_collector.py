@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 from sensor_msgs.msg import Image, JointState
 from rclpy.node import Node
+from cv_bridge import CvBridge
 
 
 class TrajectoryDataCollector:
@@ -22,6 +23,7 @@ class TrajectoryDataCollector:
         self, 
         logger,
         arm_joint_names: List[str],
+        gripper_joint_names: List[str],
         save_directory: str = "rl_training_data"
     ):
         """
@@ -30,17 +32,21 @@ class TrajectoryDataCollector:
         Args:
             logger: ROS logger instance
             arm_joint_names: List of arm joint names to track
+            gripper_joint_names: List of gripper joint names to track
             save_directory: Directory to save collected data
         """
         self.logger = logger
         self.arm_joint_names = arm_joint_names
+        self.gripper_joint_names = gripper_joint_names
         self.save_directory = save_directory
+        self.cv_bridge = CvBridge()
         
         # Data collection state
         self.is_collecting = False
         self.current_episode_data = {}
         self.trajectory_data = []
         self.episode_id = None
+        self.episode_directory = None
         
         # Create save directory
         os.makedirs(self.save_directory, exist_ok=True)
@@ -56,8 +62,27 @@ class TrajectoryDataCollector:
         Returns:
             The episode ID for this collection session
         """
-        # TODO: Implement episode initialization
-        pass
+        if self.is_collecting:
+            self.logger.warn("Episode already in progress. Stopping previous episode.")
+            self.stop_episode()
+        
+        self.episode_id = episode_id if episode_id else self._generate_episode_id()
+        self.episode_directory = self._create_episode_directory(self.episode_id)
+        
+        self.current_episode_data = {
+            'episode_id': self.episode_id,
+            'prompt': prompt,
+            'start_time': time.time(),
+            'trajectory_data': [],
+            'camera_data': [],
+            'actions': []
+        }
+        
+        self.trajectory_data = []
+        self.is_collecting = True
+        
+        self.logger.info(f"Started RL data collection for episode: {self.episode_id}")
+        return self.episode_id
     
     def stop_episode(self) -> Dict[str, Any]:
         """
@@ -66,8 +91,27 @@ class TrajectoryDataCollector:
         Returns:
             Dictionary containing all collected episode data
         """
-        # TODO: Implement episode finalization
-        pass
+        if not self.is_collecting:
+            self.logger.warn("No episode in progress to stop.")
+            return {}
+        
+        self.is_collecting = False
+        self.current_episode_data['end_time'] = time.time()
+        self.current_episode_data['duration'] = (
+            self.current_episode_data['end_time'] - self.current_episode_data['start_time']
+        )
+        self.current_episode_data['trajectory_data'] = self.trajectory_data.copy()
+        
+        # Save episode data
+        episode_file = self.save_episode_data()
+        
+        self.logger.info(
+            f"Stopped RL data collection for episode: {self.episode_id}. "
+            f"Collected {len(self.trajectory_data)} trajectory points. "
+            f"Saved to: {episode_file}"
+        )
+        
+        return self.current_episode_data.copy()
     
     def record_joint_state(self, joint_state: JointState) -> None:
         """
@@ -76,19 +120,89 @@ class TrajectoryDataCollector:
         Args:
             joint_state: Current joint state message
         """
-        # TODO: Implement joint state recording
-        pass
+        if not self.is_collecting:
+            return
+        
+        # Extract arm joint data
+        arm_positions = []
+        arm_velocities = []
+        arm_efforts = []
+        
+        for joint_name in self.arm_joint_names:
+            if joint_name in joint_state.name:
+                idx = joint_state.name.index(joint_name)
+                arm_positions.append(joint_state.position[idx])
+                arm_velocities.append(joint_state.velocity[idx] if joint_state.velocity else 0.0)
+                arm_efforts.append(joint_state.effort[idx] if joint_state.effort else 0.0)
+        
+        # Extract gripper joint data
+        gripper_positions = []
+        gripper_velocities = []
+        gripper_efforts = []
+        
+        for joint_name in self.gripper_joint_names:
+            if joint_name in joint_state.name:
+                idx = joint_state.name.index(joint_name)
+                gripper_positions.append(joint_state.position[idx])
+                gripper_velocities.append(joint_state.velocity[idx] if joint_state.velocity else 0.0)
+                gripper_efforts.append(joint_state.effort[idx] if joint_state.effort else 0.0)
+        
+        # Only record if we have complete arm data
+        if len(arm_positions) == len(self.arm_joint_names):
+            data_point = {
+                'timestamp': time.time(),
+                'ros_timestamp': joint_state.header.stamp.sec + joint_state.header.stamp.nanosec * 1e-9,
+                'arm_joint_positions': arm_positions,
+                'arm_joint_velocities': arm_velocities,
+                'arm_joint_efforts': arm_efforts,
+                'gripper_joint_positions': gripper_positions,
+                'gripper_joint_velocities': gripper_velocities,
+                'gripper_joint_efforts': gripper_efforts
+            }
+            self.trajectory_data.append(data_point)
     
-    def record_camera_data(self, rgb_image: Image, depth_image: Image) -> None:
+    def record_camera_data(self, rgb_image: Image, depth_image: Optional[Image] = None) -> None:
         """
         Record camera images at current timestamp.
         
         Args:
             rgb_image: RGB camera image message
-            depth_image: Depth camera image message
+            depth_image: Optional depth camera image message
         """
-        # TODO: Implement camera data recording
-        pass
+        if not self.is_collecting or not self.episode_directory:
+            return
+        
+        try:
+            timestamp = time.time()
+            
+            # Save RGB image
+            rgb_cv_image = self.cv_bridge.imgmsg_to_cv2(rgb_image, "bgr8")
+            rgb_filename = f"rgb_{timestamp:.6f}.jpg"
+            rgb_path = os.path.join(self.episode_directory, rgb_filename)
+            
+            import cv2
+            cv2.imwrite(rgb_path, rgb_cv_image)
+            
+            camera_data_point = {
+                'timestamp': timestamp,
+                'ros_timestamp': rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9,
+                'rgb_image_path': rgb_filename,
+                'image_width': rgb_image.width,
+                'image_height': rgb_image.height
+            }
+            
+            # Save depth image if provided
+            if depth_image is not None:
+                depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
+                depth_filename = f"depth_{timestamp:.6f}.png"
+                depth_path = os.path.join(self.episode_directory, depth_filename)
+                cv2.imwrite(depth_path, depth_cv_image)
+                camera_data_point['depth_image_path'] = depth_filename
+            
+            self.current_episode_data['camera_data'].append(camera_data_point)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to record camera data: {e}")
     
     def record_action(self, action_type: str, object_name: str, **kwargs) -> None:
         """
@@ -99,8 +213,18 @@ class TrajectoryDataCollector:
             object_name: Name of target object
             **kwargs: Additional action-specific parameters
         """
-        # TODO: Implement action recording
-        pass
+        if not self.is_collecting:
+            return
+        
+        action_data = {
+            'timestamp': time.time(),
+            'action_type': action_type,
+            'object_name': object_name,
+            'parameters': kwargs
+        }
+        
+        self.current_episode_data['actions'].append(action_data)
+        self.logger.info(f"Recorded action: {action_type} on {object_name}")
     
     def record_pose(self, pose_type: str, pose_data: Any) -> None:
         """
@@ -110,8 +234,30 @@ class TrajectoryDataCollector:
             pose_type: Type of pose being recorded
             pose_data: Pose data (geometry_msgs/Pose or similar)
         """
-        # TODO: Implement pose recording
-        pass
+        if not self.is_collecting:
+            return
+        
+        pose_dict = {
+            'timestamp': time.time(),
+            'pose_type': pose_type,
+            'position': {
+                'x': pose_data.position.x,
+                'y': pose_data.position.y,
+                'z': pose_data.position.z
+            },
+            'orientation': {
+                'x': pose_data.orientation.x,
+                'y': pose_data.orientation.y,
+                'z': pose_data.orientation.z,
+                'w': pose_data.orientation.w
+            }
+        }
+        
+        # Add to current trajectory data point if available
+        if self.trajectory_data:
+            if 'poses' not in self.trajectory_data[-1]:
+                self.trajectory_data[-1]['poses'] = []
+            self.trajectory_data[-1]['poses'].append(pose_dict)
     
     def save_episode_data(self) -> str:
         """
@@ -120,8 +266,27 @@ class TrajectoryDataCollector:
         Returns:
             Path to the saved data file
         """
-        # TODO: Implement data saving
-        pass
+        if not self.episode_directory or not self.current_episode_data:
+            self.logger.error("No episode data to save")
+            return ""
+        
+        # Save main episode data as JSON
+        episode_file = os.path.join(self.episode_directory, "episode_data.json")
+        
+        try:
+            with open(episode_file, 'w') as f:
+                json.dump(self.current_episode_data, f, indent=2, default=str)
+            
+            # Save trajectory data separately for easier loading
+            trajectory_file = os.path.join(self.episode_directory, "trajectory_data.json")
+            with open(trajectory_file, 'w') as f:
+                json.dump(self.trajectory_data, f, indent=2, default=str)
+            
+            return episode_file
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save episode data: {e}")
+            return ""
     
     def get_episode_summary(self) -> Dict[str, Any]:
         """
@@ -130,8 +295,24 @@ class TrajectoryDataCollector:
         Returns:
             Summary statistics and metadata
         """
-        # TODO: Implement episode summary
-        pass
+        if not self.current_episode_data:
+            return {}
+        
+        summary = {
+            'episode_id': self.episode_id,
+            'prompt': self.current_episode_data.get('prompt', ''),
+            'num_trajectory_points': len(self.trajectory_data),
+            'num_camera_frames': len(self.current_episode_data.get('camera_data', [])),
+            'num_actions': len(self.current_episode_data.get('actions', [])),
+            'duration': self.current_episode_data.get('duration', 0),
+            'is_collecting': self.is_collecting
+        }
+        
+        if self.trajectory_data:
+            summary['trajectory_start_time'] = self.trajectory_data[0]['timestamp']
+            summary['trajectory_end_time'] = self.trajectory_data[-1]['timestamp']
+        
+        return summary
     
     def _generate_episode_id(self) -> str:
         """Generate a unique episode ID based on timestamp."""

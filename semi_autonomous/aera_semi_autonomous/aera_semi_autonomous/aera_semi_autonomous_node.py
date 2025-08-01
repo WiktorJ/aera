@@ -13,7 +13,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.time import Time
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo, JointState
 from std_msgs.msg import String
 
 from aera_semi_autonomous.config.constants import _TF_PREFIX, BASE_LINK_NAME
@@ -86,7 +86,7 @@ class AeraSemiAutonomous(Node):
         self.arm_joint_names = [
             f"{_TF_PREFIX}{joint_name}" for joint_name in self.arm_joint_names
         ]
-        
+
         # Initialize gripper joint names
         self.gripper_joint_names = [f"{_TF_PREFIX}gripper_jaw1_joint"]
 
@@ -109,9 +109,7 @@ class AeraSemiAutonomous(Node):
         )
         self.command_processor = CommandProcessor(self.logger)
         self.trajectory_collector = TrajectoryDataCollector(
-            self.logger,
-            self.arm_joint_names,
-            self.gripper_joint_names
+            self.logger, self.arm_joint_names, self.gripper_joint_names
         )
 
         # Initialize subscriptions
@@ -135,13 +133,10 @@ class AeraSemiAutonomous(Node):
             10,
             callback_group=prompt_callback_group,
         )
-        
+
         # Subscribe to joint states for RL data collection
         self.joint_state_sub = self.create_subscription(
-            JointState,
-            "/joint_states",
-            self._joint_state_callback_for_rl,
-            10
+            JointState, "/joint_states", self._joint_state_callback_for_rl, 10
         )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
@@ -226,7 +221,7 @@ class AeraSemiAutonomous(Node):
 
         self.logger.info(f"Processing: {msg.data}")
         self.debug_utils.setup_debug_logging(msg.data, self.camera_intrinsics)
-        
+
         # Start RL data collection
         episode_id = self.trajectory_collector.start_episode(msg.data)
 
@@ -256,10 +251,10 @@ class AeraSemiAutonomous(Node):
 
             # Record camera data for RL
             self.trajectory_collector.record_camera_data(self._last_rgb_msg)
-            
+
             # Record action for RL
             self.trajectory_collector.record_action(action, object_to_detect)
-            
+
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(
                 action,
@@ -274,7 +269,7 @@ class AeraSemiAutonomous(Node):
             )
 
         self.robot_controller.go_home()
-        
+
         # Stop RL data collection and get summary
         episode_data = self.trajectory_collector.stop_episode()
         summary = self.trajectory_collector.get_episode_summary()

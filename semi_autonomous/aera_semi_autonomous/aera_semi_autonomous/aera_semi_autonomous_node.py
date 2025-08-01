@@ -310,13 +310,14 @@ class AeraSemiAutonomous(Node):
         if self.debug_mode and self._last_depth_msg is not None:
             return
         self._last_depth_msg = msg
+        self.trajectory_collector.record_depth_image(msg)
 
     def image_callback(self, msg):
         """Callback for RGB image messages."""
         if self.debug_mode and self._last_rgb_msg is not None:
             return
         self._last_rgb_msg = msg
-        self.trajectory_collector.record_camera_data(msg)
+        self.trajectory_collector.record_rgb_image(msg)
 
 
 def main():

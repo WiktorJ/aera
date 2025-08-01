@@ -165,13 +165,12 @@ class TrajectoryDataCollector:
             }
             self.trajectory_data.append(data_point)
     
-    def record_camera_data(self, rgb_image: Image, depth_image: Optional[Image] = None) -> None:
+    def record_rgb_image(self, rgb_image: Image) -> None:
         """
-        Record camera images at current timestamp.
+        Record RGB camera image at current timestamp.
         
         Args:
             rgb_image: RGB camera image message
-            depth_image: Optional depth camera image message
         """
         if not self.is_collecting:
             return
@@ -185,27 +184,54 @@ class TrajectoryDataCollector:
             _, rgb_encoded = cv2.imencode('.jpg', rgb_cv_image)
             rgb_bytes = rgb_encoded.tobytes()
             
-            camera_data_point = {
+            rgb_data_point = {
                 'timestamp': timestamp,
                 'ros_timestamp': rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9,
                 'rgb_image_bytes': rgb_bytes.hex(),  # Convert to hex string for JSON serialization
                 'image_width': rgb_image.width,
                 'image_height': rgb_image.height,
-                'rgb_encoding': rgb_image.encoding
+                'rgb_encoding': rgb_image.encoding,
+                'data_type': 'rgb'
             }
             
-            # Save depth image if provided
-            if depth_image is not None:
-                depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
-                _, depth_encoded = cv2.imencode('.png', depth_cv_image)
-                depth_bytes = depth_encoded.tobytes()
-                camera_data_point['depth_image_bytes'] = depth_bytes.hex()
-                camera_data_point['depth_encoding'] = depth_image.encoding
-            
-            self.current_episode_data['camera_data'].append(camera_data_point)
+            self.current_episode_data['camera_data'].append(rgb_data_point)
             
         except Exception as e:
-            self.logger.error(f"Failed to record camera data: {e}")
+            self.logger.error(f"Failed to record RGB image data: {e}")
+    
+    def record_depth_image(self, depth_image: Image) -> None:
+        """
+        Record depth camera image at current timestamp.
+        
+        Args:
+            depth_image: Depth camera image message
+        """
+        if not self.is_collecting:
+            return
+        
+        try:
+            timestamp = time.time()
+            
+            # Convert depth image to bytes
+            depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
+            import cv2
+            _, depth_encoded = cv2.imencode('.png', depth_cv_image)
+            depth_bytes = depth_encoded.tobytes()
+            
+            depth_data_point = {
+                'timestamp': timestamp,
+                'ros_timestamp': depth_image.header.stamp.sec + depth_image.header.stamp.nanosec * 1e-9,
+                'depth_image_bytes': depth_bytes.hex(),
+                'image_width': depth_image.width,
+                'image_height': depth_image.height,
+                'depth_encoding': depth_image.encoding,
+                'data_type': 'depth'
+            }
+            
+            self.current_episode_data['camera_data'].append(depth_data_point)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to record depth image data: {e}")
     
     def record_action(self, action_type: str, object_name: str, **kwargs) -> None:
         """

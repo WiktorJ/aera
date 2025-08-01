@@ -173,35 +173,34 @@ class TrajectoryDataCollector:
             rgb_image: RGB camera image message
             depth_image: Optional depth camera image message
         """
-        if not self.is_collecting or not self.episode_directory:
+        if not self.is_collecting:
             return
         
         try:
             timestamp = time.time()
             
-            # Save RGB image
+            # Convert RGB image to bytes
             rgb_cv_image = self.cv_bridge.imgmsg_to_cv2(rgb_image, "bgr8")
-            rgb_filename = f"rgb_{timestamp:.6f}.jpg"
-            rgb_path = os.path.join(self.episode_directory, rgb_filename)
-            
             import cv2
-            cv2.imwrite(rgb_path, rgb_cv_image)
+            _, rgb_encoded = cv2.imencode('.jpg', rgb_cv_image)
+            rgb_bytes = rgb_encoded.tobytes()
             
             camera_data_point = {
                 'timestamp': timestamp,
                 'ros_timestamp': rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9,
-                'rgb_image_path': rgb_filename,
+                'rgb_image_bytes': rgb_bytes.hex(),  # Convert to hex string for JSON serialization
                 'image_width': rgb_image.width,
-                'image_height': rgb_image.height
+                'image_height': rgb_image.height,
+                'rgb_encoding': rgb_image.encoding
             }
             
             # Save depth image if provided
             if depth_image is not None:
                 depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
-                depth_filename = f"depth_{timestamp:.6f}.png"
-                depth_path = os.path.join(self.episode_directory, depth_filename)
-                cv2.imwrite(depth_path, depth_cv_image)
-                camera_data_point['depth_image_path'] = depth_filename
+                _, depth_encoded = cv2.imencode('.png', depth_cv_image)
+                depth_bytes = depth_encoded.tobytes()
+                camera_data_point['depth_image_bytes'] = depth_bytes.hex()
+                camera_data_point['depth_encoding'] = depth_image.encoding
             
             self.current_episode_data['camera_data'].append(camera_data_point)
             

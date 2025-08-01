@@ -6,6 +6,7 @@ import numpy as np
 from sensor_msgs.msg import Image, JointState
 from rclpy.node import Node
 from cv_bridge import CvBridge
+from geometry_msgs.msg import Pose
 
 
 class TrajectoryDataCollector:
@@ -24,6 +25,7 @@ class TrajectoryDataCollector:
         logger,
         arm_joint_names: List[str],
         gripper_joint_names: List[str],
+        robot_controller=None,
         save_directory: str = "rl_training_data"
     ):
         """
@@ -33,11 +35,13 @@ class TrajectoryDataCollector:
             logger: ROS logger instance
             arm_joint_names: List of arm joint names to track
             gripper_joint_names: List of gripper joint names to track
+            robot_controller: RobotController instance for FK computation
             save_directory: Directory to save collected data
         """
         self.logger = logger
         self.arm_joint_names = arm_joint_names
         self.gripper_joint_names = gripper_joint_names
+        self.robot_controller = robot_controller
         self.save_directory = save_directory
         self.cv_bridge = CvBridge()
         
@@ -226,38 +230,67 @@ class TrajectoryDataCollector:
         self.current_episode_data['actions'].append(action_data)
         self.logger.info(f"Recorded action: {action_type} on {object_name}")
     
-    def record_pose(self, pose_type: str, pose_data: Any) -> None:
+    def record_pose(self, joint_state: JointState) -> None:
         """
-        Record pose information (target poses, current poses, etc.).
+        Record end effector pose calculated from joint and gripper states.
         
         Args:
-            pose_type: Type of pose being recorded
-            pose_data: Pose data (geometry_msgs/Pose or similar)
+            joint_state: Current joint state message containing arm and gripper positions
         """
-        if not self.is_collecting:
+        if not self.is_collecting or not self.robot_controller:
             return
         
-        pose_dict = {
-            'timestamp': time.time(),
-            'pose_type': pose_type,
-            'position': {
-                'x': pose_data.position.x,
-                'y': pose_data.position.y,
-                'z': pose_data.position.z
-            },
-            'orientation': {
-                'x': pose_data.orientation.x,
-                'y': pose_data.orientation.y,
-                'z': pose_data.orientation.z,
-                'w': pose_data.orientation.w
-            }
-        }
+        # Extract arm joint positions for FK computation
+        arm_positions = []
+        for joint_name in self.arm_joint_names:
+            if joint_name in joint_state.name:
+                idx = joint_state.name.index(joint_name)
+                arm_positions.append(joint_state.position[idx])
         
-        # Add to current trajectory data point if available
-        if self.trajectory_data:
-            if 'poses' not in self.trajectory_data[-1]:
-                self.trajectory_data[-1]['poses'] = []
-            self.trajectory_data[-1]['poses'].append(pose_dict)
+        # Extract gripper joint positions
+        gripper_positions = []
+        for joint_name in self.gripper_joint_names:
+            if joint_name in joint_state.name:
+                idx = joint_state.name.index(joint_name)
+                gripper_positions.append(joint_state.position[idx])
+        
+        # Only compute pose if we have complete arm joint data
+        if len(arm_positions) == len(self.arm_joint_names):
+            try:
+                # Compute end effector pose using forward kinematics
+                end_effector_pose = self.robot_controller.compute_end_effector_pose(arm_positions)
+                
+                if end_effector_pose is not None:
+                    pose_dict = {
+                        'timestamp': time.time(),
+                        'ros_timestamp': joint_state.header.stamp.sec + joint_state.header.stamp.nanosec * 1e-9,
+                        'pose_type': 'end_effector',
+                        'position': {
+                            'x': end_effector_pose.position.x,
+                            'y': end_effector_pose.position.y,
+                            'z': end_effector_pose.position.z
+                        },
+                        'orientation': {
+                            'x': end_effector_pose.orientation.x,
+                            'y': end_effector_pose.orientation.y,
+                            'z': end_effector_pose.orientation.z,
+                            'w': end_effector_pose.orientation.w
+                        },
+                        'arm_joint_positions': arm_positions,
+                        'gripper_joint_positions': gripper_positions
+                    }
+                    
+                    # Add to current trajectory data point if available
+                    if self.trajectory_data:
+                        if 'poses' not in self.trajectory_data[-1]:
+                            self.trajectory_data[-1]['poses'] = []
+                        self.trajectory_data[-1]['poses'].append(pose_dict)
+                    else:
+                        # If no trajectory data yet, create a standalone pose record
+                        self.current_episode_data.setdefault('poses', []).append(pose_dict)
+                        
+            except Exception as e:
+                self.logger.error(f"Failed to compute end effector pose: {e}")
     
     def save_episode_data(self) -> str:
         """

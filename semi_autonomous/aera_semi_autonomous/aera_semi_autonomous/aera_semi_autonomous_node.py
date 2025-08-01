@@ -109,7 +109,7 @@ class AeraSemiAutonomous(Node):
         )
         self.command_processor = CommandProcessor(self.logger)
         self.trajectory_collector = TrajectoryDataCollector(
-            self.logger, self.arm_joint_names, self.gripper_joint_names
+            self.logger, self.arm_joint_names, self.gripper_joint_names, self.robot_controller
         )
 
         # Initialize subscriptions
@@ -144,6 +144,7 @@ class AeraSemiAutonomous(Node):
     def _joint_state_callback_for_rl(self, msg: JointState):
         """Callback for joint state updates for RL data collection."""
         self.trajectory_collector.record_joint_state(msg)
+        self.trajectory_collector.record_pose(msg)
 
     def _moveit_feedback_callback(self, feedback_msg):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""

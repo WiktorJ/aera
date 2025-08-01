@@ -109,7 +109,10 @@ class AeraSemiAutonomous(Node):
         )
         self.command_processor = CommandProcessor(self.logger)
         self.trajectory_collector = TrajectoryDataCollector(
-            self.logger, self.arm_joint_names, self.gripper_joint_names, self.robot_controller
+            self.logger,
+            self.arm_joint_names,
+            self.gripper_joint_names,
+            self.robot_controller,
         )
 
         # Initialize subscriptions
@@ -250,9 +253,6 @@ class AeraSemiAutonomous(Node):
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
 
-            # Record camera data for RL
-            self.trajectory_collector.record_camera_data(self._last_rgb_msg)
-
             # Record action for RL
             self.trajectory_collector.record_action(action, object_to_detect)
 
@@ -316,6 +316,7 @@ class AeraSemiAutonomous(Node):
         if self.debug_mode and self._last_rgb_msg is not None:
             return
         self._last_rgb_msg = msg
+        self.trajectory_collector.record_camera_data(msg)
 
 
 def main():

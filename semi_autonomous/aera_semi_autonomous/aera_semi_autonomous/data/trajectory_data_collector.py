@@ -412,6 +412,9 @@ class TrajectoryDataCollector:
         if abs(closest_timestamp - target_timestamp) <= self.sync_tolerance:
             return sorted_buffer[closest_timestamp]
 
+        self.logger.warn(
+            f"Could not find data within sync_tolerance for timestamp: {target_timestamp}, the closest was: {closest_timestamp}"
+        )
         return None
 
     def _synchronize_all_data(self) -> List[Dict]:

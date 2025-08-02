@@ -26,6 +26,7 @@ class TrajectoryDataCollector:
         gripper_joint_names: List[str],
         robot_controller=None,
         save_directory: str = "rl_training_data",
+        sync_tolerance: float = 0.05,
     ):
         """
         Initialize the trajectory data collector.
@@ -36,6 +37,7 @@ class TrajectoryDataCollector:
             gripper_joint_names: List of gripper joint names to track
             robot_controller: RobotController instance for FK computation
             save_directory: Directory to save collected data
+            sync_tolerance: Time tolerance in seconds for data synchronization
         """
         self.logger = logger
         self.arm_joint_names = arm_joint_names
@@ -55,7 +57,7 @@ class TrajectoryDataCollector:
         self.rgb_buffer = SortedDict()
         self.depth_buffer = SortedDict()
         self.pose_buffer = SortedDict()
-        self.sync_tolerance = 0.05  # 50ms tolerance for synchronization
+        self.sync_tolerance = sync_tolerance
 
         # Create save directory
         os.makedirs(self.save_directory, exist_ok=True)

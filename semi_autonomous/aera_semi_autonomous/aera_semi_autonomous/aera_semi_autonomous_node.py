@@ -41,6 +41,7 @@ class AeraSemiAutonomous(Node):
         self.declare_parameter("offset_z", 0.1)
         self.declare_parameter("gripper_squeeze_factor", 0.2)
         self.declare_parameter("debug_mode", False)
+        self.declare_parameter("sync_tolerance", 0.05)
 
         # Get parameter values
         self.offset_x = (
@@ -59,6 +60,9 @@ class AeraSemiAutonomous(Node):
         )
         self.debug_mode = (
             self.get_parameter("debug_mode").get_parameter_value().bool_value
+        )
+        self.sync_tolerance = (
+            self.get_parameter("sync_tolerance").get_parameter_value().double_value
         )
 
         # Initialize basic components
@@ -118,6 +122,7 @@ class AeraSemiAutonomous(Node):
             self.arm_joint_names,
             self.gripper_joint_names,
             self.robot_controller,
+            sync_tolerance=self.sync_tolerance,
         )
 
         # Initialize subscriptions

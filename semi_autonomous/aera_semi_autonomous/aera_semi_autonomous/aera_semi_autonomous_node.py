@@ -16,7 +16,12 @@ from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Image, CameraInfo, JointState
 from std_msgs.msg import String
 
-from aera_semi_autonomous.config.constants import _TF_PREFIX, BASE_LINK_NAME
+from aera_semi_autonomous.config.constants import (
+    _TF_PREFIX,
+    BASE_LINK_NAME,
+    ACTION_DESCRIPTIONS,
+    AVAILABLE_ACTIONS,
+)
 from aera_semi_autonomous.vision.object_detector import ObjectDetector
 from aera_semi_autonomous.vision.point_cloud_processor import PointCloudProcessor
 from aera_semi_autonomous.control.robot_controller import RobotController
@@ -227,7 +232,7 @@ class AeraSemiAutonomous(Node):
         self.debug_utils.setup_debug_logging(msg.data, self.camera_intrinsics)
 
         # Start RL data collection
-        episode_id = self.trajectory_collector.start_episode(msg.data)
+        self.trajectory_collector.start_episode(msg.data)
 
         # Initialize manipulation handler
         manipulation_handler = self._initialize_manipulation_handler()
@@ -245,12 +250,22 @@ class AeraSemiAutonomous(Node):
                 self.logger.error("No image messages received. Aborting command chain.")
                 return
 
+            if action not in AVAILABLE_ACTIONS:
+                self.logger.error(
+                    f"Action: {action} is not valid. Valid actions: {AVAILABLE_ACTIONS}"
+                )
+                return
+
             # Use the latest images for each action
             rgb_image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg)
             depth_image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
 
             self.logger.info(
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
+            )
+            # Use action descrption here AI!
+            self.trajectory_collector.record_current_prompt(
+                f"{action} {object_to_detect}"
             )
 
             # Handle the command and update object_in_gripper status

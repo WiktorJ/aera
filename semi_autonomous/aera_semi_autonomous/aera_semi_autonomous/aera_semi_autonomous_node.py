@@ -290,38 +290,9 @@ class AeraSemiAutonomous(Node):
 
         self.robot_controller.go_home()
 
-        # Stop RL data collection and get summary
+        # Stop RL data collection and log summary
         episode_data = self.trajectory_collector.stop_episode()
-        
-        # Log trajectory summary
-        if episode_data and episode_data.get("trajectory_data"):
-            trajectory_summary = self.trajectory_collector.summarize_trajectory_data(
-                episode_data["trajectory_data"]
-            )
-            self.logger.info("=== TRAJECTORY SUMMARY ===")
-            self.logger.info(f"Episode: {episode_data.get('episode_id', 'unknown')}")
-            self.logger.info(f"Input: {episode_data.get('input_message', 'unknown')}")
-            
-            # Log overview
-            overview = trajectory_summary.get("trajectory_overview", {})
-            self.logger.info(f"Data Points: {overview.get('total_data_points', 0)}")
-            self.logger.info(f"Duration: {overview.get('duration_seconds', 0)}s")
-            self.logger.info(f"Prompts: {overview.get('unique_prompts', 0)} unique")
-            
-            # Log movement analysis
-            movement = trajectory_summary.get("movement_analysis", {})
-            self.logger.info(f"Distance Traveled: {movement.get('total_cartesian_distance_meters', 0)}m")
-            self.logger.info(f"Max Joint Movement: {movement.get('max_joint_movement_radians', 0)} rad")
-            
-            # Log manipulation analysis
-            manipulation = trajectory_summary.get("manipulation_analysis", {})
-            self.logger.info(f"Gripper Changes: {manipulation.get('gripper_state_changes', 0)}")
-            
-            # Log data quality
-            quality = trajectory_summary.get("data_quality", {})
-            self.logger.info(f"Frequency: {quality.get('average_frequency_hz', 0)} Hz")
-            self.logger.info(f"Complete Data: {quality.get('has_complete_observations', False) and quality.get('has_complete_actions', False)}")
-            self.logger.info("=== END SUMMARY ===")
+        self.trajectory_collector.log_trajectory_summary()
 
     @cached_property
     def cam_to_base_affine(self):

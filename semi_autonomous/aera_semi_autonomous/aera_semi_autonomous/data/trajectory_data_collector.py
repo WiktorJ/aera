@@ -727,16 +727,15 @@ class TrajectoryDataCollector:
 
         return stats
 
-    def summarize_trajectory_data(self, trajectory_data: List[Dict]) -> Dict[str, Any]:
+    def summarize_trajectory_data(self) -> Dict[str, Any]:
         """
         Summarize the most important facts about the recorded trajectory data.
-
-        Args:
-            trajectory_data: List of synchronized trajectory data points
 
         Returns:
             Dictionary containing trajectory summary statistics
         """
+        trajectory_data = self.current_episode_data.get("trajectory_data", [])
+        
         if not trajectory_data:
             return {"error": "No trajectory data to summarize"}
 
@@ -856,3 +855,42 @@ class TrajectoryDataCollector:
         }
 
         return summary
+
+    def log_trajectory_summary(self) -> None:
+        """
+        Log a formatted summary of the trajectory data to the logger.
+        """
+        if not self.current_episode_data:
+            self.logger.warn("No episode data available for summary")
+            return
+
+        trajectory_summary = self.summarize_trajectory_data()
+        
+        if "error" in trajectory_summary:
+            self.logger.warn(f"Trajectory summary error: {trajectory_summary['error']}")
+            return
+
+        self.logger.info("=== TRAJECTORY SUMMARY ===")
+        self.logger.info(f"Episode: {self.current_episode_data.get('episode_id', 'unknown')}")
+        self.logger.info(f"Input: {self.current_episode_data.get('input_message', 'unknown')}")
+        
+        # Log overview
+        overview = trajectory_summary.get("trajectory_overview", {})
+        self.logger.info(f"Data Points: {overview.get('total_data_points', 0)}")
+        self.logger.info(f"Duration: {overview.get('duration_seconds', 0)}s")
+        self.logger.info(f"Prompts: {overview.get('unique_prompts', 0)} unique")
+        
+        # Log movement analysis
+        movement = trajectory_summary.get("movement_analysis", {})
+        self.logger.info(f"Distance Traveled: {movement.get('total_cartesian_distance_meters', 0)}m")
+        self.logger.info(f"Max Joint Movement: {movement.get('max_joint_movement_radians', 0)} rad")
+        
+        # Log manipulation analysis
+        manipulation = trajectory_summary.get("manipulation_analysis", {})
+        self.logger.info(f"Gripper Changes: {manipulation.get('gripper_state_changes', 0)}")
+        
+        # Log data quality
+        quality = trajectory_summary.get("data_quality", {})
+        self.logger.info(f"Frequency: {quality.get('average_frequency_hz', 0)} Hz")
+        self.logger.info(f"Complete Data: {quality.get('has_complete_observations', False) and quality.get('has_complete_actions', False)}")
+        self.logger.info("=== END SUMMARY ===")

@@ -9,7 +9,7 @@ from aera_semi_autonomous.control.robot_controller import RobotController
 from aera_semi_autonomous.manipulation.manipulation_handler import ManipulationHandler
 
 from aera_semi_autonomous.config.constants import (
-    _AVAILABLE_ACTIONS,
+    AVAILABLE_ACTIONS,
     _PICK_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,
     _RELEASE_GRIPPER,
@@ -44,9 +44,9 @@ class CommandProcessor:
                     self.logger.error(f"No 'action' found in command: {command_data}")
                     return None
 
-                if action not in _AVAILABLE_ACTIONS:
+                if action not in AVAILABLE_ACTIONS:
                     self.logger.warn(
-                        f"Action: {action} is not valid. Valid actions: {_AVAILABLE_ACTIONS}"
+                        f"Action: {action} is not valid. Valid actions: {AVAILABLE_ACTIONS}"
                     )
                     return None
                 commands.append((action, object_to_detect))
@@ -60,7 +60,7 @@ class CommandProcessor:
         tool_call: str,
         object_to_detect: str,
         object_detector: ObjectDetector,
-        robot_controller: RobotController, 
+        robot_controller: RobotController,
         manipulation_handler: ManipulationHandler,
         rgb_image: np.ndarray,
         depth_image: np.ndarray,
@@ -79,9 +79,11 @@ class CommandProcessor:
                 logging.error("Object in gripper")
                 return object_in_gripper
 
-            manipulation_handler.pick_object(_OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg)
+            manipulation_handler.pick_object(
+                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg
+            )
             return True
-            
+
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
             detections = object_detector.detect_objects(rgb_image, [object_to_detect])
             if len(detections.class_id) == 0:
@@ -89,11 +91,13 @@ class CommandProcessor:
                     f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )
                 return object_in_gripper
-            manipulation_handler.release_above(_OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg)
+            manipulation_handler.release_above(
+                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg
+            )
             return False
-            
+
         elif tool_call == _RELEASE_GRIPPER:
             robot_controller.release_gripper()
             return False
-            
+
         return object_in_gripper

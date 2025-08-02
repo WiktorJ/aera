@@ -272,13 +272,6 @@ class TrajectoryDataCollector:
                 idx = joint_state.name.index(joint_name)
                 arm_positions.append(joint_state.position[idx])
 
-        # Extract gripper joint positions
-        gripper_positions = []
-        for joint_name in self.gripper_joint_names:
-            if joint_name in joint_state.name:
-                idx = joint_state.name.index(joint_name)
-                gripper_positions.append(joint_state.position[idx])
-
         # Only compute pose if we have complete arm joint data
         if len(arm_positions) == len(self.arm_joint_names):
             try:
@@ -304,8 +297,6 @@ class TrajectoryDataCollector:
                             "z": end_effector_pose.orientation.z,
                             "w": end_effector_pose.orientation.w,
                         },
-                        "arm_joint_positions": arm_positions,
-                        "gripper_joint_positions": gripper_positions,
                     }
 
                     # Store in synchronized buffer using ROS timestamp as key

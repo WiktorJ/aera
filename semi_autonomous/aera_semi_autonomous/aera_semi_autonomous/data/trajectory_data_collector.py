@@ -177,7 +177,7 @@ class TrajectoryDataCollector:
                 "arm_joint_velocities": arm_velocities,
                 "gripper_joint_positions": gripper_positions,
                 "gripper_joint_velocities": gripper_velocities,
-                "prompt": self.current_prompt
+                "prompt": self.current_prompt,
             }
 
             # Store in synchronized buffer using ROS timestamp as key
@@ -314,7 +314,7 @@ class TrajectoryDataCollector:
     def record_current_prompt(self, prompt: str) -> None:
         """
         Record the current prompt for the episode.
-        
+
         Args:
             prompt: Current prompt for the episode
         """

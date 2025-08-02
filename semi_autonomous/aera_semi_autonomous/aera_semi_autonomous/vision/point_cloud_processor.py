@@ -63,7 +63,7 @@ class PointCloudProcessor:
 
     def get_drop_pose_from_points(self, points_camera_frame: np.ndarray):
         """Calculate drop pose from camera frame points."""
-        xy_points = points_camera_frame[:, :2]
+        xy_points = points_camera_frame[:, :2].astype(np.float32)
 
         if len(xy_points) < 3:  # minAreaRect needs at least 3 points
             self.logger.error(

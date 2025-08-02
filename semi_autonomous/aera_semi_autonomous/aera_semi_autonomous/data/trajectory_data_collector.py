@@ -50,7 +50,6 @@ class TrajectoryDataCollector:
         # Data collection state
         self.is_collecting = False
         self.current_episode_data = {}
-        self.trajectory_data = []
         self.episode_id = None
         self.episode_directory = None
 
@@ -91,8 +90,6 @@ class TrajectoryDataCollector:
             "actions": [],
         }
 
-        self.trajectory_data = []
-        
         # Clear synchronized buffers for new episode
         self.joint_state_buffer.clear()
         self.rgb_buffer.clear()
@@ -123,15 +120,14 @@ class TrajectoryDataCollector:
         )
         
         # Synchronize all collected data before saving
-        self.trajectory_data = self._synchronize_all_data()
-        self.current_episode_data["trajectory_data"] = self.trajectory_data.copy()
+        self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
 
         # Save episode data
         episode_file = self.save_episode_data()
 
         self.logger.info(
             f"Stopped RL data collection for episode: {self.episode_id}. "
-            f"Collected {len(self.trajectory_data)} trajectory points. "
+            f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
             f"Saved to: {episode_file}"
         )
 
@@ -362,7 +358,7 @@ class TrajectoryDataCollector:
                 self.episode_directory, "trajectory_data.json"
             )
             with open(trajectory_file, "w") as f:
-                json.dump(self.trajectory_data, f, indent=2, default=str)
+                json.dump(self.current_episode_data["trajectory_data"], f, indent=2, default=str)
 
             return episode_file
 
@@ -380,19 +376,20 @@ class TrajectoryDataCollector:
         if not self.current_episode_data:
             return {}
 
+        trajectory_data = self.current_episode_data.get("trajectory_data", [])
         summary = {
             "episode_id": self.episode_id,
             "prompt": self.current_episode_data.get("prompt", ""),
-            "num_trajectory_points": len(self.trajectory_data),
+            "num_trajectory_points": len(trajectory_data),
             "num_camera_frames": len(self.current_episode_data.get("camera_data", [])),
             "num_actions": len(self.current_episode_data.get("actions", [])),
             "duration": self.current_episode_data.get("duration", 0),
             "is_collecting": self.is_collecting,
         }
 
-        if self.trajectory_data:
-            summary["trajectory_start_time"] = self.trajectory_data[0]["timestamp"]
-            summary["trajectory_end_time"] = self.trajectory_data[-1]["timestamp"]
+        if trajectory_data:
+            summary["trajectory_start_time"] = trajectory_data[0]["timestamp"]
+            summary["trajectory_end_time"] = trajectory_data[-1]["timestamp"]
 
         return summary
 

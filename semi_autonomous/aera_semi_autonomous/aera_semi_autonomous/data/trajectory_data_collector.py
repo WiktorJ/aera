@@ -425,6 +425,9 @@ class TrajectoryDataCollector:
         synchronized_data = []
         joint_timestamps = list(self.joint_state_buffer.keys())
 
+        # Group timestamps by prompt to determine episode boundaries
+        prompt_groups = self._group_timestamps_by_prompt(joint_timestamps)
+
         # Process all timestamps except the last one (since we need next state for action)
         for i in range(len(joint_timestamps) - 1):
             current_timestamp = joint_timestamps[i]
@@ -467,9 +470,20 @@ class TrajectoryDataCollector:
                 current_pose_data, next_pose_data, dt
             )
 
+            # Determine episode flags
+            current_prompt = current_joint_data.get("prompt")
+            is_first = self._is_first_in_prompt_group(current_timestamp, current_prompt, prompt_groups)
+            is_last = self._is_last_in_prompt_group(current_timestamp, current_prompt, prompt_groups)
+            is_terminal = (i == len(joint_timestamps) - 2)  # Last possible data point
+            default_reward = 1.0 if is_last else 0.0
+
             # Format as RL observation-action pair
             rl_data_point = {
-                "prompt": current_joint_data.get("prompt"),
+                "prompt": current_prompt,
+                "is_first": is_first,
+                "is_last": is_last,
+                "is_terminal": is_terminal,
+                "default_reward": default_reward,
                 "observations": {
                     "joint_state": current_joint_data["arm_joint_positions"],
                     "gripper_state": current_joint_data["gripper_joint_positions"],
@@ -546,3 +560,59 @@ class TrajectoryDataCollector:
         }
 
         return {"linear": linear_vel, "angular": angular_vel}
+
+    def _group_timestamps_by_prompt(self, timestamps: List[float]) -> Dict[str, List[float]]:
+        """
+        Group timestamps by their associated prompt.
+        
+        Args:
+            timestamps: List of timestamps to group
+            
+        Returns:
+            Dictionary mapping prompt to list of timestamps
+        """
+        prompt_groups = {}
+        
+        for timestamp in timestamps:
+            joint_data = self.joint_state_buffer.get(timestamp)
+            if joint_data:
+                prompt = joint_data.get("prompt")
+                if prompt not in prompt_groups:
+                    prompt_groups[prompt] = []
+                prompt_groups[prompt].append(timestamp)
+        
+        return prompt_groups
+
+    def _is_first_in_prompt_group(self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]) -> bool:
+        """
+        Check if timestamp is the first in its prompt group.
+        
+        Args:
+            timestamp: Current timestamp
+            prompt: Current prompt
+            prompt_groups: Dictionary of prompt groups
+            
+        Returns:
+            True if this is the first timestamp for the given prompt
+        """
+        if prompt not in prompt_groups or not prompt_groups[prompt]:
+            return False
+        
+        return timestamp == min(prompt_groups[prompt])
+
+    def _is_last_in_prompt_group(self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]) -> bool:
+        """
+        Check if timestamp is the last in its prompt group.
+        
+        Args:
+            timestamp: Current timestamp
+            prompt: Current prompt
+            prompt_groups: Dictionary of prompt groups
+            
+        Returns:
+            True if this is the last timestamp for the given prompt
+        """
+        if prompt not in prompt_groups or not prompt_groups[prompt]:
+            return False
+        
+        return timestamp == max(prompt_groups[prompt])

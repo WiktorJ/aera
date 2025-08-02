@@ -425,42 +425,86 @@ class TrajectoryDataCollector:
 
     def _synchronize_all_data(self) -> List[Dict]:
         """
-        Synchronize all buffered data by ROS timestamp.
+        Synchronize all buffered data by ROS timestamp and format for RL training.
 
         Uses joint states as the primary timeline and finds closest
         RGB, depth, and pose data within sync_tolerance.
+        
+        Formats data as observation-action pairs where:
+        - observations: current state (joint positions, gripper state, cartesian pose, images)
+        - action: next state (joint positions/velocities, gripper state, cartesian pose/velocities)
 
         Returns:
-            List of synchronized data points
+            List of RL-formatted data points with observations and actions
         """
         synchronized_data = []
+        joint_timestamps = list(self.joint_state_buffer.keys())
 
-        # Use joint states as the primary timeline
-        for joint_timestamp in self.joint_state_buffer.keys():
-            # Start with joint state data
-            data_point = self.joint_state_buffer[joint_timestamp].copy()
+        # Process all timestamps except the last one (since we need next state for action)
+        for i in range(len(joint_timestamps) - 1):
+            current_timestamp = joint_timestamps[i]
+            next_timestamp = joint_timestamps[i + 1]
+            
+            # Get current state data for observations
+            current_joint_data = self.joint_state_buffer[current_timestamp]
+            
+            # Get next state data for actions
+            next_joint_data = self.joint_state_buffer[next_timestamp]
 
-            # Find closest RGB image within tolerance (O(log n))
-            rgb_data = self._find_closest_in_buffer(joint_timestamp, self.rgb_buffer)
-            if rgb_data:
-                data_point["rgb_data"] = rgb_data
+            # Find closest RGB image within tolerance for current timestamp
+            rgb_data = self._find_closest_in_buffer(current_timestamp, self.rgb_buffer)
+            
+            # Find closest depth image within tolerance for current timestamp
+            depth_data = self._find_closest_in_buffer(current_timestamp, self.depth_buffer)
+            
+            # Find closest pose within tolerance for current and next timestamps
+            current_pose_data = self._find_closest_in_buffer(current_timestamp, self.pose_buffer)
+            next_pose_data = self._find_closest_in_buffer(next_timestamp, self.pose_buffer)
 
-            # Find closest depth image within tolerance (O(log n))
-            depth_data = self._find_closest_in_buffer(
-                joint_timestamp, self.depth_buffer
+            # Skip if we don't have essential data
+            if not rgb_data or not depth_data or not current_pose_data or not next_pose_data:
+                continue
+
+            # Calculate cartesian velocities
+            dt = next_timestamp - current_timestamp
+            cartesian_velocity = self._calculate_cartesian_velocity(
+                current_pose_data, next_pose_data, dt
             )
-            if depth_data:
-                data_point["depth_data"] = depth_data
 
-            # Find closest pose within tolerance (O(log n))
-            pose_data = self._find_closest_in_buffer(joint_timestamp, self.pose_buffer)
-            if pose_data:
-                data_point["pose_data"] = pose_data
+            # Format as RL observation-action pair
+            rl_data_point = {
+                "observations": {
+                    "joint_state": current_joint_data["arm_joint_positions"],
+                    "gripper_state": current_joint_data["gripper_joint_positions"],
+                    "cartesian_position": {
+                        "position": current_pose_data["position"],
+                        "orientation": current_pose_data["orientation"]
+                    },
+                    "rgb_image": rgb_data["rgb_image_bytes"],
+                    "depth_image": depth_data["depth_image_bytes"],
+                    "image_width": rgb_data["image_width"],
+                    "image_height": rgb_data["image_height"],
+                    "timestamp": current_timestamp,
+                    "prompt": current_joint_data.get("prompt")
+                },
+                "action": {
+                    "joint_state": next_joint_data["arm_joint_positions"],
+                    "joint_velocities": next_joint_data["arm_joint_velocities"],
+                    "gripper_state": next_joint_data["gripper_joint_positions"],
+                    "gripper_velocities": next_joint_data["gripper_joint_velocities"],
+                    "cartesian_position": {
+                        "position": next_pose_data["position"],
+                        "orientation": next_pose_data["orientation"]
+                    },
+                    "cartesian_velocity": cartesian_velocity,
+                    "timestamp": next_timestamp
+                }
+            }
 
-            synchronized_data.append(data_point)
+            synchronized_data.append(rl_data_point)
 
         self.logger.info(
-            f"Synchronized {len(synchronized_data)} data points from buffers: "
+            f"Synchronized {len(synchronized_data)} RL data points from buffers: "
             f"joint_states={len(self.joint_state_buffer)}, "
             f"rgb={len(self.rgb_buffer)}, "
             f"depth={len(self.depth_buffer)}, "
@@ -468,3 +512,41 @@ class TrajectoryDataCollector:
         )
 
         return synchronized_data
+
+    def _calculate_cartesian_velocity(self, current_pose: Dict, next_pose: Dict, dt: float) -> Dict:
+        """
+        Calculate cartesian velocity between two poses.
+        
+        Args:
+            current_pose: Current pose data with position and orientation
+            next_pose: Next pose data with position and orientation  
+            dt: Time difference between poses
+            
+        Returns:
+            Dictionary with linear and angular velocities
+        """
+        if dt <= 0:
+            return {
+                "linear": {"x": 0.0, "y": 0.0, "z": 0.0},
+                "angular": {"x": 0.0, "y": 0.0, "z": 0.0}
+            }
+        
+        # Calculate linear velocity
+        linear_vel = {
+            "x": (next_pose["position"]["x"] - current_pose["position"]["x"]) / dt,
+            "y": (next_pose["position"]["y"] - current_pose["position"]["y"]) / dt,
+            "z": (next_pose["position"]["z"] - current_pose["position"]["z"]) / dt
+        }
+        
+        # For angular velocity, we'd need to compute quaternion difference
+        # For now, using a simplified approach - could be enhanced with proper quaternion math
+        angular_vel = {
+            "x": (next_pose["orientation"]["x"] - current_pose["orientation"]["x"]) / dt,
+            "y": (next_pose["orientation"]["y"] - current_pose["orientation"]["y"]) / dt,
+            "z": (next_pose["orientation"]["z"] - current_pose["orientation"]["z"]) / dt
+        }
+        
+        return {
+            "linear": linear_vel,
+            "angular": angular_vel
+        }

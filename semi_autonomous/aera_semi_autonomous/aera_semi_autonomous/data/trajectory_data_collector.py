@@ -3,11 +3,8 @@ import json
 import os
 import cv2
 from typing import List, Dict, Any, Optional
-import numpy as np
 from sensor_msgs.msg import Image, JointState
-from rclpy.node import Node
 from cv_bridge import CvBridge
-from geometry_msgs.msg import Pose
 from sortedcontainers import SortedDict
 
 
@@ -87,7 +84,6 @@ class TrajectoryDataCollector:
             "start_time": time.time(),
             "trajectory_data": [],
             "camera_data": [],
-            "actions": [],
         }
 
         # Clear synchronized buffers for new episode
@@ -95,7 +91,7 @@ class TrajectoryDataCollector:
         self.rgb_buffer.clear()
         self.depth_buffer.clear()
         self.pose_buffer.clear()
-        
+
         self.is_collecting = True
 
         self.logger.info(f"Started RL data collection for episode: {self.episode_id}")
@@ -118,7 +114,7 @@ class TrajectoryDataCollector:
             self.current_episode_data["end_time"]
             - self.current_episode_data["start_time"]
         )
-        
+
         # Synchronize all collected data before saving
         self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
 
@@ -169,8 +165,10 @@ class TrajectoryDataCollector:
 
         # Only record if we have complete arm data
         if len(arm_positions) == len(self.arm_joint_names):
-            ros_timestamp = joint_state.header.stamp.sec + joint_state.header.stamp.nanosec * 1e-9
-            
+            ros_timestamp = (
+                joint_state.header.stamp.sec + joint_state.header.stamp.nanosec * 1e-9
+            )
+
             data_point = {
                 "timestamp": time.time(),
                 "ros_timestamp": ros_timestamp,
@@ -179,7 +177,7 @@ class TrajectoryDataCollector:
                 "gripper_joint_positions": gripper_positions,
                 "gripper_joint_velocities": gripper_velocities,
             }
-            
+
             # Store in synchronized buffer using ROS timestamp as key
             self.joint_state_buffer[ros_timestamp] = data_point
 
@@ -195,7 +193,9 @@ class TrajectoryDataCollector:
 
         try:
             timestamp = time.time()
-            ros_timestamp = rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9
+            ros_timestamp = (
+                rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9
+            )
 
             # Convert RGB image to bytes
             rgb_cv_image = self.cv_bridge.imgmsg_to_cv2(rgb_image, "bgr8")
@@ -230,7 +230,9 @@ class TrajectoryDataCollector:
 
         try:
             timestamp = time.time()
-            ros_timestamp = depth_image.header.stamp.sec + depth_image.header.stamp.nanosec * 1e-9
+            ros_timestamp = (
+                depth_image.header.stamp.sec + depth_image.header.stamp.nanosec * 1e-9
+            )
 
             # Convert depth image to bytes
             depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
@@ -252,28 +254,6 @@ class TrajectoryDataCollector:
 
         except Exception as e:
             self.logger.error(f"Failed to record depth image data: {e}")
-
-    def record_action(self, action_type: str, object_name: str, **kwargs) -> None:
-        """
-        Record an action being executed.
-
-        Args:
-            action_type: Type of action (e.g., 'pick_object', 'release_above')
-            object_name: Name of target object
-            **kwargs: Additional action-specific parameters
-        """
-        if not self.is_collecting:
-            return
-
-        action_data = {
-            "timestamp": time.time(),
-            "action_type": action_type,
-            "object_name": object_name,
-            "parameters": kwargs,
-        }
-
-        self.current_episode_data["actions"].append(action_data)
-        self.logger.info(f"Recorded action: {action_type} on {object_name}")
 
     def record_pose(self, joint_state: JointState) -> None:
         """
@@ -329,7 +309,10 @@ class TrajectoryDataCollector:
                     }
 
                     # Store in synchronized buffer using ROS timestamp as key
-                    ros_timestamp = joint_state.header.stamp.sec + joint_state.header.stamp.nanosec * 1e-9
+                    ros_timestamp = (
+                        joint_state.header.stamp.sec
+                        + joint_state.header.stamp.nanosec * 1e-9
+                    )
                     self.pose_buffer[ros_timestamp] = pose_dict
 
             except Exception as e:
@@ -353,13 +336,6 @@ class TrajectoryDataCollector:
             with open(episode_file, "w") as f:
                 json.dump(self.current_episode_data, f, indent=2, default=str)
 
-            # Save trajectory data separately for easier loading
-            trajectory_file = os.path.join(
-                self.episode_directory, "trajectory_data.json"
-            )
-            with open(trajectory_file, "w") as f:
-                json.dump(self.current_episode_data["trajectory_data"], f, indent=2, default=str)
-
             return episode_file
 
         except Exception as e:
@@ -382,7 +358,6 @@ class TrajectoryDataCollector:
             "prompt": self.current_episode_data.get("prompt", ""),
             "num_trajectory_points": len(trajectory_data),
             "num_camera_frames": len(self.current_episode_data.get("camera_data", [])),
-            "num_actions": len(self.current_episode_data.get("actions", [])),
             "duration": self.current_episode_data.get("duration", 0),
             "is_collecting": self.is_collecting,
         }
@@ -403,85 +378,89 @@ class TrajectoryDataCollector:
         os.makedirs(episode_dir, exist_ok=True)
         return episode_dir
 
-    def _find_closest_in_buffer(self, target_timestamp: float, 
-                               sorted_buffer: SortedDict) -> Optional[dict]:
+    def _find_closest_in_buffer(
+        self, target_timestamp: float, sorted_buffer: SortedDict
+    ) -> Optional[dict]:
         """
         Find closest data point in O(log n) time using SortedDict.
-        
+
         Args:
             target_timestamp: Target ROS timestamp to find closest match for
             sorted_buffer: SortedDict containing timestamped data
-            
+
         Returns:
             Closest data point within sync_tolerance, or None if no match
         """
         if not sorted_buffer:
             return None
-            
+
         # Find insertion index using binary search
         idx = sorted_buffer.bisect_left(target_timestamp)
-        
+
         candidates = []
-        
+
         # Check timestamp at/after target
         if idx < len(sorted_buffer):
             candidates.append(sorted_buffer.peekitem(idx)[0])
-            
+
         # Check timestamp before target
         if idx > 0:
             candidates.append(sorted_buffer.peekitem(idx - 1)[0])
-        
+
         if not candidates:
             return None
-            
+
         # Find closest among candidates
-        closest_timestamp = min(candidates, 
-                              key=lambda t: abs(t - target_timestamp))
-        
+        closest_timestamp = min(candidates, key=lambda t: abs(t - target_timestamp))
+
         # Check if within tolerance
         if abs(closest_timestamp - target_timestamp) <= self.sync_tolerance:
             return sorted_buffer[closest_timestamp]
-        
+
         return None
 
     def _synchronize_all_data(self) -> List[Dict]:
         """
         Synchronize all buffered data by ROS timestamp.
-        
+
         Uses joint states as the primary timeline and finds closest
         RGB, depth, and pose data within sync_tolerance.
-        
+
         Returns:
             List of synchronized data points
         """
         synchronized_data = []
-        
+
         # Use joint states as the primary timeline
         for joint_timestamp in self.joint_state_buffer.keys():
             # Start with joint state data
             data_point = self.joint_state_buffer[joint_timestamp].copy()
-            
+
             # Find closest RGB image within tolerance (O(log n))
             rgb_data = self._find_closest_in_buffer(joint_timestamp, self.rgb_buffer)
             if rgb_data:
-                data_point['rgb_data'] = rgb_data
-                
+                data_point["rgb_data"] = rgb_data
+
             # Find closest depth image within tolerance (O(log n))
-            depth_data = self._find_closest_in_buffer(joint_timestamp, self.depth_buffer)
+            depth_data = self._find_closest_in_buffer(
+                joint_timestamp, self.depth_buffer
+            )
             if depth_data:
-                data_point['depth_data'] = depth_data
-                
+                data_point["depth_data"] = depth_data
+
             # Find closest pose within tolerance (O(log n))
             pose_data = self._find_closest_in_buffer(joint_timestamp, self.pose_buffer)
             if pose_data:
-                data_point['pose_data'] = pose_data
-                
+                data_point["pose_data"] = pose_data
+
             synchronized_data.append(data_point)
-            
-        self.logger.info(f"Synchronized {len(synchronized_data)} data points from buffers: "
-                        f"joint_states={len(self.joint_state_buffer)}, "
-                        f"rgb={len(self.rgb_buffer)}, "
-                        f"depth={len(self.depth_buffer)}, "
-                        f"poses={len(self.pose_buffer)}")
-            
+
+        self.logger.info(
+            f"Synchronized {len(synchronized_data)} data points from buffers: "
+            f"joint_states={len(self.joint_state_buffer)}, "
+            f"rgb={len(self.rgb_buffer)}, "
+            f"depth={len(self.depth_buffer)}, "
+            f"poses={len(self.pose_buffer)}"
+        )
+
         return synchronized_data

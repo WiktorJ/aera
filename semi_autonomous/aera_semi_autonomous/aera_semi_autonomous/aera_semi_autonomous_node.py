@@ -253,9 +253,6 @@ class AeraSemiAutonomous(Node):
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
 
-            # Record action for RL
-            self.trajectory_collector.record_action(action, object_to_detect)
-
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(
                 action,

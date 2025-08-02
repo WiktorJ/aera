@@ -270,7 +270,9 @@ class AeraSemiAutonomous(Node):
             )
             # Use the verbose action description with object name placeholder
             action_description = ACTION_DESCRIPTIONS.get(action, action)
-            formatted_description = action_description.format(object_name=object_to_detect)
+            formatted_description = action_description.format(
+                object_name=object_to_detect
+            )
             self.trajectory_collector.record_current_prompt(formatted_description)
 
             # Handle the command and update object_in_gripper status
@@ -289,9 +291,7 @@ class AeraSemiAutonomous(Node):
         self.robot_controller.go_home()
 
         # Stop RL data collection and get summary
-        episode_data = self.trajectory_collector.stop_episode()
-        summary = self.trajectory_collector.get_episode_summary()
-        self.logger.info(f"Task completed. RL data summary: {summary}")
+        self.trajectory_collector.stop_episode()
 
     @cached_property
     def cam_to_base_affine(self):

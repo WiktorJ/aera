@@ -64,7 +64,7 @@ class TrajectoryDataCollector:
             "rgb_discrepancies": [],
             "depth_discrepancies": [],
             "pose_discrepancies": [],
-            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0}
+            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0},
         }
 
         # Create save directory
@@ -115,7 +115,7 @@ class TrajectoryDataCollector:
             "rgb_discrepancies": [],
             "depth_discrepancies": [],
             "pose_discrepancies": [],
-            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0}
+            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0},
         }
 
         self.is_collecting = True
@@ -143,9 +143,11 @@ class TrajectoryDataCollector:
 
         # Synchronize all collected data before saving
         self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
-        
+
         # Add synchronization statistics to episode data
-        self.current_episode_data["synchronization_stats"] = self._compute_sync_statistics()
+        self.current_episode_data["synchronization_stats"] = (
+            self._compute_sync_statistics()
+        )
 
         # Save episode data
         episode_file = self.save_episode_data()
@@ -393,7 +395,10 @@ class TrajectoryDataCollector:
         return episode_dir
 
     def _find_closest_in_buffer(
-        self, target_timestamp: float, sorted_buffer: SortedDict, data_type: str = "unknown"
+        self,
+        target_timestamp: float,
+        sorted_buffer: SortedDict,
+        data_type: str = "unknown",
     ) -> Optional[dict]:
         """
         Find closest data point in O(log n) time using SortedDict.
@@ -438,7 +443,7 @@ class TrajectoryDataCollector:
                 self.sync_stats["depth_discrepancies"].append(discrepancy)
             elif data_type == "pose":
                 self.sync_stats["pose_discrepancies"].append(discrepancy)
-            
+
             return sorted_buffer[closest_timestamp]
 
         # Record failed synchronization
@@ -482,7 +487,9 @@ class TrajectoryDataCollector:
             next_joint_data = self.joint_state_buffer[next_timestamp]
 
             # Find closest RGB image within tolerance for current timestamp
-            rgb_data = self._find_closest_in_buffer(current_timestamp, self.rgb_buffer, "rgb")
+            rgb_data = self._find_closest_in_buffer(
+                current_timestamp, self.rgb_buffer, "rgb"
+            )
 
             # Find closest depth image within tolerance for current timestamp
             depth_data = self._find_closest_in_buffer(
@@ -504,23 +511,6 @@ class TrajectoryDataCollector:
                 or not current_pose_data
                 or not next_pose_data
             ):
-                # Track failed synchronizations
-                if not rgb_data:
-                    self.sync_stats["failed_syncs"]["rgb"] += 1
-                if not depth_data:
-                    self.sync_stats["failed_syncs"]["depth"] += 1
-                if not current_pose_data:
-                    self.sync_stats["failed_syncs"]["current_pose"] += 1
-                if not next_pose_data:
-                    self.sync_stats["failed_syncs"]["next_pose"] += 1
-                    
-                self.logger.warn(
-                    f"Could not find essential data for timestamp: {current_timestamp}"
-                    f"rbg_data present: {rgb_data is not None}, "
-                    f"depth_data present: {depth_data is not None}, "
-                    f"current_pose_data present: {current_pose_data is not None}, "
-                    f"next_pose_data present: {next_pose_data is not None}"
-                )
                 continue
 
             # Calculate cartesian velocities
@@ -689,16 +679,16 @@ class TrajectoryDataCollector:
     def _compute_sync_statistics(self) -> Dict[str, Any]:
         """
         Compute synchronization statistics for the episode.
-        
+
         Returns:
             Dictionary containing synchronization statistics
         """
         stats = {
             "sync_tolerance_used": self.sync_tolerance,
             "total_failed_syncs": sum(self.sync_stats["failed_syncs"].values()),
-            "failed_syncs_by_type": self.sync_stats["failed_syncs"].copy()
+            "failed_syncs_by_type": self.sync_stats["failed_syncs"].copy(),
         }
-        
+
         # Compute RGB synchronization statistics
         if self.sync_stats["rgb_discrepancies"]:
             rgb_discrepancies = self.sync_stats["rgb_discrepancies"]
@@ -706,11 +696,11 @@ class TrajectoryDataCollector:
                 "count": len(rgb_discrepancies),
                 "mean_discrepancy": sum(rgb_discrepancies) / len(rgb_discrepancies),
                 "max_discrepancy": max(rgb_discrepancies),
-                "min_discrepancy": min(rgb_discrepancies)
+                "min_discrepancy": min(rgb_discrepancies),
             }
         else:
             stats["rgb_sync"] = {"count": 0}
-            
+
         # Compute depth synchronization statistics
         if self.sync_stats["depth_discrepancies"]:
             depth_discrepancies = self.sync_stats["depth_discrepancies"]
@@ -718,11 +708,11 @@ class TrajectoryDataCollector:
                 "count": len(depth_discrepancies),
                 "mean_discrepancy": sum(depth_discrepancies) / len(depth_discrepancies),
                 "max_discrepancy": max(depth_discrepancies),
-                "min_discrepancy": min(depth_discrepancies)
+                "min_discrepancy": min(depth_discrepancies),
             }
         else:
             stats["depth_sync"] = {"count": 0}
-            
+
         # Compute pose synchronization statistics
         if self.sync_stats["pose_discrepancies"]:
             pose_discrepancies = self.sync_stats["pose_discrepancies"]
@@ -730,9 +720,9 @@ class TrajectoryDataCollector:
                 "count": len(pose_discrepancies),
                 "mean_discrepancy": sum(pose_discrepancies) / len(pose_discrepancies),
                 "max_discrepancy": max(pose_discrepancies),
-                "min_discrepancy": min(pose_discrepancies)
+                "min_discrepancy": min(pose_discrepancies),
             }
         else:
             stats["pose_sync"] = {"count": 0}
-            
+
         return stats

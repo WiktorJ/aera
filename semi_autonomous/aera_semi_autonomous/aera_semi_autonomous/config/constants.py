@@ -26,13 +26,13 @@ _MOVE_ABOVE_OBJECT_AND_RELEASE = "move_above_object_and_release"
 _RELEASE_GRIPPER = "release_gripper"
 
 # Mapping between actions and verbose descriptions in natural language
-_ACTION_DESCRIPTIONS = {
+ACTION_DESCRIPTIONS = {
     _PICK_OBJECT: "Pick up the {object_name} by grasping it with the robot gripper",
     _MOVE_ABOVE_OBJECT_AND_RELEASE: "Move above the {object_name} and release the currently held object",
-    _RELEASE_GRIPPER: "Release the gripper to drop any currently held object"
+    _RELEASE_GRIPPER: "Release the gripper to drop any currently held object",
 }
 
-_AVAILABLE_ACTIONS = (
+AVAILABLE_ACTIONS = (
     _PICK_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,
     _RELEASE_GRIPPER,

@@ -66,7 +66,9 @@ class AeraSemiAutonomous(Node):
             self.get_parameter("sync_tolerance").get_parameter_value().double_value
         )
         self.collect_trajectory_data = (
-            self.get_parameter("collect_trajectory_data").get_parameter_value().bool_value
+            self.get_parameter("collect_trajectory_data")
+            .get_parameter_value()
+            .bool_value
         )
 
         # Initialize basic components
@@ -161,9 +163,8 @@ class AeraSemiAutonomous(Node):
 
     def _joint_state_callback_for_rl(self, msg: JointState):
         """Callback for joint state updates for RL data collection."""
-        if self.collect_trajectory_data:
-            self.trajectory_collector.record_joint_state(msg)
-            self.trajectory_collector.record_pose(msg)
+        self.trajectory_collector.record_joint_state(msg)
+        self.trajectory_collector.record_pose(msg)
 
     def _moveit_feedback_callback(self, feedback_msg):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
@@ -276,11 +277,11 @@ class AeraSemiAutonomous(Node):
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
             # Use the verbose action description with object name placeholder
-            action_description = ACTION_DESCRIPTIONS.get(action, action)
-            formatted_description = action_description.format(
-                object_name=object_to_detect
-            )
             if self.collect_trajectory_data:
+                action_description = ACTION_DESCRIPTIONS.get(action, action)
+                formatted_description = action_description.format(
+                    object_name=object_to_detect
+                )
                 self.trajectory_collector.record_current_prompt(formatted_description)
 
             # Handle the command and update object_in_gripper status

@@ -86,6 +86,12 @@ class TrajectoryDataCollector:
             "input_message": input_message,
             "start_time": time.time(),
             "trajectory_data": [],
+            "metadata": {
+                "image_width": None,
+                "image_height": None,
+                "rgb_encoding": None,
+                "depth_encoding": None,
+            },
         }
 
         # Clear synchronized buffers for new episode
@@ -205,13 +211,16 @@ class TrajectoryDataCollector:
             _, rgb_encoded = cv2.imencode(".jpg", rgb_cv_image)
             rgb_bytes = rgb_encoded.tobytes()
 
+            # Store metadata at episode level if not already set
+            if self.current_episode_data["metadata"]["image_width"] is None:
+                self.current_episode_data["metadata"]["image_width"] = rgb_image.width
+                self.current_episode_data["metadata"]["image_height"] = rgb_image.height
+                self.current_episode_data["metadata"]["rgb_encoding"] = rgb_image.encoding
+
             rgb_data_point = {
                 "timestamp": timestamp,
                 "ros_timestamp": ros_timestamp,
                 "rgb_image_bytes": rgb_bytes.hex(),  # Convert to hex string for JSON serialization
-                "image_width": rgb_image.width,
-                "image_height": rgb_image.height,
-                "rgb_encoding": rgb_image.encoding,
                 "data_type": "rgb",
             }
 
@@ -242,13 +251,14 @@ class TrajectoryDataCollector:
             _, depth_encoded = cv2.imencode(".png", depth_cv_image)
             depth_bytes = depth_encoded.tobytes()
 
+            # Store metadata at episode level if not already set
+            if self.current_episode_data["metadata"]["depth_encoding"] is None:
+                self.current_episode_data["metadata"]["depth_encoding"] = depth_image.encoding
+
             depth_data_point = {
                 "timestamp": timestamp,
                 "ros_timestamp": ros_timestamp,
                 "depth_image_bytes": depth_bytes.hex(),
-                "image_width": depth_image.width,
-                "image_height": depth_image.height,
-                "depth_encoding": depth_image.encoding,
                 "data_type": "depth",
             }
 
@@ -469,8 +479,6 @@ class TrajectoryDataCollector:
                     },
                     "rgb_image": rgb_data["rgb_image_bytes"],
                     "depth_image": depth_data["depth_image_bytes"],
-                    "image_width": rgb_data["image_width"],
-                    "image_height": rgb_data["image_height"],
                     "timestamp": current_timestamp,
                 },
                 "action": {

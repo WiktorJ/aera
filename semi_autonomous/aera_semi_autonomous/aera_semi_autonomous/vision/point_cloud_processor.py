@@ -31,7 +31,9 @@ class PointCloudProcessor:
 
         return grasp_pose_camera, gripper_angle_camera, gripper_opening
 
-    def transform_gripper_angle_to_base_frame(self, gripper_angle_camera, cam_to_base_affine):
+    def transform_gripper_angle_to_base_frame(
+        self, gripper_angle_camera, cam_to_base_affine
+    ):
         """Transform gripper angle from camera frame to base frame."""
         gripper_vec_camera = np.array(
             [
@@ -70,7 +72,7 @@ class PointCloudProcessor:
             return None
 
         center_camera, _, _ = cv2.minAreaRect(xy_points)
-        drop_z = np.percentile(points_camera_frame[:, 2], 95) + 0.02
+        drop_z = np.percentile(points_camera_frame[:, 2], 95) + 0.05
         grasp_pose_camera = np.array([center_camera[0], center_camera[1], drop_z, 1.0])
-        
+
         return grasp_pose_camera

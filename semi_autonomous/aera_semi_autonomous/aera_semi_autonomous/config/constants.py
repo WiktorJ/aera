@@ -25,6 +25,8 @@ _PICK_OBJECT = "pick_object"
 _MOVE_ABOVE_OBJECT_AND_RELEASE = "move_above_object_and_release"
 _RELEASE_GRIPPER = "release_gripper"
 
+# Add a mapping between action and more verouse descrption (in natural language) of what tihs action does, it should include placeholder for object name AI!
+
 _AVAILABLE_ACTIONS = (
     _PICK_OBJECT,
     _MOVE_ABOVE_OBJECT_AND_RELEASE,

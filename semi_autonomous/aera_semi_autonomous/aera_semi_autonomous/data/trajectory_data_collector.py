@@ -77,6 +77,7 @@ class TrajectoryDataCollector:
 
         self.episode_id = episode_id if episode_id else self._generate_episode_id()
         self.episode_directory = self._create_episode_directory(self.episode_id)
+        self.current_prompt = None
 
         self.current_episode_data = {
             "episode_id": self.episode_id,
@@ -176,6 +177,7 @@ class TrajectoryDataCollector:
                 "arm_joint_velocities": arm_velocities,
                 "gripper_joint_positions": gripper_positions,
                 "gripper_joint_velocities": gripper_velocities,
+                "prompt": self.current_prompt
             }
 
             # Store in synchronized buffer using ROS timestamp as key
@@ -308,6 +310,19 @@ class TrajectoryDataCollector:
 
             except Exception as e:
                 self.logger.error(f"Failed to compute end effector pose: {e}")
+
+    def record_current_prompt(self, prompt: str) -> None:
+        """
+        Record the current prompt for the episode.
+        
+        Args:
+            prompt: Current prompt for the episode
+        """
+        if not self.is_collecting:
+            return
+        self.current_prompt = prompt
+
+    def start_episode(self, prompt: str) -> int:
 
     def save_episode_data(self) -> str:
         """

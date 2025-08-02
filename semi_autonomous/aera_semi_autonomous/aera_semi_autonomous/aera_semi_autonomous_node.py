@@ -42,6 +42,7 @@ class AeraSemiAutonomous(Node):
         self.declare_parameter("gripper_squeeze_factor", 0.2)
         self.declare_parameter("debug_mode", False)
         self.declare_parameter("sync_tolerance", 0.05)
+        self.declare_parameter("collect_trajectory_data", True)
 
         # Get parameter values
         self.offset_x = (
@@ -63,6 +64,9 @@ class AeraSemiAutonomous(Node):
         )
         self.sync_tolerance = (
             self.get_parameter("sync_tolerance").get_parameter_value().double_value
+        )
+        self.collect_trajectory_data = (
+            self.get_parameter("collect_trajectory_data").get_parameter_value().bool_value
         )
 
         # Initialize basic components
@@ -148,16 +152,18 @@ class AeraSemiAutonomous(Node):
         )
 
         # Subscribe to joint states for RL data collection
-        self.joint_state_sub = self.create_subscription(
-            JointState, "/joint_states", self._joint_state_callback_for_rl, 10
-        )
+        if self.collect_trajectory_data:
+            self.joint_state_sub = self.create_subscription(
+                JointState, "/joint_states", self._joint_state_callback_for_rl, 10
+            )
 
         self.logger.info("Aera Semi Autonomous node initialized.")
 
     def _joint_state_callback_for_rl(self, msg: JointState):
         """Callback for joint state updates for RL data collection."""
-        self.trajectory_collector.record_joint_state(msg)
-        self.trajectory_collector.record_pose(msg)
+        if self.collect_trajectory_data:
+            self.trajectory_collector.record_joint_state(msg)
+            self.trajectory_collector.record_pose(msg)
 
     def _moveit_feedback_callback(self, feedback_msg):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""
@@ -237,7 +243,8 @@ class AeraSemiAutonomous(Node):
         self.debug_utils.setup_debug_logging(msg.data, self.camera_intrinsics)
 
         # Start RL data collection
-        self.trajectory_collector.start_episode(msg.data)
+        if self.collect_trajectory_data:
+            self.trajectory_collector.start_episode(msg.data)
 
         # Initialize manipulation handler
         manipulation_handler = self._initialize_manipulation_handler()
@@ -273,7 +280,8 @@ class AeraSemiAutonomous(Node):
             formatted_description = action_description.format(
                 object_name=object_to_detect
             )
-            self.trajectory_collector.record_current_prompt(formatted_description)
+            if self.collect_trajectory_data:
+                self.trajectory_collector.record_current_prompt(formatted_description)
 
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(
@@ -291,8 +299,9 @@ class AeraSemiAutonomous(Node):
         self.robot_controller.go_home()
 
         # Stop RL data collection and log summary
-        episode_data = self.trajectory_collector.stop_episode()
-        self.trajectory_collector.log_trajectory_summary()
+        if self.collect_trajectory_data:
+            episode_data = self.trajectory_collector.stop_episode()
+            self.trajectory_collector.log_trajectory_summary()
 
     @cached_property
     def cam_to_base_affine(self):
@@ -328,14 +337,16 @@ class AeraSemiAutonomous(Node):
         if self.debug_mode and self._last_depth_msg is not None:
             return
         self._last_depth_msg = msg
-        self.trajectory_collector.record_depth_image(msg)
+        if self.collect_trajectory_data:
+            self.trajectory_collector.record_depth_image(msg)
 
     def image_callback(self, msg):
         """Callback for RGB image messages."""
         if self.debug_mode and self._last_rgb_msg is not None:
             return
         self._last_rgb_msg = msg
-        self.trajectory_collector.record_rgb_image(msg)
+        if self.collect_trajectory_data:
+            self.trajectory_collector.record_rgb_image(msg)
 
 
 def main():

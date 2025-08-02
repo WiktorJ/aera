@@ -72,7 +72,7 @@ class PointCloudProcessor:
             return None
 
         center_camera, _, _ = cv2.minAreaRect(xy_points)
-        drop_z = np.percentile(points_camera_frame[:, 2], 95) + 0.05
+        drop_z = np.percentile(points_camera_frame[:, 2], 95)
         grasp_pose_camera = np.array([center_camera[0], center_camera[1], drop_z, 1.0])
 
         return grasp_pose_camera

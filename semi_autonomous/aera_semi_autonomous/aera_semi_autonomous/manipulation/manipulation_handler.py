@@ -37,7 +37,13 @@ class ManipulationHandler:
         self.n_frames_processed = n_frames_processed
         self.logger = robot_controller.logger
 
-    def pick_object(self, object_index: int, detections: sv.Detections, depth_image: np.ndarray, last_rgb_msg: Optional[Image] = None) -> None:
+    def pick_object(
+        self,
+        object_index: int,
+        detections: sv.Detections,
+        depth_image: np.ndarray,
+        last_rgb_msg: Optional[Image] = None,
+    ) -> None:
         """Perform a top-down grasp on the object."""
         if (
             detections is None
@@ -130,7 +136,13 @@ class ManipulationHandler:
 
         self.robot_controller.grasp_at(grasp_pose, gripper_pos)
 
-    def release_above(self, object_index: int, detections: sv.Detections, depth_image: np.ndarray, last_rgb_msg: Optional[Image] = None) -> None:
+    def release_above(
+        self,
+        object_index: int,
+        detections: sv.Detections,
+        depth_image: np.ndarray,
+        last_rgb_msg: Optional[Image] = None,
+    ) -> None:
         """Move the robot arm above the object and release the gripper."""
         if (
             detections is None
@@ -173,7 +185,7 @@ class ManipulationHandler:
         drop_pose = Pose()
         drop_pose.position.x = drop_pose_base[0] + self.offset_x
         drop_pose.position.y = drop_pose_base[1] + self.offset_y
-        drop_pose.position.z = drop_pose_base[2] + self.offset_z
+        drop_pose.position.z = drop_pose_base[2] + self.offset_z + 0.05
 
         # Straight down pose
         drop_pose.orientation.x = 0.0

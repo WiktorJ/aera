@@ -263,10 +263,10 @@ class AeraSemiAutonomous(Node):
             self.logger.info(
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
-            # Use action descrption here AI!
-            self.trajectory_collector.record_current_prompt(
-                f"{action} {object_to_detect}"
-            )
+            # Use the verbose action description with object name placeholder
+            action_description = ACTION_DESCRIPTIONS.get(action, action)
+            formatted_description = action_description.format(object_name=object_to_detect)
+            self.trajectory_collector.record_current_prompt(formatted_description)
 
             # Handle the command and update object_in_gripper status
             self._object_in_gripper = self.command_processor.handle_tool_call(

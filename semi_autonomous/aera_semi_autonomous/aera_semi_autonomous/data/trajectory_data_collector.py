@@ -322,8 +322,6 @@ class TrajectoryDataCollector:
             return
         self.current_prompt = prompt
 
-    def start_episode(self, prompt: str) -> int:
-
     def save_episode_data(self) -> str:
         """
         Save the current episode data to disk.

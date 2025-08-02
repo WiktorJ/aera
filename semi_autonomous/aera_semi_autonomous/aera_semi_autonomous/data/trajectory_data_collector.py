@@ -60,7 +60,9 @@ class TrajectoryDataCollector:
         # Create save directory
         os.makedirs(self.save_directory, exist_ok=True)
 
-    def start_episode(self, prompt: str, episode_id: Optional[str] = None) -> str:
+    def start_episode(
+        self, input_message: str, episode_id: Optional[str] = None
+    ) -> str:
         """
         Start a new data collection episode.
 
@@ -81,10 +83,9 @@ class TrajectoryDataCollector:
 
         self.current_episode_data = {
             "episode_id": self.episode_id,
-            "prompt": prompt,
+            "input_message": input_message,
             "start_time": time.time(),
             "trajectory_data": [],
-            "camera_data": [],
         }
 
         # Clear synchronized buffers for new episode
@@ -346,32 +347,6 @@ class TrajectoryDataCollector:
             self.logger.error(f"Failed to save episode data: {e}")
             return ""
 
-    def get_episode_summary(self) -> Dict[str, Any]:
-        """
-        Get a summary of the current episode data.
-
-        Returns:
-            Summary statistics and metadata
-        """
-        if not self.current_episode_data:
-            return {}
-
-        trajectory_data = self.current_episode_data.get("trajectory_data", [])
-        summary = {
-            "episode_id": self.episode_id,
-            "prompt": self.current_episode_data.get("prompt", ""),
-            "num_trajectory_points": len(trajectory_data),
-            "num_camera_frames": len(self.current_episode_data.get("camera_data", [])),
-            "duration": self.current_episode_data.get("duration", 0),
-            "is_collecting": self.is_collecting,
-        }
-
-        if trajectory_data:
-            summary["trajectory_start_time"] = trajectory_data[0]["timestamp"]
-            summary["trajectory_end_time"] = trajectory_data[-1]["timestamp"]
-
-        return summary
-
     def _generate_episode_id(self) -> str:
         """Generate a unique episode ID based on timestamp."""
         return f"episode_{int(time.time() * 1000)}"
@@ -429,7 +404,7 @@ class TrajectoryDataCollector:
 
         Uses joint states as the primary timeline and finds closest
         RGB, depth, and pose data within sync_tolerance.
-        
+
         Formats data as observation-action pairs where:
         - observations: current state (joint positions, gripper state, cartesian pose, images)
         - action: next state (joint positions/velocities, gripper state, cartesian pose/velocities)
@@ -444,25 +419,36 @@ class TrajectoryDataCollector:
         for i in range(len(joint_timestamps) - 1):
             current_timestamp = joint_timestamps[i]
             next_timestamp = joint_timestamps[i + 1]
-            
+
             # Get current state data for observations
             current_joint_data = self.joint_state_buffer[current_timestamp]
-            
+
             # Get next state data for actions
             next_joint_data = self.joint_state_buffer[next_timestamp]
 
             # Find closest RGB image within tolerance for current timestamp
             rgb_data = self._find_closest_in_buffer(current_timestamp, self.rgb_buffer)
-            
+
             # Find closest depth image within tolerance for current timestamp
-            depth_data = self._find_closest_in_buffer(current_timestamp, self.depth_buffer)
-            
+            depth_data = self._find_closest_in_buffer(
+                current_timestamp, self.depth_buffer
+            )
+
             # Find closest pose within tolerance for current and next timestamps
-            current_pose_data = self._find_closest_in_buffer(current_timestamp, self.pose_buffer)
-            next_pose_data = self._find_closest_in_buffer(next_timestamp, self.pose_buffer)
+            current_pose_data = self._find_closest_in_buffer(
+                current_timestamp, self.pose_buffer
+            )
+            next_pose_data = self._find_closest_in_buffer(
+                next_timestamp, self.pose_buffer
+            )
 
             # Skip if we don't have essential data
-            if not rgb_data or not depth_data or not current_pose_data or not next_pose_data:
+            if (
+                not rgb_data
+                or not depth_data
+                or not current_pose_data
+                or not next_pose_data
+            ):
                 continue
 
             # Calculate cartesian velocities
@@ -473,19 +459,19 @@ class TrajectoryDataCollector:
 
             # Format as RL observation-action pair
             rl_data_point = {
+                "prompt": current_joint_data.get("prompt"),
                 "observations": {
                     "joint_state": current_joint_data["arm_joint_positions"],
                     "gripper_state": current_joint_data["gripper_joint_positions"],
                     "cartesian_position": {
                         "position": current_pose_data["position"],
-                        "orientation": current_pose_data["orientation"]
+                        "orientation": current_pose_data["orientation"],
                     },
                     "rgb_image": rgb_data["rgb_image_bytes"],
                     "depth_image": depth_data["depth_image_bytes"],
                     "image_width": rgb_data["image_width"],
                     "image_height": rgb_data["image_height"],
                     "timestamp": current_timestamp,
-                    "prompt": current_joint_data.get("prompt")
                 },
                 "action": {
                     "joint_state": next_joint_data["arm_joint_positions"],
@@ -494,11 +480,11 @@ class TrajectoryDataCollector:
                     "gripper_velocities": next_joint_data["gripper_joint_velocities"],
                     "cartesian_position": {
                         "position": next_pose_data["position"],
-                        "orientation": next_pose_data["orientation"]
+                        "orientation": next_pose_data["orientation"],
                     },
                     "cartesian_velocity": cartesian_velocity,
-                    "timestamp": next_timestamp
-                }
+                    "timestamp": next_timestamp,
+                },
             }
 
             synchronized_data.append(rl_data_point)
@@ -513,40 +499,42 @@ class TrajectoryDataCollector:
 
         return synchronized_data
 
-    def _calculate_cartesian_velocity(self, current_pose: Dict, next_pose: Dict, dt: float) -> Dict:
+    def _calculate_cartesian_velocity(
+        self, current_pose: Dict, next_pose: Dict, dt: float
+    ) -> Dict:
         """
         Calculate cartesian velocity between two poses.
-        
+
         Args:
             current_pose: Current pose data with position and orientation
-            next_pose: Next pose data with position and orientation  
+            next_pose: Next pose data with position and orientation
             dt: Time difference between poses
-            
+
         Returns:
             Dictionary with linear and angular velocities
         """
         if dt <= 0:
             return {
                 "linear": {"x": 0.0, "y": 0.0, "z": 0.0},
-                "angular": {"x": 0.0, "y": 0.0, "z": 0.0}
+                "angular": {"x": 0.0, "y": 0.0, "z": 0.0},
             }
-        
+
         # Calculate linear velocity
         linear_vel = {
             "x": (next_pose["position"]["x"] - current_pose["position"]["x"]) / dt,
             "y": (next_pose["position"]["y"] - current_pose["position"]["y"]) / dt,
-            "z": (next_pose["position"]["z"] - current_pose["position"]["z"]) / dt
+            "z": (next_pose["position"]["z"] - current_pose["position"]["z"]) / dt,
         }
-        
+
         # For angular velocity, we'd need to compute quaternion difference
         # For now, using a simplified approach - could be enhanced with proper quaternion math
         angular_vel = {
-            "x": (next_pose["orientation"]["x"] - current_pose["orientation"]["x"]) / dt,
-            "y": (next_pose["orientation"]["y"] - current_pose["orientation"]["y"]) / dt,
-            "z": (next_pose["orientation"]["z"] - current_pose["orientation"]["z"]) / dt
+            "x": (next_pose["orientation"]["x"] - current_pose["orientation"]["x"])
+            / dt,
+            "y": (next_pose["orientation"]["y"] - current_pose["orientation"]["y"])
+            / dt,
+            "z": (next_pose["orientation"]["z"] - current_pose["orientation"]["z"])
+            / dt,
         }
-        
-        return {
-            "linear": linear_vel,
-            "angular": angular_vel
-        }
+
+        return {"linear": linear_vel, "angular": angular_vel}

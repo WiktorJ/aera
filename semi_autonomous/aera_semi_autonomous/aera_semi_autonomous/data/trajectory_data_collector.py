@@ -59,6 +59,14 @@ class TrajectoryDataCollector:
         self.pose_buffer = SortedDict()
         self.sync_tolerance = sync_tolerance
 
+        # Synchronization statistics
+        self.sync_stats = {
+            "rgb_discrepancies": [],
+            "depth_discrepancies": [],
+            "pose_discrepancies": [],
+            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0}
+        }
+
         # Create save directory
         os.makedirs(self.save_directory, exist_ok=True)
 
@@ -102,6 +110,14 @@ class TrajectoryDataCollector:
         self.depth_buffer.clear()
         self.pose_buffer.clear()
 
+        # Reset synchronization statistics
+        self.sync_stats = {
+            "rgb_discrepancies": [],
+            "depth_discrepancies": [],
+            "pose_discrepancies": [],
+            "failed_syncs": {"rgb": 0, "depth": 0, "current_pose": 0, "next_pose": 0}
+        }
+
         self.is_collecting = True
 
         self.logger.info(f"Started RL data collection for episode: {self.episode_id}")
@@ -127,6 +143,9 @@ class TrajectoryDataCollector:
 
         # Synchronize all collected data before saving
         self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
+        
+        # Add synchronization statistics to episode data
+        self.current_episode_data["synchronization_stats"] = self._compute_sync_statistics()
 
         # Save episode data
         episode_file = self.save_episode_data()
@@ -374,7 +393,7 @@ class TrajectoryDataCollector:
         return episode_dir
 
     def _find_closest_in_buffer(
-        self, target_timestamp: float, sorted_buffer: SortedDict
+        self, target_timestamp: float, sorted_buffer: SortedDict, data_type: str = "unknown"
     ) -> Optional[dict]:
         """
         Find closest data point in O(log n) time using SortedDict.
@@ -382,6 +401,7 @@ class TrajectoryDataCollector:
         Args:
             target_timestamp: Target ROS timestamp to find closest match for
             sorted_buffer: SortedDict containing timestamped data
+            data_type: Type of data for statistics tracking
 
         Returns:
             Closest data point within sync_tolerance, or None if no match
@@ -407,13 +427,26 @@ class TrajectoryDataCollector:
 
         # Find closest among candidates
         closest_timestamp = min(candidates, key=lambda t: abs(t - target_timestamp))
+        discrepancy = abs(closest_timestamp - target_timestamp)
 
         # Check if within tolerance
-        if abs(closest_timestamp - target_timestamp) <= self.sync_tolerance:
+        if discrepancy <= self.sync_tolerance:
+            # Record synchronization statistics
+            if data_type == "rgb":
+                self.sync_stats["rgb_discrepancies"].append(discrepancy)
+            elif data_type == "depth":
+                self.sync_stats["depth_discrepancies"].append(discrepancy)
+            elif data_type == "pose":
+                self.sync_stats["pose_discrepancies"].append(discrepancy)
+            
             return sorted_buffer[closest_timestamp]
 
+        # Record failed synchronization
+        if data_type in self.sync_stats["failed_syncs"]:
+            self.sync_stats["failed_syncs"][data_type] += 1
+
         self.logger.warn(
-            f"Could not find data within sync_tolerance for timestamp: {target_timestamp}, the closest was: {closest_timestamp}"
+            f"Could not find {data_type} data within sync_tolerance for timestamp: {target_timestamp}, the closest was: {closest_timestamp} (discrepancy: {discrepancy:.4f}s)"
         )
         return None
 
@@ -449,19 +482,19 @@ class TrajectoryDataCollector:
             next_joint_data = self.joint_state_buffer[next_timestamp]
 
             # Find closest RGB image within tolerance for current timestamp
-            rgb_data = self._find_closest_in_buffer(current_timestamp, self.rgb_buffer)
+            rgb_data = self._find_closest_in_buffer(current_timestamp, self.rgb_buffer, "rgb")
 
             # Find closest depth image within tolerance for current timestamp
             depth_data = self._find_closest_in_buffer(
-                current_timestamp, self.depth_buffer
+                current_timestamp, self.depth_buffer, "depth"
             )
 
             # Find closest pose within tolerance for current and next timestamps
             current_pose_data = self._find_closest_in_buffer(
-                current_timestamp, self.pose_buffer
+                current_timestamp, self.pose_buffer, "pose"
             )
             next_pose_data = self._find_closest_in_buffer(
-                next_timestamp, self.pose_buffer
+                next_timestamp, self.pose_buffer, "pose"
             )
 
             # Skip if we don't have essential data
@@ -471,6 +504,16 @@ class TrajectoryDataCollector:
                 or not current_pose_data
                 or not next_pose_data
             ):
+                # Track failed synchronizations
+                if not rgb_data:
+                    self.sync_stats["failed_syncs"]["rgb"] += 1
+                if not depth_data:
+                    self.sync_stats["failed_syncs"]["depth"] += 1
+                if not current_pose_data:
+                    self.sync_stats["failed_syncs"]["current_pose"] += 1
+                if not next_pose_data:
+                    self.sync_stats["failed_syncs"]["next_pose"] += 1
+                    
                 self.logger.warn(
                     f"Could not find essential data for timestamp: {current_timestamp}"
                     f"rbg_data present: {rgb_data is not None}, "
@@ -642,3 +685,54 @@ class TrajectoryDataCollector:
             return False
 
         return timestamp == max(prompt_groups[prompt])
+
+    def _compute_sync_statistics(self) -> Dict[str, Any]:
+        """
+        Compute synchronization statistics for the episode.
+        
+        Returns:
+            Dictionary containing synchronization statistics
+        """
+        stats = {
+            "sync_tolerance_used": self.sync_tolerance,
+            "total_failed_syncs": sum(self.sync_stats["failed_syncs"].values()),
+            "failed_syncs_by_type": self.sync_stats["failed_syncs"].copy()
+        }
+        
+        # Compute RGB synchronization statistics
+        if self.sync_stats["rgb_discrepancies"]:
+            rgb_discrepancies = self.sync_stats["rgb_discrepancies"]
+            stats["rgb_sync"] = {
+                "count": len(rgb_discrepancies),
+                "mean_discrepancy": sum(rgb_discrepancies) / len(rgb_discrepancies),
+                "max_discrepancy": max(rgb_discrepancies),
+                "min_discrepancy": min(rgb_discrepancies)
+            }
+        else:
+            stats["rgb_sync"] = {"count": 0}
+            
+        # Compute depth synchronization statistics
+        if self.sync_stats["depth_discrepancies"]:
+            depth_discrepancies = self.sync_stats["depth_discrepancies"]
+            stats["depth_sync"] = {
+                "count": len(depth_discrepancies),
+                "mean_discrepancy": sum(depth_discrepancies) / len(depth_discrepancies),
+                "max_discrepancy": max(depth_discrepancies),
+                "min_discrepancy": min(depth_discrepancies)
+            }
+        else:
+            stats["depth_sync"] = {"count": 0}
+            
+        # Compute pose synchronization statistics
+        if self.sync_stats["pose_discrepancies"]:
+            pose_discrepancies = self.sync_stats["pose_discrepancies"]
+            stats["pose_sync"] = {
+                "count": len(pose_discrepancies),
+                "mean_discrepancy": sum(pose_discrepancies) / len(pose_discrepancies),
+                "max_discrepancy": max(pose_discrepancies),
+                "min_discrepancy": min(pose_discrepancies)
+            }
+        else:
+            stats["pose_sync"] = {"count": 0}
+            
+        return stats

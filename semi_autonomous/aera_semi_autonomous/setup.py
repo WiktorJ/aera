@@ -28,7 +28,6 @@ setup(
     maintainer_email="wiktor.jurasz@gmail.com",
     classifiers=[
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
         "Programming Language :: Python",
         "Topic :: Software Development",
     ],

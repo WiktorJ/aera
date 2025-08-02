@@ -215,7 +215,9 @@ class TrajectoryDataCollector:
             if self.current_episode_data["metadata"]["image_width"] is None:
                 self.current_episode_data["metadata"]["image_width"] = rgb_image.width
                 self.current_episode_data["metadata"]["image_height"] = rgb_image.height
-                self.current_episode_data["metadata"]["rgb_encoding"] = rgb_image.encoding
+                self.current_episode_data["metadata"]["rgb_encoding"] = (
+                    rgb_image.encoding
+                )
 
             rgb_data_point = {
                 "timestamp": timestamp,
@@ -253,7 +255,9 @@ class TrajectoryDataCollector:
 
             # Store metadata at episode level if not already set
             if self.current_episode_data["metadata"]["depth_encoding"] is None:
-                self.current_episode_data["metadata"]["depth_encoding"] = depth_image.encoding
+                self.current_episode_data["metadata"]["depth_encoding"] = (
+                    depth_image.encoding
+                )
 
             depth_data_point = {
                 "timestamp": timestamp,
@@ -462,6 +466,13 @@ class TrajectoryDataCollector:
                 or not current_pose_data
                 or not next_pose_data
             ):
+                self.logger.warn(
+                    f"Could not find essential data for timestamp: {current_timestamp}"
+                    f"rbg_data present: {rgb_data is not None}, "
+                    f"depth_data present: {depth_data is not None}, "
+                    f"current_pose_data present: {current_pose_data is not None}, "
+                    f"next_pose_data present: {next_pose_data is not None}"
+                )
                 continue
 
             # Calculate cartesian velocities
@@ -472,9 +483,13 @@ class TrajectoryDataCollector:
 
             # Determine episode flags
             current_prompt = current_joint_data.get("prompt")
-            is_first = self._is_first_in_prompt_group(current_timestamp, current_prompt, prompt_groups)
-            is_last = self._is_last_in_prompt_group(current_timestamp, current_prompt, prompt_groups)
-            is_terminal = (i == len(joint_timestamps) - 2)  # Last possible data point
+            is_first = self._is_first_in_prompt_group(
+                current_timestamp, current_prompt, prompt_groups
+            )
+            is_last = self._is_last_in_prompt_group(
+                current_timestamp, current_prompt, prompt_groups
+            )
+            is_terminal = i == len(joint_timestamps) - 2  # Last possible data point
             default_reward = 1.0 if is_last else 0.0
 
             # Format as RL observation-action pair
@@ -561,18 +576,20 @@ class TrajectoryDataCollector:
 
         return {"linear": linear_vel, "angular": angular_vel}
 
-    def _group_timestamps_by_prompt(self, timestamps: List[float]) -> Dict[str, List[float]]:
+    def _group_timestamps_by_prompt(
+        self, timestamps: List[float]
+    ) -> Dict[str, List[float]]:
         """
         Group timestamps by their associated prompt.
-        
+
         Args:
             timestamps: List of timestamps to group
-            
+
         Returns:
             Dictionary mapping prompt to list of timestamps
         """
         prompt_groups = {}
-        
+
         for timestamp in timestamps:
             joint_data = self.joint_state_buffer.get(timestamp)
             if joint_data:
@@ -580,39 +597,43 @@ class TrajectoryDataCollector:
                 if prompt not in prompt_groups:
                     prompt_groups[prompt] = []
                 prompt_groups[prompt].append(timestamp)
-        
+
         return prompt_groups
 
-    def _is_first_in_prompt_group(self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]) -> bool:
+    def _is_first_in_prompt_group(
+        self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]
+    ) -> bool:
         """
         Check if timestamp is the first in its prompt group.
-        
+
         Args:
             timestamp: Current timestamp
             prompt: Current prompt
             prompt_groups: Dictionary of prompt groups
-            
+
         Returns:
             True if this is the first timestamp for the given prompt
         """
         if prompt not in prompt_groups or not prompt_groups[prompt]:
             return False
-        
+
         return timestamp == min(prompt_groups[prompt])
 
-    def _is_last_in_prompt_group(self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]) -> bool:
+    def _is_last_in_prompt_group(
+        self, timestamp: float, prompt: str, prompt_groups: Dict[str, List[float]]
+    ) -> bool:
         """
         Check if timestamp is the last in its prompt group.
-        
+
         Args:
             timestamp: Current timestamp
             prompt: Current prompt
             prompt_groups: Dictionary of prompt groups
-            
+
         Returns:
             True if this is the last timestamp for the given prompt
         """
         if prompt not in prompt_groups or not prompt_groups[prompt]:
             return False
-        
+
         return timestamp == max(prompt_groups[prompt])

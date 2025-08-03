@@ -908,6 +908,7 @@ class TrajectoryDataCollector:
 
         return summary
 
+
     def _confirm_and_save_episode(self) -> bool:
         """
         Ask user for confirmation and save episode data if confirmed.

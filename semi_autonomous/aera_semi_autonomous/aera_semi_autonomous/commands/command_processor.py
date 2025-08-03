@@ -21,17 +21,48 @@ class CommandProcessor:
     def __init__(self, logger):
         self.logger = logger
 
-    def parse_prompt_message(self, msg_data: str) -> Optional[List[Tuple[str, str]]]:
-        """Parse YAML/JSON prompt message into list of (action, object) tuples."""
+    def parse_prompt_message(self, msg_data: str) -> Optional[Tuple[List[Tuple[str, str]], dict]]:
+        """Parse YAML/JSON prompt message into list of (action, object) tuples and offsets."""
         try:
             data = yaml.safe_load(msg_data)
 
-            if not isinstance(data, list):
-                self.logger.error(f"The top level is not a list: {msg_data}")
+            # Handle backward compatibility: if data is a list, treat as old format
+            if isinstance(data, list):
+                commands = []
+                for command_data in data:
+                    if not isinstance(command_data, dict):
+                        self.logger.error(
+                            f"Command item is not a dictionary: {command_data}"
+                        )
+                        return None
+                    action = command_data.get("action")
+                    object_to_detect = command_data.get("object", "")
+
+                    if not action:
+                        self.logger.error(f"No 'action' found in command: {command_data}")
+                        return None
+
+                    if action not in AVAILABLE_ACTIONS:
+                        self.logger.warn(
+                            f"Action: {action} is not valid. Valid actions: {AVAILABLE_ACTIONS}"
+                        )
+                        return None
+                    commands.append((action, object_to_detect))
+                return commands, {}
+
+            # Handle new format: dictionary with commands and optional offsets
+            if not isinstance(data, dict):
+                self.logger.error(f"The top level is not a dictionary or list: {msg_data}")
+                return None
+
+            # Extract commands
+            commands_data = data.get("commands", [])
+            if not isinstance(commands_data, list):
+                self.logger.error(f"'commands' is not a list: {commands_data}")
                 return None
 
             commands = []
-            for command_data in data:
+            for command_data in commands_data:
                 if not isinstance(command_data, dict):
                     self.logger.error(
                         f"Command item is not a dictionary: {command_data}"
@@ -50,7 +81,17 @@ class CommandProcessor:
                     )
                     return None
                 commands.append((action, object_to_detect))
-            return commands
+
+            # Extract offsets (optional)
+            offsets = {}
+            if "offsets" in data:
+                offset_data = data["offsets"]
+                if isinstance(offset_data, dict):
+                    offsets["offset_x"] = offset_data.get("offset_x")
+                    offsets["offset_y"] = offset_data.get("offset_y")
+                    offsets["offset_z"] = offset_data.get("offset_z")
+
+            return commands, offsets
         except yaml.YAMLError:
             self.logger.error(f"Failed to parse YAML/JSON from prompt: {msg_data}")
             return None

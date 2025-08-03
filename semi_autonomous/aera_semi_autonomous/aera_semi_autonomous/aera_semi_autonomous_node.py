@@ -230,7 +230,7 @@ class AeraSemiAutonomous(Node):
         if self.camera_intrinsics is None:
             return None
 
-        return ManipulationHandler(
+        manipulation_handler = ManipulationHandler(
             self.point_cloud_processor,
             self.robot_controller,
             self.debug_utils,
@@ -242,14 +242,18 @@ class AeraSemiAutonomous(Node):
             self.gripper_squeeze_factor,
             self.n_frames_processed,
         )
+        # Initialize with default offsets
+        manipulation_handler.update_offsets()
+        return manipulation_handler
 
     def start(self, msg: String):
         """Main entry point for processing commands."""
-        commands = self.command_processor.parse_prompt_message(msg.data)
-        if not commands:
+        parse_result = self.command_processor.parse_prompt_message(msg.data)
+        if not parse_result:
             self.logger.warn(f"Could not parse commands from: {msg.data}")
             return
 
+        commands, offsets = parse_result
         self.logger.info(f"Processing: {msg.data}")
         self.debug_utils.setup_debug_logging(msg.data, self.camera_intrinsics)
 
@@ -264,6 +268,17 @@ class AeraSemiAutonomous(Node):
                 "Cannot initialize manipulation handler without camera intrinsics."
             )
             return
+
+        # Update offsets if provided in the prompt
+        if offsets:
+            self.logger.info(f"Using custom offsets: {offsets}")
+            manipulation_handler.update_offsets(
+                offset_x=offsets.get("offset_x"),
+                offset_y=offsets.get("offset_y"),
+                offset_z=offsets.get("offset_z")
+            )
+        else:
+            self.logger.info(f"Using default offsets: x={self.offset_x}, y={self.offset_y}, z={self.offset_z}")
 
         for action, object_to_detect in commands:
             if not self._last_rgb_msg or not self._last_depth_msg:

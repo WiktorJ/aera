@@ -37,11 +37,19 @@ class ManipulationHandler:
         self.n_frames_processed = n_frames_processed
         self.logger = robot_controller.logger
 
-    def update_offsets(self, offset_x: float = None, offset_y: float = None, offset_z: float = None):
+    def update_offsets(
+        self, offset_x: float = None, offset_y: float = None, offset_z: float = None
+    ):
         """Update the current offsets, using defaults if not provided."""
-        self.current_offset_x = offset_x if offset_x is not None else self.default_offset_x
-        self.current_offset_y = offset_y if offset_y is not None else self.default_offset_y
-        self.current_offset_z = offset_z if offset_z is not None else self.default_offset_z
+        self.current_offset_x = (
+            offset_x if offset_x is not None else self.default_offset_x
+        )
+        self.current_offset_y = (
+            offset_y if offset_y is not None else self.default_offset_y
+        )
+        self.current_offset_z = (
+            offset_z if offset_z is not None else self.default_offset_z
+        )
 
     def pick_object(
         self,
@@ -188,7 +196,7 @@ class ManipulationHandler:
         drop_pose = Pose()
         drop_pose.position.x = drop_pose_base[0] + self.current_offset_x
         drop_pose.position.y = drop_pose_base[1] + self.current_offset_y
-        drop_pose.position.z = drop_pose_base[2] + self.current_offset_z + 0.05
+        drop_pose.position.z = drop_pose_base[2] + self.current_offset_z + 0.07
 
         # Straight down pose
         drop_pose.orientation.x = 0.0

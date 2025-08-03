@@ -275,10 +275,12 @@ class AeraSemiAutonomous(Node):
             manipulation_handler.update_offsets(
                 offset_x=offsets.get("offset_x"),
                 offset_y=offsets.get("offset_y"),
-                offset_z=offsets.get("offset_z")
+                offset_z=offsets.get("offset_z"),
             )
         else:
-            self.logger.info(f"Using default offsets: x={self.offset_x}, y={self.offset_y}, z={self.offset_z}")
+            self.logger.info(
+                f"Using default offsets: x={self.offset_x}, y={self.offset_y}, z={self.offset_z}"
+            )
 
         for action, object_to_detect in commands:
             if not self._last_rgb_msg or not self._last_depth_msg:
@@ -326,7 +328,7 @@ class AeraSemiAutonomous(Node):
 
         # Stop RL data collection and log summary
         if self.collect_trajectory_data:
-            episode_data = self.trajectory_collector.stop_episode()
+            self.trajectory_collector.stop_episode()
             self.trajectory_collector.log_trajectory_summary()
 
     @cached_property

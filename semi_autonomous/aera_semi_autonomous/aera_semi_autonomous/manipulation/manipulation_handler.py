@@ -196,7 +196,7 @@ class ManipulationHandler:
         drop_pose = Pose()
         drop_pose.position.x = drop_pose_base[0] + self.current_offset_x
         drop_pose.position.y = drop_pose_base[1] + self.current_offset_y
-        drop_pose.position.z = drop_pose_base[2] + self.current_offset_z + 0.07
+        drop_pose.position.z = drop_pose_base[2] + self.current_offset_z + 0.04
 
         # Straight down pose
         drop_pose.orientation.x = 0.0

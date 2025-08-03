@@ -41,7 +41,7 @@ class AeraSemiAutonomous(Node):
         self.declare_parameter("offset_z", 0.1)
         self.declare_parameter("gripper_squeeze_factor", 0.2)
         self.declare_parameter("debug_mode", False)
-        self.declare_parameter("sync_tolerance", 0.05)
+        self.declare_parameter("sync_tolerance", 0.08)
         self.declare_parameter("collect_trajectory_data", True)
 
         # Get parameter values

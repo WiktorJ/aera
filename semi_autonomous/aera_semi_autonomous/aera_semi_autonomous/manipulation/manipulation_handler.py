@@ -194,14 +194,12 @@ class ManipulationHandler:
         drop_pose.orientation.w = 0.0
 
         self.debug_utils.debug_log_pose_info(drop_pose, operation_name="Drop")
-        if self.debug_utils.debug_visualizations or self.debug_utils.save_debug_images:
-            # Transform points to base frame for visualization
-            points_base_frame = (
-                np.column_stack([points, np.ones(len(points))])
-                @ self.cam_to_base_affine.T
-            )
-            self.debug_utils.debug_visualize_all_minarearects(
-                points_base_frame[:, :3], "Release_Base", self.n_frames_processed
-            )
+        # Transform points to base frame for visualization
+        points_base_frame = (
+            np.column_stack([points, np.ones(len(points))]) @ self.cam_to_base_affine.T
+        )
+        self.debug_utils.debug_visualize_all_minarearects(
+            points_base_frame[:, :3], "Release_Base", self.n_frames_processed
+        )
 
         self.robot_controller.release_at(drop_pose)

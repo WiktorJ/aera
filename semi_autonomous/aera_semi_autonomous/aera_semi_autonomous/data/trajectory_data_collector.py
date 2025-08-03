@@ -451,7 +451,7 @@ class TrajectoryDataCollector:
             self.sync_stats["failed_syncs"][data_type] += 1
 
         self.logger.warn(
-            f"Could not find {data_type} data within sync_tolerance for timestamp: {target_timestamp}, the closest was: {closest_timestamp} (discrepancy: {discrepancy:.4f}s)"
+            f"Could not find {data_type} data within {self.sync_tolerance} tolerance for timestamp: {target_timestamp}, the closest was: {closest_timestamp} (discrepancy: {discrepancy:.4f}s)"
         )
         return None
 
@@ -735,17 +735,19 @@ class TrajectoryDataCollector:
             Dictionary containing trajectory summary statistics
         """
         trajectory_data = self.current_episode_data.get("trajectory_data", [])
-        
+
         if not trajectory_data:
             return {"error": "No trajectory data to summarize"}
 
         # Basic trajectory statistics
         total_points = len(trajectory_data)
-        
+
         # Extract prompts and episode structure
-        prompts = [point.get("prompt") for point in trajectory_data if point.get("prompt")]
+        prompts = [
+            point.get("prompt") for point in trajectory_data if point.get("prompt")
+        ]
         unique_prompts = list(set(prompts))
-        
+
         # Calculate trajectory duration
         if total_points >= 2:
             start_time = trajectory_data[0]["observations"]["timestamp"]
@@ -755,7 +757,9 @@ class TrajectoryDataCollector:
             duration = 0.0
 
         # Analyze joint movement ranges
-        joint_positions = [point["observations"]["joint_state"] for point in trajectory_data]
+        joint_positions = [
+            point["observations"]["joint_state"] for point in trajectory_data
+        ]
         if joint_positions:
             joint_ranges = []
             for joint_idx in range(len(joint_positions[0])):
@@ -766,48 +770,69 @@ class TrajectoryDataCollector:
             joint_ranges = []
 
         # Analyze gripper state changes
-        gripper_states = [point["observations"]["gripper_state"] for point in trajectory_data]
+        gripper_states = [
+            point["observations"]["gripper_state"] for point in trajectory_data
+        ]
         gripper_changes = 0
         if len(gripper_states) > 1:
             for i in range(1, len(gripper_states)):
-                if gripper_states[i] != gripper_states[i-1]:
+                if gripper_states[i] != gripper_states[i - 1]:
                     gripper_changes += 1
 
         # Analyze cartesian movement
-        positions = [point["observations"]["cartesian_position"]["position"] for point in trajectory_data]
+        positions = [
+            point["observations"]["cartesian_position"]["position"]
+            for point in trajectory_data
+        ]
         if positions:
             # Calculate total cartesian distance traveled
             total_distance = 0.0
             for i in range(1, len(positions)):
-                dx = positions[i]["x"] - positions[i-1]["x"]
-                dy = positions[i]["y"] - positions[i-1]["y"]
-                dz = positions[i]["z"] - positions[i-1]["z"]
-                distance = (dx**2 + dy**2 + dz**2)**0.5
+                dx = positions[i]["x"] - positions[i - 1]["x"]
+                dy = positions[i]["y"] - positions[i - 1]["y"]
+                dz = positions[i]["z"] - positions[i - 1]["z"]
+                distance = (dx**2 + dy**2 + dz**2) ** 0.5
                 total_distance += distance
 
             # Calculate workspace bounds
             x_coords = [pos["x"] for pos in positions]
             y_coords = [pos["y"] for pos in positions]
             z_coords = [pos["z"] for pos in positions]
-            
+
             workspace_bounds = {
                 "x_range": max(x_coords) - min(x_coords),
                 "y_range": max(y_coords) - min(y_coords),
                 "z_range": max(z_coords) - min(z_coords),
-                "min_position": {"x": min(x_coords), "y": min(y_coords), "z": min(z_coords)},
-                "max_position": {"x": max(x_coords), "y": max(y_coords), "z": max(z_coords)},
+                "min_position": {
+                    "x": min(x_coords),
+                    "y": min(y_coords),
+                    "z": min(z_coords),
+                },
+                "max_position": {
+                    "x": max(x_coords),
+                    "y": max(y_coords),
+                    "z": max(z_coords),
+                },
             }
         else:
             total_distance = 0.0
             workspace_bounds = {}
 
         # Count episode boundaries
-        first_points = sum(1 for point in trajectory_data if point.get("is_first", False))
+        first_points = sum(
+            1 for point in trajectory_data if point.get("is_first", False)
+        )
         last_points = sum(1 for point in trajectory_data if point.get("is_last", False))
-        terminal_points = sum(1 for point in trajectory_data if point.get("is_terminal", False))
+        terminal_points = sum(
+            1 for point in trajectory_data if point.get("is_terminal", False)
+        )
 
         # Calculate average velocities
-        joint_velocities = [point["action"]["joint_velocities"] for point in trajectory_data if point["action"]["joint_velocities"]]
+        joint_velocities = [
+            point["action"]["joint_velocities"]
+            for point in trajectory_data
+            if point["action"]["joint_velocities"]
+        ]
         if joint_velocities:
             avg_joint_velocities = []
             for joint_idx in range(len(joint_velocities[0])):
@@ -826,8 +851,12 @@ class TrajectoryDataCollector:
             "movement_analysis": {
                 "total_cartesian_distance_meters": round(total_distance, 4),
                 "joint_movement_ranges_radians": [round(r, 4) for r in joint_ranges],
-                "max_joint_movement_radians": round(max(joint_ranges), 4) if joint_ranges else 0.0,
-                "average_joint_velocities_rad_per_sec": [round(v, 4) for v in avg_joint_velocities],
+                "max_joint_movement_radians": round(max(joint_ranges), 4)
+                if joint_ranges
+                else 0.0,
+                "average_joint_velocities_rad_per_sec": [
+                    round(v, 4) for v in avg_joint_velocities
+                ],
                 "workspace_bounds_meters": workspace_bounds,
             },
             "manipulation_analysis": {
@@ -839,19 +868,21 @@ class TrajectoryDataCollector:
                 },
             },
             "data_quality": {
-                "average_frequency_hz": round(total_points / duration, 2) if duration > 0 else 0.0,
+                "average_frequency_hz": round(total_points / duration, 2)
+                if duration > 0
+                else 0.0,
                 "has_complete_observations": all(
-                    point.get("observations", {}).get("rgb_image") and 
-                    point.get("observations", {}).get("depth_image") and
-                    point.get("observations", {}).get("joint_state")
+                    point.get("observations", {}).get("rgb_image")
+                    and point.get("observations", {}).get("depth_image")
+                    and point.get("observations", {}).get("joint_state")
                     for point in trajectory_data
                 ),
                 "has_complete_actions": all(
-                    point.get("action", {}).get("joint_state") and
-                    point.get("action", {}).get("cartesian_position")
+                    point.get("action", {}).get("joint_state")
+                    and point.get("action", {}).get("cartesian_position")
                     for point in trajectory_data
                 ),
-            }
+            },
         }
 
         return summary
@@ -865,32 +896,44 @@ class TrajectoryDataCollector:
             return
 
         trajectory_summary = self.summarize_trajectory_data()
-        
+
         if "error" in trajectory_summary:
             self.logger.warn(f"Trajectory summary error: {trajectory_summary['error']}")
             return
 
         self.logger.info("=== TRAJECTORY SUMMARY ===")
-        self.logger.info(f"Episode: {self.current_episode_data.get('episode_id', 'unknown')}")
-        self.logger.info(f"Input: {self.current_episode_data.get('input_message', 'unknown')}")
-        
+        self.logger.info(
+            f"Episode: {self.current_episode_data.get('episode_id', 'unknown')}"
+        )
+        self.logger.info(
+            f"Input: {self.current_episode_data.get('input_message', 'unknown')}"
+        )
+
         # Log overview
         overview = trajectory_summary.get("trajectory_overview", {})
         self.logger.info(f"Data Points: {overview.get('total_data_points', 0)}")
         self.logger.info(f"Duration: {overview.get('duration_seconds', 0)}s")
         self.logger.info(f"Prompts: {overview.get('unique_prompts', 0)} unique")
-        
+
         # Log movement analysis
         movement = trajectory_summary.get("movement_analysis", {})
-        self.logger.info(f"Distance Traveled: {movement.get('total_cartesian_distance_meters', 0)}m")
-        self.logger.info(f"Max Joint Movement: {movement.get('max_joint_movement_radians', 0)} rad")
-        
+        self.logger.info(
+            f"Distance Traveled: {movement.get('total_cartesian_distance_meters', 0)}m"
+        )
+        self.logger.info(
+            f"Max Joint Movement: {movement.get('max_joint_movement_radians', 0)} rad"
+        )
+
         # Log manipulation analysis
         manipulation = trajectory_summary.get("manipulation_analysis", {})
-        self.logger.info(f"Gripper Changes: {manipulation.get('gripper_state_changes', 0)}")
-        
+        self.logger.info(
+            f"Gripper Changes: {manipulation.get('gripper_state_changes', 0)}"
+        )
+
         # Log data quality
         quality = trajectory_summary.get("data_quality", {})
         self.logger.info(f"Frequency: {quality.get('average_frequency_hz', 0)} Hz")
-        self.logger.info(f"Complete Data: {quality.get('has_complete_observations', False) and quality.get('has_complete_actions', False)}")
+        self.logger.info(
+            f"Complete Data: {quality.get('has_complete_observations', False) and quality.get('has_complete_actions', False)}"
+        )
         self.logger.info("=== END SUMMARY ===")

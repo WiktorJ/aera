@@ -200,9 +200,8 @@ class ManipulationHandler:
                 np.column_stack([points, np.ones(len(points))])
                 @ self.cam_to_base_affine.T
             )
-            points_base_frame = points_base_frame[:, :3]
             self.debug_utils.debug_visualize_all_minarearects(
-                points_base_frame, "Release_Base", self.n_frames_processed
+                points_base_frame[:, :3], "Release_Base", self.n_frames_processed
             )
 
         self.robot_controller.release_at(drop_pose)

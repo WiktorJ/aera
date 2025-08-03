@@ -44,7 +44,11 @@ class DebugUtils:
             plt.savefig(os.path.join(self.debug_img_dir, filename))
 
     def debug_visualize_selected_mask(
-        self, detections: sv.Detections, object_index: int, operation_name: str, last_rgb_msg
+        self,
+        detections: sv.Detections,
+        object_index: int,
+        operation_name: str,
+        last_rgb_msg,
     ):
         """Debug visualization for the selected mask."""
         if (
@@ -132,7 +136,7 @@ class DebugUtils:
         third_axis_name = list(all_axes - {axis1_name.lower(), axis2_name.lower()})[0]
 
         plt.figure(
-            f"{axis1_name.upper()}{axis2_name.upper()} points for minAreaRect (Base Frame) - {operation_name}"
+            f"{axis1_name.upper()}{axis2_name.upper()} points for minAreaRect - {operation_name}"
         )
         plt.clf()  # Clear previous plot
         plt.scatter(
@@ -156,12 +160,12 @@ class DebugUtils:
             c="g",
             s=50,
             marker="x",
-            label="Calculated Center (Base Frame)",
+            label="Calculated Center",
         )
-        plt.xlabel(f"{axis1_name.upper()} (Base Frame)")
-        plt.ylabel(f"{axis2_name.upper()} (Base Frame)")
+        plt.xlabel(f"{axis1_name.upper()}")
+        plt.ylabel(f"{axis2_name.upper()}")
         plt.title(
-            f"Object {axis1_name.upper()}{axis2_name.upper()} in Base Frame ({third_axis_name.upper()} ~ {third_coord:.3f}m) - {operation_name}"
+            f"Object {axis1_name.upper()}{axis2_name.upper()} ({third_axis_name.upper()} ~ {third_coord:.3f}m) - {operation_name}"
         )
         plt.axis("equal")  # Important for correct aspect ratio
         plt.legend()
@@ -231,7 +235,11 @@ class DebugUtils:
         )
 
     def debug_visualize_detections(
-        self, image: np.ndarray, detections: sv.Detections, object_classes: List[str], frame_count: int
+        self,
+        image: np.ndarray,
+        detections: sv.Detections,
+        object_classes: List[str],
+        frame_count: int,
     ):
         """Debug visualization for object detections with bounding boxes, labels, and masks."""
         # Create a BGR copy for OpenCV annotations

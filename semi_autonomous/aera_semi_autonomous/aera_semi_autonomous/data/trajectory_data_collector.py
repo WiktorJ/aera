@@ -123,7 +123,7 @@ class TrajectoryDataCollector:
         self.logger.info(f"Started RL data collection for episode: {self.episode_id}")
         return self.episode_id
 
-    def stop_episode(self) -> Dict[str, Any]:
+    def stop_episode(self) -> None:
         """
         Stop the current data collection episode and return collected data.
 
@@ -132,7 +132,7 @@ class TrajectoryDataCollector:
         """
         if not self.is_collecting:
             self.logger.warn("No episode in progress to stop.")
-            return {}
+            return
 
         self.is_collecting = False
         self.current_episode_data["end_time"] = time.time()
@@ -157,8 +157,6 @@ class TrajectoryDataCollector:
             f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
             f"Saved to: {episode_file}"
         )
-
-        return self.current_episode_data.copy()
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """

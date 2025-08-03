@@ -358,7 +358,6 @@ class TrajectoryDataCollector:
             return
         self.current_prompt = prompt
 
-
     def save_episode_data(self) -> str:
         """
         Save the current episode data to disk.
@@ -369,7 +368,6 @@ class TrajectoryDataCollector:
         if not self.episode_directory or not self.current_episode_data:
             self.logger.error("No episode data to save")
             return ""
-
 
         # Save main episode data as JSON
         episode_file = os.path.join(self.episode_directory, "episode_data.json")

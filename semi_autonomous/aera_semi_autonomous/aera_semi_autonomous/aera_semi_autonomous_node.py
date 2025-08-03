@@ -246,7 +246,6 @@ class AeraSemiAutonomous(Node):
         manipulation_handler.update_offsets()
         return manipulation_handler
 
-
     def start(self, msg: String):
         """Main entry point for processing commands."""
         parse_result = self.command_processor.parse_prompt_message(msg.data)

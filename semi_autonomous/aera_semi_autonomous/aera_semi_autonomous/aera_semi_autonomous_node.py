@@ -246,6 +246,65 @@ class AeraSemiAutonomous(Node):
         manipulation_handler.update_offsets()
         return manipulation_handler
 
+    def _confirm_and_save_episode(self) -> bool:
+        """
+        Ask user for confirmation and save episode data if confirmed.
+
+        Returns:
+            True if episode was saved, False if discarded
+        """
+        import sys
+
+        # Get episode info for display
+        episode_data = self.trajectory_collector.current_episode_data
+        episode_id = episode_data.get("episode_id", "unknown")
+
+        # Compute trajectory data for display
+        trajectory_data = self.trajectory_collector._synchronize_all_data()
+        duration = episode_data.get("end_time", time.time()) - episode_data.get(
+            "start_time", time.time()
+        )
+
+        # Display episode completion info
+        print(f"\n=== EPISODE COMPLETED ===")
+        print(f"Episode {episode_id} completed.")
+        print(f"Collected {len(trajectory_data)} trajectory points.")
+        print(f"Duration: {duration:.2f} seconds")
+        print("=========================")
+
+        # Flush to ensure visibility
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        while True:
+            try:
+                response = (
+                    input("Do you want to save this episode data? (y/n): ")
+                    .strip()
+                    .lower()
+                )
+
+                if response in ["y", "yes"]:
+                    # Save episode data
+                    episode_file = self.trajectory_collector._save_episode_data_direct(
+                        trajectory_data, duration
+                    )
+                    self.logger.info(f"Episode {episode_id} saved to: {episode_file}")
+                    return True
+                elif response in ["n", "no"]:
+                    self.logger.info(
+                        f"Episode {episode_id} data discarded (not saved)."
+                    )
+                    return False
+                else:
+                    print("Please enter 'y' for yes or 'n' for no.")
+                    sys.stdout.flush()
+            except (EOFError, KeyboardInterrupt):
+                self.logger.warn(
+                    "Input interrupted. Defaulting to not saving episode data."
+                )
+                return False
+
     def start(self, msg: String):
         """Main entry point for processing commands."""
         parse_result = self.command_processor.parse_prompt_message(msg.data)

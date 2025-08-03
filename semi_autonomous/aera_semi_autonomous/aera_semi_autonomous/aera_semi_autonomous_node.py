@@ -7,7 +7,7 @@ import open3d as o3d
 import rclpy
 import tf2_ros
 from cv_bridge import CvBridge
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -88,6 +88,8 @@ class AeraSemiAutonomous(Node):
 
         # Initialize callback groups
         prompt_callback_group = MutuallyExclusiveCallbackGroup()
+        self.rbg_image_callback_group = ReentrantCallbackGroup()
+        self.depth_image_callback_group = ReentrantCallbackGroup()
 
         # Initialize arm joint names
         self.arm_joint_names = [
@@ -183,7 +185,11 @@ class AeraSemiAutonomous(Node):
         """Create the image subscription after a delay."""
         if self.image_sub is None:
             self.image_sub = self.create_subscription(
-                Image, "/camera/camera/color/image_raw", self.image_callback, 10
+                Image,
+                "/camera/camera/color/image_raw",
+                self.image_callback,
+                10,
+                callback_group=self.rbg_image_callback_group,
             )
             self.logger.info("Image subscription created after 3 second delay.")
 
@@ -191,7 +197,11 @@ class AeraSemiAutonomous(Node):
         """Create the depth subscription after a delay."""
         if self.depth_sub is None:
             self.depth_sub = self.create_subscription(
-                Image, "/camera/camera/depth/image_rect_raw", self.depth_callback, 10
+                Image,
+                "/camera/camera/depth/image_rect_raw",
+                self.depth_callback,
+                10,
+                callback_group=self.depth_image_callback_group,
             )
             self.logger.info("Depth subscription created after 3 second delay.")
 

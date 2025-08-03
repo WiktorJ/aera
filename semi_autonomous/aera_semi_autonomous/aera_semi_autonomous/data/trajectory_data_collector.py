@@ -125,10 +125,8 @@ class TrajectoryDataCollector:
 
     def stop_episode(self) -> None:
         """
-        Stop the current data collection episode and return collected data.
-
-        Returns:
-            Dictionary containing all collected episode data
+        Stop the current data collection episode.
+        Note: This method no longer handles saving - that's done separately.
         """
         if not self.is_collecting:
             self.logger.warn("No episode in progress to stop.")
@@ -141,55 +139,7 @@ class TrajectoryDataCollector:
             - self.current_episode_data["start_time"]
         )
 
-        # Synchronize all collected data before saving
-        self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
-
-        # Add synchronization statistics to episode data
-        self.current_episode_data["synchronization_stats"] = (
-            self._compute_sync_statistics()
-        )
-
-        # Ask for confirmation before saving
-        import sys
-        
-        self.logger.info(f"\n=== EPISODE COMPLETED ===")
-        self.logger.info(f"Episode {self.episode_id} completed.")
-        self.logger.info(f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points.")
-        self.logger.info(f"Duration: {self.current_episode_data['duration']:.2f} seconds")
-        self.logger.info("=========================")
-        
-        # Flush stdout and stderr to ensure visibility
-        sys.stdout.flush()
-        sys.stderr.flush()
-        
-        while True:
-            try:
-                # Use direct stdout to ensure visibility
-                sys.stdout.write("Do you want to save this episode data? (y/n): ")
-                sys.stdout.flush()
-                response = input().strip().lower()
-                
-                if response in ['y', 'yes']:
-                    # Save episode data
-                    episode_file = self.save_episode_data()
-                    self.logger.info(
-                        f"Stopped RL data collection for episode: {self.episode_id}. "
-                        f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
-                        f"Saved to: {episode_file}"
-                    )
-                    break
-                elif response in ['n', 'no']:
-                    self.logger.info(
-                        f"Episode {self.episode_id} data discarded (not saved). "
-                        f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points."
-                    )
-                    break
-                else:
-                    sys.stdout.write("Please enter 'y' for yes or 'n' for no.\n")
-                    sys.stdout.flush()
-            except (EOFError, KeyboardInterrupt):
-                self.logger.warn("Input interrupted. Defaulting to not saving episode data.")
-                break
+        self.logger.info(f"Stopped RL data collection for episode: {self.episode_id}")
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """
@@ -391,6 +341,41 @@ class TrajectoryDataCollector:
             return
         self.current_prompt = prompt
 
+    def _save_episode_data_direct(self, trajectory_data: list, duration: float) -> str:
+        """
+        Save episode data directly with provided trajectory data.
+        
+        Args:
+            trajectory_data: Synchronized trajectory data
+            duration: Episode duration
+            
+        Returns:
+            Path to the saved data file
+        """
+        if not self.episode_directory or not self.current_episode_data:
+            self.logger.error("No episode data to save")
+            return ""
+
+        # Update episode data with provided trajectory data
+        self.current_episode_data["trajectory_data"] = trajectory_data
+        self.current_episode_data["duration"] = duration
+        
+        # Add synchronization statistics
+        self.current_episode_data["synchronization_stats"] = self._compute_sync_statistics()
+
+        # Save main episode data as JSON
+        episode_file = os.path.join(self.episode_directory, "episode_data.json")
+
+        try:
+            with open(episode_file, "w") as f:
+                json.dump(self.current_episode_data, f, indent=2, default=str)
+
+            return episode_file
+
+        except Exception as e:
+            self.logger.error(f"Failed to save episode data: {e}")
+            return ""
+
     def save_episode_data(self) -> str:
         """
         Save the current episode data to disk.
@@ -401,6 +386,11 @@ class TrajectoryDataCollector:
         if not self.episode_directory or not self.current_episode_data:
             self.logger.error("No episode data to save")
             return ""
+
+        # Synchronize data if not already done
+        if "trajectory_data" not in self.current_episode_data:
+            self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
+            self.current_episode_data["synchronization_stats"] = self._compute_sync_statistics()
 
         # Save main episode data as JSON
         episode_file = os.path.join(self.episode_directory, "episode_data.json")
@@ -917,6 +907,57 @@ class TrajectoryDataCollector:
         }
 
         return summary
+
+    def _confirm_and_save_episode(self) -> bool:
+        """
+        Ask user for confirmation and save episode data if confirmed.
+        
+        Returns:
+            True if episode was saved, False if discarded
+        """
+        import sys
+        
+        # Get episode info for display
+        episode_data = self.trajectory_collector.current_episode_data
+        episode_id = episode_data.get("episode_id", "unknown")
+        
+        # Compute trajectory data for display
+        trajectory_data = self.trajectory_collector._synchronize_all_data()
+        duration = episode_data.get("end_time", time.time()) - episode_data.get("start_time", time.time())
+        
+        # Display episode completion info
+        print(f"\n=== EPISODE COMPLETED ===")
+        print(f"Episode {episode_id} completed.")
+        print(f"Collected {len(trajectory_data)} trajectory points.")
+        print(f"Duration: {duration:.2f} seconds")
+        print("=========================")
+        
+        # Flush to ensure visibility
+        sys.stdout.flush()
+        sys.stderr.flush()
+        
+        while True:
+            try:
+                response = input("Do you want to save this episode data? (y/n): ").strip().lower()
+                
+                if response in ['y', 'yes']:
+                    # Save episode data
+                    episode_file = self.trajectory_collector._save_episode_data_direct(trajectory_data, duration)
+                    self.logger.info(
+                        f"Episode {episode_id} saved to: {episode_file}"
+                    )
+                    return True
+                elif response in ['n', 'no']:
+                    self.logger.info(
+                        f"Episode {episode_id} data discarded (not saved)."
+                    )
+                    return False
+                else:
+                    print("Please enter 'y' for yes or 'n' for no.")
+                    sys.stdout.flush()
+            except (EOFError, KeyboardInterrupt):
+                self.logger.warn("Input interrupted. Defaulting to not saving episode data.")
+                return False
 
     def log_trajectory_summary(self) -> None:
         """

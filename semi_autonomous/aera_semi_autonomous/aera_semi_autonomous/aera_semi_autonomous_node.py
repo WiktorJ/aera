@@ -326,10 +326,12 @@ class AeraSemiAutonomous(Node):
 
         self.robot_controller.go_home()
 
-        # Stop RL data collection and log summary
+        # Handle RL data collection completion with user confirmation
         if self.collect_trajectory_data:
-            self.trajectory_collector.stop_episode()
-            self.trajectory_collector.log_trajectory_summary()
+            # Ask for confirmation before stopping episode
+            episode_saved = self._confirm_and_save_episode()
+            if episode_saved:
+                self.trajectory_collector.log_trajectory_summary()
 
     @cached_property
     def cam_to_base_affine(self):

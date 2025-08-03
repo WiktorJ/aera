@@ -150,29 +150,46 @@ class TrajectoryDataCollector:
         )
 
         # Ask for confirmation before saving
-        print(f"\nEpisode {self.episode_id} completed.")
-        print(f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points.")
-        print(f"Duration: {self.current_episode_data['duration']:.2f} seconds")
+        import sys
+        
+        self.logger.info(f"\n=== EPISODE COMPLETED ===")
+        self.logger.info(f"Episode {self.episode_id} completed.")
+        self.logger.info(f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points.")
+        self.logger.info(f"Duration: {self.current_episode_data['duration']:.2f} seconds")
+        self.logger.info("=========================")
+        
+        # Flush stdout and stderr to ensure visibility
+        sys.stdout.flush()
+        sys.stderr.flush()
         
         while True:
-            response = input("Do you want to save this episode data? (y/n): ").strip().lower()
-            if response in ['y', 'yes']:
-                # Save episode data
-                episode_file = self.save_episode_data()
-                self.logger.info(
-                    f"Stopped RL data collection for episode: {self.episode_id}. "
-                    f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
-                    f"Saved to: {episode_file}"
-                )
+            try:
+                # Use direct stdout to ensure visibility
+                sys.stdout.write("Do you want to save this episode data? (y/n): ")
+                sys.stdout.flush()
+                response = input().strip().lower()
+                
+                if response in ['y', 'yes']:
+                    # Save episode data
+                    episode_file = self.save_episode_data()
+                    self.logger.info(
+                        f"Stopped RL data collection for episode: {self.episode_id}. "
+                        f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
+                        f"Saved to: {episode_file}"
+                    )
+                    break
+                elif response in ['n', 'no']:
+                    self.logger.info(
+                        f"Episode {self.episode_id} data discarded (not saved). "
+                        f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points."
+                    )
+                    break
+                else:
+                    sys.stdout.write("Please enter 'y' for yes or 'n' for no.\n")
+                    sys.stdout.flush()
+            except (EOFError, KeyboardInterrupt):
+                self.logger.warn("Input interrupted. Defaulting to not saving episode data.")
                 break
-            elif response in ['n', 'no']:
-                self.logger.info(
-                    f"Episode {self.episode_id} data discarded (not saved). "
-                    f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points."
-                )
-                break
-            else:
-                print("Please enter 'y' for yes or 'n' for no.")
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """

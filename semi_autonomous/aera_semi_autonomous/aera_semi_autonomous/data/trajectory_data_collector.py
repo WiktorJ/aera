@@ -125,8 +125,10 @@ class TrajectoryDataCollector:
 
     def stop_episode(self) -> None:
         """
-        Stop the current data collection episode.
-        Note: This method no longer handles saving - that's done separately.
+        Stop the current data collection episode and return collected data.
+
+        Returns:
+            Dictionary containing all collected episode data
         """
         if not self.is_collecting:
             self.logger.warn("No episode in progress to stop.")
@@ -139,7 +141,22 @@ class TrajectoryDataCollector:
             - self.current_episode_data["start_time"]
         )
 
-        self.logger.info(f"Stopped RL data collection for episode: {self.episode_id}")
+        # Synchronize all collected data before saving
+        self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
+
+        # Add synchronization statistics to episode data
+        self.current_episode_data["synchronization_stats"] = (
+            self._compute_sync_statistics()
+        )
+
+        # Save episode data
+        episode_file = self.save_episode_data()
+
+        self.logger.info(
+            f"Stopped RL data collection for episode: {self.episode_id}. "
+            f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
+            f"Saved to: {episode_file}"
+        )
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """
@@ -341,42 +358,6 @@ class TrajectoryDataCollector:
             return
         self.current_prompt = prompt
 
-    def _save_episode_data_direct(self, trajectory_data: list, duration: float) -> str:
-        """
-        Save episode data directly with provided trajectory data.
-
-        Args:
-            trajectory_data: Synchronized trajectory data
-            duration: Episode duration
-
-        Returns:
-            Path to the saved data file
-        """
-        if not self.episode_directory or not self.current_episode_data:
-            self.logger.error("No episode data to save")
-            return ""
-
-        # Update episode data with provided trajectory data
-        self.current_episode_data["trajectory_data"] = trajectory_data
-        self.current_episode_data["duration"] = duration
-
-        # Add synchronization statistics
-        self.current_episode_data["synchronization_stats"] = (
-            self._compute_sync_statistics()
-        )
-
-        # Save main episode data as JSON
-        episode_file = os.path.join(self.episode_directory, "episode_data.json")
-
-        try:
-            with open(episode_file, "w") as f:
-                json.dump(self.current_episode_data, f, indent=2, default=str)
-
-            return episode_file
-
-        except Exception as e:
-            self.logger.error(f"Failed to save episode data: {e}")
-            return ""
 
     def save_episode_data(self) -> str:
         """
@@ -389,12 +370,6 @@ class TrajectoryDataCollector:
             self.logger.error("No episode data to save")
             return ""
 
-        # Synchronize data if not already done
-        if "trajectory_data" not in self.current_episode_data:
-            self.current_episode_data["trajectory_data"] = self._synchronize_all_data()
-            self.current_episode_data["synchronization_stats"] = (
-                self._compute_sync_statistics()
-            )
 
         # Save main episode data as JSON
         episode_file = os.path.join(self.episode_directory, "episode_data.json")

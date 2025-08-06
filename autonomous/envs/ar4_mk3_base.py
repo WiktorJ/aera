@@ -217,7 +217,7 @@ class MujocoFetchEnv(BaseFetchEnv):
         )
 
     def _get_gripper_xpos(self):
-        body_id = self._model_names.body_name2id["robot0:gripper_link"]
+        body_id = self._model_names.body_name2id["gripper_link"]
         return self.data.xpos[body_id]
 
     def _render_callback(self):
@@ -230,6 +230,9 @@ class MujocoFetchEnv(BaseFetchEnv):
         self._mujoco.mj_forward(self.model, self.data)
 
     def _reset_sim(self):
+        # Reset buffers for joint states, actuators, warm-start, control buffers etc.
+        self._mujoco.mj_resetData(self.model, self.data)
+
         self.data.time = self.initial_time
         self.data.qpos[:] = np.copy(self.initial_qpos)
         self.data.qvel[:] = np.copy(self.initial_qvel)

@@ -142,19 +142,7 @@ class BaseFetchEnv(MujocoRobotEnv):
         raise NotImplementedError
 
     def _sample_goal(self):
-        if self.has_object:
-            goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
-                -self.target_range, self.target_range, size=3
-            )
-            goal += self.target_offset
-            goal[2] = self.height_offset
-            if self.target_in_the_air and self.np_random.uniform() < 0.5:
-                goal[2] += self.np_random.uniform(0, 0.45)
-        else:
-            goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
-                -self.target_range, self.target_range, size=3
-            )
-        return goal.copy()
+        raise NotImplementedError
 
     def _is_success(self, achieved_goal, desired_goal):
         d = goal_distance(achieved_goal, desired_goal)
@@ -177,6 +165,8 @@ class MujocoFetchEnv(BaseFetchEnv):
         # Apply action to simulation.
         self._utils.ctrl_set_action(self.model, self.data, action)
         self._utils.mocap_set_action(self.model, self.data, action)
+
+        return action
 
     def generate_mujoco_observations(self):
         # positions
@@ -290,3 +280,18 @@ class MujocoFetchEnv(BaseFetchEnv):
             self.height_offset = self._utils.get_site_xpos(
                 self.model, self.data, "object0"
             )[2]
+
+    def _sample_goal(self):
+        if self.has_object:
+            goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
+                -self.target_range, self.target_range, size=3
+            )
+            goal += self.target_offset
+            goal[2] = self.height_offset
+            if self.target_in_the_air and self.np_random.uniform() < 0.5:
+                goal[2] += self.np_random.uniform(0, 0.45)
+        else:
+            goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
+                -self.target_range, self.target_range, size=3
+            )
+        return goal.copy()

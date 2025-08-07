@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 # Import to register the environments
 import aera.autonomous.envs as aera_envs
 
-aera_envs.register_robotics_envs()
-
 
 def display_video(frames, framerate=30):
     height, width, _ = frames[0].shape
@@ -29,7 +27,7 @@ def display_video(frames, framerate=30):
     anim = animation.FuncAnimation(
         fig=fig, func=update, frames=frames, interval=interval, blit=True, repeat=False
     )
-    plt.show()
+    # plt.show()
     # anim.save('animated_arm.gif', fps=24, writer='imagemagick')
     anim.save("animated_arm.mp4", fps=24, extra_args=["-vcodec", "libx264"])
     # return HTML(anim.to_html5_video())

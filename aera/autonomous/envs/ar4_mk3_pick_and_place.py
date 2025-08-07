@@ -139,7 +139,7 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
             "robot0:slide0": 0.405,
             "robot0:slide1": 0.48,
             "robot0:slide2": 0.0,
-            "object0:joint": [1.25, 0.53, 0.4, 1.0, 0.0, 0.0, 0.0],
+            # "object0:joint": [1.25, 0.53, 0.4, 1.0, 0.0, 0.0, 0.0],
         }
         Ar4Mk3Env.__init__(
             self,

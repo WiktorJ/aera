@@ -3,6 +3,9 @@ import matplotlib
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 
+# Import to register the environments
+import autonomous.envs
+
 
 def display_video(frames, framerate=30):
     height, width, _ = frames[0].shape

@@ -2,11 +2,10 @@ import os
 
 from gymnasium.utils.ezpickle import EzPickle
 
-from aera.autonomous.envs import ar4_mk3_base
 from autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
 
-class Ar4Mk3PickAndPlaceEnv(ar4_mk3_base.Ar4Mk3Env, EzPickle):
+class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     """
     ## Description
 

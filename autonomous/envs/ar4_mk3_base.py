@@ -16,7 +16,7 @@ def goal_distance(goal_a, goal_b):
     return np.linalg.norm(goal_a - goal_b, axis=-1)
 
 
-class BaseFetchEnv(MujocoRobotEnv):
+class BaseEnv(MujocoRobotEnv):
     """Superclass for all Fetch environments."""
 
     def __init__(
@@ -149,7 +149,7 @@ class BaseFetchEnv(MujocoRobotEnv):
         return (d < self.distance_threshold).astype(np.float32)
 
 
-class MujocoFetchEnv(BaseFetchEnv):
+class Ar4Mk3Env(BaseEnv):
     def __init__(self, default_camera_config: dict = DEFAULT_CAMERA_CONFIG, **kwargs):
         super().__init__(default_camera_config=default_camera_config, **kwargs)
 

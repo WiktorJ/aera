@@ -2,10 +2,11 @@ import os
 
 from gymnasium.utils.ezpickle import EzPickle
 
-from gymnasium_robotics.envs.fetch import MujocoFetchEnv
+from aera.autonomous.envs import ar4_mk3_base
+from autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
 
-class MujocoFetchPickAndPlaceEnv(MujocoFetchEnv, EzPickle):
+class Ar4Mk3PickAndPlaceEnv(ar4_mk3_base.Ar4Mk3Env, EzPickle):
     """
     ## Description
 
@@ -141,7 +142,7 @@ class MujocoFetchPickAndPlaceEnv(MujocoFetchEnv, EzPickle):
             "robot0:slide2": 0.0,
             "object0:joint": [1.25, 0.53, 0.4, 1.0, 0.0, 0.0, 0.0],
         }
-        MujocoFetchEnv.__init__(
+        Ar4Mk3Env.__init__(
             self,
             model_path=model_path,
             has_object=True,

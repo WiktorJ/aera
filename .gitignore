@@ -239,3 +239,5 @@ fabric.properties
 .aider*
 
 .debug_img_logs/
+**/.DS_Store
+**/*.mp4

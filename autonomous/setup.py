@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="autonomous",
+    name="aera.autonomous",
     version="0.1.0",
     description="Autonomous robotics",
     packages=find_packages(),

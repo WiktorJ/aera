@@ -17,7 +17,7 @@ def register_robotics_envs():
         }
         register(
             id=f"Ar4Mk3PickAndPlace{suffix}Env-v1",
-            entry_point="autonomous.envs.ar4_mk3_pick_and_place:Ar4Mk3PickAndPlaceEnv",
+            entry_point="aera.autonomous.envs.ar4_mk3_pick_and_place:Ar4Mk3PickAndPlaceEnv",
             kwargs=kwargs,
             max_episode_steps=50,
         )

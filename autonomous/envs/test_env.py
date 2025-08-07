@@ -4,7 +4,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 
 # Import to register the environments
-import autonomous.envs
+import aera.autonomous.envs
 
 
 def display_video(frames, framerate=30):

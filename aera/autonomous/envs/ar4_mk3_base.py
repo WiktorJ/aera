@@ -5,9 +5,9 @@ from gymnasium_robotics.utils import rotations
 
 DEFAULT_CAMERA_CONFIG = {
     "distance": 2.5,
-    "azimuth": 132.0,
-    "elevation": -14.0,
-    "lookat": np.array([1.3, 0.75, 0.55]),
+    "azimuth": 1.9913,
+    "elevation": 39.5533,
+    "lookat": np.array([-1.3065, -0.0073, -0.8390]),
 }
 
 

@@ -31,8 +31,6 @@ def display_video(frames, framerate=30, filename="animated_arm.mp4"):
         # Convert from RGB to BGR (OpenCV uses BGR)
         frame_bgr = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
         out.write(frame_bgr)
-        if i % 10 == 0:  # Log progress every 10 frames
-            print(f"  Written frame {i + 1}/{len(frames)}")
 
     out.release()
     write_end_time = time.time()
@@ -54,21 +52,15 @@ frames = []
 print("Starting frame collection...")
 frame_collection_start = time.time()
 
-while not (terminated or truncated) and ep_lens < 10:
+while not (terminated or truncated) and ep_lens < 100:
     action = env.action_space.sample()
     state, reward, terminated, truncated, info = env.step(action)
     ep_lens += 1
-    if hasattr(state, "__getitem__") and "observation" in state:
-        print("A")
-        observation = state["observation"]
-    else:
-        print("B")
-        observation = state
+    observation = state["observation"]
 
     frame_start = time.time()
     frames.append(env.render() / 255)
     frame_end = time.time()
-    print(f"Frame {ep_lens} rendered in {(frame_end - frame_start) * 1000:.1f}ms")
 
 frame_collection_end = time.time()
 print(

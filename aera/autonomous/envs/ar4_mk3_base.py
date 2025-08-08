@@ -4,10 +4,10 @@ from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
 
 DEFAULT_CAMERA_CONFIG = {
-    "distance": 2.5,
-    "azimuth": 1.9913,
-    "elevation": 39.5533,
-    "lookat": np.array([-1.3065, -0.0073, -0.8390]),
+    "distance": 1.0,
+    "azimuth": 135.0,
+    "elevation": 35.0,
+    "lookat": np.array([0.5, 0.0, 0.2]),
 }
 
 

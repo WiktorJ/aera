@@ -10,86 +10,37 @@ import numpy as np
 import aera.autonomous.envs as aera_envs
 
 
-def display_video_opencv(frames, framerate=30, filename="animated_arm_opencv.mp4"):
+def display_video(frames, framerate=30, filename="animated_arm.mp4"):
     """Fast video rendering using OpenCV - much faster than matplotlib."""
     print(f"Starting OpenCV video rendering with {len(frames)} frames...")
     start_time = time.time()
-    
+
     if not frames:
         print("No frames to render!")
         return
-    
+
     # Convert frames to proper format (0-255 uint8)
     height, width, channels = frames[0].shape
-    
+
     # Define codec and create VideoWriter
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(filename, fourcc, framerate, (width, height))
-    
+
     write_start_time = time.time()
     for i, frame in enumerate(frames):
         # Convert from RGB to BGR (OpenCV uses BGR)
         frame_bgr = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
         out.write(frame_bgr)
         if i % 10 == 0:  # Log progress every 10 frames
-            print(f"  Written frame {i+1}/{len(frames)}")
-    
+            print(f"  Written frame {i + 1}/{len(frames)}")
+
     out.release()
     write_end_time = time.time()
-    
+
     total_time = write_end_time - start_time
     write_time = write_end_time - write_start_time
-    
-    print(f"OpenCV video rendering completed in {total_time:.2f}s (write: {write_time:.2f}s)")
 
-
-def display_video_matplotlib(frames, framerate=30, filename="animated_arm_matplotlib.mp4"):
-    """Original matplotlib video rendering - slower but higher quality."""
-    print(f"Starting matplotlib video rendering with {len(frames)} frames...")
-    start_time = time.time()
-
-    height, width, _ = frames[0].shape
-    dpi = 32
-    orig_backend = matplotlib.get_backend()
-    matplotlib.use("Agg")  # Switch to headless 'Agg' to inhibit figure rendering.
-    fig, ax = plt.subplots(1, 1, figsize=(width/dpi, height/dpi), dpi=dpi)
-    matplotlib.use(orig_backend)  # Switch back to the original backend.
-    ax.set_axis_off()
-    ax.set_aspect("equal")
-    ax.set_position([0, 0, 1, 1])
-    im = ax.imshow(frames[0])
-
-    def update(frame):
-        im.set_data(frame)
-        return [im]
-
-    interval = 1000 / framerate
-    anim = animation.FuncAnimation(
-        fig=fig, func=update, frames=frames, interval=interval, blit=True, repeat=False
-    )
-
-    save_start_time = time.time()
-    # Use better compression settings
-    anim.save(filename, fps=framerate, extra_args=["-vcodec", "libx264", "-crf", "23", "-preset", "fast"])
-    save_end_time = time.time()
-    
-    plt.close(fig)  # Clean up memory
-
-    total_time = save_end_time - start_time
-    save_time = save_end_time - save_start_time
-
-    print(f"Matplotlib video rendering completed in {total_time:.2f}s (save: {save_time:.2f}s)")
-
-
-def display_video(frames, framerate=30, method="opencv"):
-    """Render video using specified method."""
-    if method == "opencv":
-        display_video_opencv(frames, framerate)
-    elif method == "matplotlib":
-        display_video_matplotlib(frames, framerate)
-    else:
-        print(f"Unknown method: {method}. Using opencv.")
-        display_video_opencv(frames, framerate)
+    print(f"video rendering completed in {total_time:.2f}s (write: {write_time:.2f}s)")
 
 
 env = gym.make(
@@ -117,7 +68,7 @@ while not (terminated or truncated) and ep_lens < 10:
     frame_start = time.time()
     frames.append(env.render() / 255)
     frame_end = time.time()
-    print(f"Frame {ep_lens} rendered in {(frame_end - frame_start)*1000:.1f}ms")
+    print(f"Frame {ep_lens} rendered in {(frame_end - frame_start) * 1000:.1f}ms")
 
 frame_collection_end = time.time()
 print(
@@ -126,10 +77,7 @@ print(
 
 # Test both methods for comparison
 print("\n=== Testing OpenCV method ===")
-display_video(frames, method="opencv")
-
-print("\n=== Testing matplotlib method ===")
-display_video(frames, method="matplotlib")
+display_video(frames)
 
 # For fastest testing, you can skip video creation entirely:
 # print("Skipping video creation for speed testing")

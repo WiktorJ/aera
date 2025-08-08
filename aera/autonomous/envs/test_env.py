@@ -11,7 +11,7 @@ import aera.autonomous.envs as aera_envs
 def display_video(frames, framerate=30):
     print(f"Starting video rendering with {len(frames)} frames...")
     start_time = time.time()
-    
+
     height, width, _ = frames[0].shape
     dpi = 32
     orig_backend = matplotlib.get_backend()
@@ -33,14 +33,14 @@ def display_video(frames, framerate=30):
     )
     # plt.show()
     # anim.save('animated_arm.gif', fps=24, writer='imagemagick')
-    
+
     save_start_time = time.time()
     anim.save("animated_arm.mp4", fps=24, extra_args=["-vcodec", "libx264"])
     save_end_time = time.time()
-    
+
     total_time = save_end_time - start_time
     save_time = save_end_time - save_start_time
-    
+
     print(f"Video rendering completed in {total_time:.2f}s (save: {save_time:.2f}s)")
     # return HTML(anim.to_html5_video())
 
@@ -66,13 +66,14 @@ while not (terminated or truncated) and ep_lens < 10:
     else:
         print("B")
         observation = state
-    
+
     frame_start = time.time()
     frames.append(env.render() / 255)
     frame_end = time.time()
-    print(f"Frame {ep_lens} rendered in {(frame_end - frame_start)*1000:.1f}ms")
 
 frame_collection_end = time.time()
-print(f"Frame collection completed in {frame_collection_end - frame_collection_start:.2f}s")
+print(
+    f"Frame collection completed in {frame_collection_end - frame_collection_start:.2f}s"
+)
 
 display_video(frames)

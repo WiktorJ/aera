@@ -30,7 +30,7 @@ class BaseEnv(MujocoRobotEnv):
         target_range,
         distance_threshold,
         reward_type,
-        object_size: float = 0.025,
+        object_size=0.025,
         **kwargs,
     ):
         """Initializes a new Fetch environment.
@@ -48,7 +48,7 @@ class BaseEnv(MujocoRobotEnv):
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
             reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
-            object_size (float): size of the object (box half-lengths).
+            object_size (float or array-like with 3 elements): size of the object (box half-lengths).
         """
 
         self.gripper_extra_height = gripper_extra_height
@@ -268,9 +268,12 @@ class Ar4Mk3Env(BaseEnv):
 
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]
-            self.model.geom_size[geom_id] = np.array(
-                [self.object_size, self.object_size, self.object_size]
-            )
+            if isinstance(self.object_size, (float, int)):
+                size = np.array([self.object_size] * 3)
+            else:
+                size = np.array(self.object_size)
+            assert size.shape == (3,), "object_size must be a float or a 3-element array-like"
+            self.model.geom_size[geom_id] = size
 
         self._mujoco.mj_forward(self.model, self.data)
 

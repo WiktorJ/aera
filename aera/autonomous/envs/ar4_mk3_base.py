@@ -30,6 +30,7 @@ class BaseEnv(MujocoRobotEnv):
         target_range,
         distance_threshold,
         reward_type,
+        object_size: float = 0.025,
         **kwargs,
     ):
         """Initializes a new Fetch environment.
@@ -47,6 +48,7 @@ class BaseEnv(MujocoRobotEnv):
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
             reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
+            object_size (float): size of the object (box half-lengths).
         """
 
         self.gripper_extra_height = gripper_extra_height
@@ -58,6 +60,7 @@ class BaseEnv(MujocoRobotEnv):
         self.target_range = target_range
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
+        self.object_size = object_size
 
         super().__init__(n_actions=4, **kwargs)
 
@@ -262,6 +265,13 @@ class Ar4Mk3Env(BaseEnv):
         for name, value in initial_qpos.items():
             self._utils.set_joint_qpos(self.model, self.data, name, value)
         self._utils.reset_mocap_welds(self.model, self.data)
+
+        if self.has_object:
+            geom_id = self._model_names.geom_name2id["object0"]
+            self.model.geom_size[geom_id] = np.array(
+                [self.object_size, self.object_size, self.object_size]
+            )
+
         self._mujoco.mj_forward(self.model, self.data)
 
         # Move end effector into position.

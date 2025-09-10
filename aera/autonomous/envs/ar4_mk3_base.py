@@ -42,7 +42,7 @@ class BaseEnv(MujocoRobotEnv):
             has_object (boolean): whether or not the environment has an object
             target_in_the_air (boolean): whether or not the target should be in the air above the table or on the table surface
             target_offset (float or array with 3 elements): offset of the target
-            obj_range tuple(float, float): range of a uniform distribution for sampling initial object positions
+            obj_range float: range of a uniform distribution for sampling initial object positions
             target_range (float): range o)f a uniform distribution for sampling a target
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
@@ -244,7 +244,7 @@ class Ar4Mk3Env(BaseEnv):
             object_xpos = self.initial_gripper_xpos[:2]
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.1:
                 object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(
-                    -self.obj_range[0], self.obj_range[1], size=2
+                    -self.obj_range, self.obj_range, size=2
                 )
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"
@@ -289,10 +289,19 @@ class Ar4Mk3Env(BaseEnv):
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
                 -self.target_range, self.target_range, size=3
             )
-            goal += self.target_offset
+            goal += (
+                self.target_offset
+                if isinstance(self.target_offset, float)
+                else self.target_offset[:2]
+            )
             goal[2] = self.height_offset
             if self.target_in_the_air and self.np_random.uniform() < 0.5:
-                goal[2] += self.np_random.uniform(0, 0.45)
+                goal[2] += (
+                    self.np_random.uniform(0, 0.45) + self.target_offset
+                    if isinstance(self.target_offset, float)
+                    else self.target_offset[2]
+                )
+
         else:
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
                 -self.target_range, self.target_range, size=3

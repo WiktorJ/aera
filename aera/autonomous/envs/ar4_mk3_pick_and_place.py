@@ -150,13 +150,14 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
             block_gripper=False,
             n_substeps=20,
             gripper_extra_height=0.2,
-            target_in_the_air=True,
+            target_in_the_air=False,
             target_offset=0.0,
-            obj_range=(0.09, 0.09),
+            obj_range=0.09,
             target_range=0.15,
             distance_threshold=0.05,
             initial_qpos=initial_qpos,
             reward_type=reward_type,
+            object_size=0.015,
             **kwargs,
         )
         EzPickle.__init__(self, reward_type=reward_type, **kwargs)

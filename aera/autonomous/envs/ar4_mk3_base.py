@@ -3,17 +3,11 @@ import numpy as np
 from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
 
-# DEFAULT_CAMERA_CONFIG = {
-#     "distance": 1.0,
-#     "azimuth": 135.0,
-#     "elevation": 35.0,
-#     "lookat": np.array([0.5, 0.0, 0.2]),
-# }
 DEFAULT_CAMERA_CONFIG = {
-    "distance": 1.28,
-    "azimuth": -134.5,
-    "elevation": -40.3,
-    "lookat": np.array([0.3, 0, 0]),
+    "distance": 0.98,
+    "azimuth": -133,
+    "elevation": -26,
+    "lookat": np.array([0, 0, 0]),
 }
 
 
@@ -48,8 +42,8 @@ class BaseEnv(MujocoRobotEnv):
             has_object (boolean): whether or not the environment has an object
             target_in_the_air (boolean): whether or not the target should be in the air above the table or on the table surface
             target_offset (float or array with 3 elements): offset of the target
-            obj_range (float): range of a uniform distribution for sampling initial object positions
-            target_range (float): range of a uniform distribution for sampling a target
+            obj_range tuple(float, float): range of a uniform distribution for sampling initial object positions
+            target_range (float): range o)f a uniform distribution for sampling a target
             distance_threshold (float): the threshold after which a goal is considered achieved
             initial_qpos (dict): a dictionary of joint names and values that define the initial configuration
             reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
@@ -250,7 +244,7 @@ class Ar4Mk3Env(BaseEnv):
             object_xpos = self.initial_gripper_xpos[:2]
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.1:
                 object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(
-                    -self.obj_range, self.obj_range, size=2
+                    -self.obj_range[0], self.obj_range[1], size=2
                 )
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"

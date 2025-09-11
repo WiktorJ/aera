@@ -61,9 +61,9 @@
         <light name="top" pos="0 0 2" mode="trackcom"/>
         <body mocap="true" name="robot_mocap" pos="0 0 0">
             <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 1 0.7" size="0.005 0.005 0.005" type="box"/>
-            <geom conaffinity="0" contype="0" pos="0 0 0" rgba="1 0.5 1 0.5" size="1 0.005 0.005" type="box"/>
-            <geom conaffinity="0" contype="0" pos="0 0 0" rgba="1 0.5 0 0.5" size="0.005 1 0.001" type="box"/>
-            <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.5" size="0.005 0.005 1" type="box"/>
+            <!-- <geom conaffinity="0" contype="0" pos="0 0 0" rgba="1 0.5 1 0.5" size="1 0.005 0.005" type="box"/> -->
+            <!-- <geom conaffinity="0" contype="0" pos="0 0 0" rgba="1 0.5 0 0.5" size="0.005 1 0.001" type="box"/> -->
+            <!-- <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.5" size="0.005 0.005 1" type="box"/> -->
         </body>
         <body name="floor0" pos="0.2 0.2 0">
             <site name="target0" pos="0 0 0.2" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
@@ -71,7 +71,7 @@
         <body name="object0" pos="0.025 0.025 0.025">
           <joint name="object0:joint" type="free" damping="0.01"></joint>
           <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="2"></geom>
-          <site name="object0" pos="0 0 0" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"></site>
+          <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">
       		  <joint armature="0.0001" axis="1 0 0" damping="1e+11" name="robot0:slide0" pos="0 0 0" type="slide"></joint>

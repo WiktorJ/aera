@@ -27,19 +27,19 @@
             <general biastype="affine" ctrlrange="-6.2831 6.2831" gainprm="1000" biasprm="0 -1000 -100"/>
             <default class="size5">
                 <joint damping="0"/>
-                <general forcerange="-330 330"/>
+                <general forcerange="-330 330" gainprm="0"/>
             </default>
             <default class="size4">
                 <joint damping="20"/>
-                <general forcerange="-330 330"/>
+                <general forcerange="-330 330" gainprm="0"/>
             </default>
             <default class="size3">
                 <joint damping="10"/>
-                <general forcerange="-150 150"/>
+                <general forcerange="-150 150" gainprm="0"/>
             </default>
             <default class="size2">
                 <joint damping="4"/>
-                <general forcerange="-56 56"/>
+                <general forcerange="-56 56" gainprm="0"/>
             </default>
             <default class="size1">
                 <joint damping="4"/>
@@ -146,6 +146,10 @@
             </body>
         </body>
     </worldbody>
+
+    <equality>
+        <weld body1="robot_mocap" body2="gripper_base_link" solimp="0.9 0.95 0.001" solref="0.02 1"/>
+    </equality>
 
     <actuator>
         <general name="act1" joint="joint_1" class="size4"/>

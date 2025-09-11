@@ -110,6 +110,8 @@ print(f"cc: {camera_config}")
 env = gym.make(
     "Ar4Mk3PickAndPlaceDenseEnv-v1",
     render_mode="rgb_array",
+    width=1920,
+    height=1080,
     max_episode_steps=1000,
     default_camera_config=camera_config,
 )

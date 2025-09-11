@@ -245,7 +245,8 @@ class Ar4Mk3Env(BaseEnv):
         # Move mocap to the new gripper position to match the zeroed-out joint state.
         self._mujoco.mj_forward(self.model, self.data)
         mocap_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
-        mocap_quat = np.array([1.0, 0.0, 1.0, 0.0])
+        gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+        mocap_quat = self.data.xquat[gripper_body_id]
         self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
         self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
 
@@ -284,17 +285,16 @@ class Ar4Mk3Env(BaseEnv):
 
         self._mujoco.mj_forward(self.model, self.data)
 
-        # Move end effector into position.
-        gripper_target = np.array(
-            [-0.498, 0.005, -0.431 + self.gripper_extra_height]
-        ) + self._utils.get_site_xpos(self.model, self.data, "grip")
-        gripper_rotation = np.array([1.0, 0.0, 1.0, 0.0])
-        self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", gripper_target)
-        self._utils.set_mocap_quat(
-            self.model, self.data, "robot_mocap", gripper_rotation
-        )
+        # Move mocap to the new gripper position to match the zeroed-out joint state.
+        mocap_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
+        gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+        mocap_quat = self.data.xquat[gripper_body_id]
+        self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
+        self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
+
         for _ in range(10):
             self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
+
         # Extract information for sampling goals.
         self.initial_gripper_xpos = self._utils.get_site_xpos(
             self.model, self.data, "grip"

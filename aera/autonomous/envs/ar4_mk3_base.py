@@ -242,6 +242,13 @@ class Ar4Mk3Env(BaseEnv):
         if self.model.na != 0:
             self.data.act[:] = None
 
+        # Move mocap to the new gripper position to match the zeroed-out joint state.
+        self._mujoco.mj_forward(self.model, self.data)
+        mocap_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
+        mocap_quat = np.array([1.0, 0.0, 1.0, 0.0])
+        self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
+        self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
+
         # Randomize start position of object.
         if self.has_object:
             object_xpos = self.initial_gripper_xpos[:2]

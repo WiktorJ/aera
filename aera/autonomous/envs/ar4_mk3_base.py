@@ -89,7 +89,7 @@ class BaseEnv(MujocoRobotEnv):
         rot_ctrl = [
             1.0,
             0.0,
-            1.0,
+            0.0,
             0.0,
         ]  # fixed rotation of the end effector, expressed as a quaternion
         gripper_ctrl = np.array([gripper_ctrl, gripper_ctrl])

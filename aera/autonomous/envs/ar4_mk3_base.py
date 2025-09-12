@@ -244,8 +244,8 @@ class Ar4Mk3Env(BaseEnv):
 
         # Move mocap to the new gripper position to match the zeroed-out joint state.
         self._mujoco.mj_forward(self.model, self.data)
-        mocap_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
         gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+        mocap_pos = self.data.xpos[gripper_body_id]
         mocap_quat = self.data.xquat[gripper_body_id]
         self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
         self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
@@ -286,8 +286,8 @@ class Ar4Mk3Env(BaseEnv):
         self._mujoco.mj_forward(self.model, self.data)
 
         # Move mocap to the new gripper position to match the zeroed-out joint state.
-        mocap_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
         gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+        mocap_pos = self.data.xpos[gripper_body_id]
         mocap_quat = self.data.xquat[gripper_body_id]
         self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
         self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)

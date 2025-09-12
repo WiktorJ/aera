@@ -19,14 +19,17 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
 
     ## Action Space
 
-    The action space is a `Box(-1.0, 1.0, (4,), float32)`. An action represents the Cartesian displacement dx, dy, and dz of the end effector. In addition to a last action that controls closing and opening of the gripper.
+    The action space is a `Box(-1.0, 1.0, (7,), float32)`. An action represents the desired change in joint positions for the arm and an absolute position for the gripper.
 
-    | Num | Action                                                 | Control Min | Control Max | Name (in corresponding XML file)                                | Joint | Unit         |
-    | --- | ------------------------------------------------------ | ----------- | ----------- | --------------------------------------------------------------- | ----- | ------------ |
-    | 0   | Displacement of the end effector in the x direction dx | -1          | 1           | robot0:mocap                                                    | hinge | position (m) |
-    | 1   | Displacement of the end effector in the y direction dy | -1          | 1           | robot0:mocap                                                    | hinge | position (m) |
-    | 2   | Displacement of the end effector in the z direction dz | -1          | 1           | robot0:mocap                                                    | hinge | position (m) |
-    | 3   | Positional displacement per timestep of each finger of the gripper  | -1          | 1           | robot0:r_gripper_finger_joint and robot0:l_gripper_finger_joint | hinge | position (m) |
+    | Num | Action                                                       | Control Min | Control Max | Joint Name (in corresponding XML file) | Unit         |
+    | --- | ------------------------------------------------------------ | ----------- | ----------- | -------------------------------------- | ------------ |
+    | 0   | Change in target position for joint 1                        | -1          | 1           | joint_1                                | angle (rad)  |
+    | 1   | Change in target position for joint 2                        | -1          | 1           | joint_2                                | angle (rad)  |
+    | 2   | Change in target position for joint 3                        | -1          | 1           | joint_3                                | angle (rad)  |
+    | 3   | Change in target position for joint 4                        | -1          | 1           | joint_4                                | angle (rad)  |
+    | 4   | Change in target position for joint 5                        | -1          | 1           | joint_5                                | angle (rad)  |
+    | 5   | Change in target position for joint 6                        | -1          | 1           | joint_6                                | angle (rad)  |
+    | 6   | Absolute gripper position (-1: open, 1: closed)              | -1          | 1           | gripper_jaw1_joint, gripper_jaw2_joint | position (m) |
 
     ## Observation Space
 

@@ -62,7 +62,7 @@ class BaseEnv(MujocoRobotEnv):
         self.reward_type = reward_type
         self.object_size = object_size
 
-        super().__init__(n_actions=4, **kwargs)
+        super().__init__(n_actions=7, **kwargs)
 
     # GoalEnv methods
     # ----------------------------
@@ -77,28 +77,6 @@ class BaseEnv(MujocoRobotEnv):
 
     # RobotEnv methods
     # ----------------------------
-
-    def _set_action(self, action):
-        assert action.shape == (4,)
-        action = (
-            action.copy()
-        )  # ensure that we don't change the action outside of this scope
-        pos_ctrl, gripper_ctrl = action[:3], action[3]
-
-        pos_ctrl *= 0.05  # limit maximum change in position
-        rot_ctrl = [
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-        ]  # fixed rotation of the end effector, expressed as a quaternion
-        gripper_ctrl = np.array([gripper_ctrl, gripper_ctrl])
-        assert gripper_ctrl.shape == (2,)
-        if self.block_gripper:
-            gripper_ctrl = np.zeros_like(gripper_ctrl)
-        action = np.concatenate([pos_ctrl, rot_ctrl, gripper_ctrl])
-
-        return action
 
     def _get_obs(self):
         (
@@ -163,13 +141,30 @@ class Ar4Mk3Env(BaseEnv):
             self._mujoco.mj_forward(self.model, self.data)
 
     def _set_action(self, action):
-        action = super()._set_action(action)
+        assert action.shape == (7,)
+        action = action.copy()
 
-        # Apply action to simulation.
-        self._utils.ctrl_set_action(self.model, self.data, action)
-        self._utils.mocap_set_action(self.model, self.data, action)
+        # Relative position control for the arm
+        arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
+        arm_joint_indices = [
+            self._model_names.joint_name2id[f"joint_{i+1}"] for i in range(6)
+        ]
+        current_arm_qpos = self.data.qpos[arm_joint_indices]
+        new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
 
-        return action
+        # Absolute position control for the gripper (+1 closed, -1 open)
+        gripper_ctrl = action[6]
+        gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
+
+        # Construct and clip the full control vector
+        control_signal = np.concatenate(
+            [new_target_arm_qpos, [gripper_target_pos, gripper_target_pos]]
+        )
+        ctrlrange = self.model.actuator_ctrlrange
+        control_signal = np.clip(control_signal, ctrlrange[:, 0], ctrlrange[:, 1])
+
+        # Apply action to simulation
+        self.data.ctrl[:] = control_signal
 
     def generate_mujoco_observations(self):
         # positions
@@ -242,14 +237,6 @@ class Ar4Mk3Env(BaseEnv):
         if self.model.na != 0:
             self.data.act[:] = None
 
-        # Move mocap to the new gripper position to match the zeroed-out joint state.
-        self._mujoco.mj_forward(self.model, self.data)
-        gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
-        mocap_pos = self.data.xpos[gripper_body_id]
-        mocap_quat = self.data.xquat[gripper_body_id]
-        self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
-        self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
-
         # Randomize start position of object.
         if self.has_object:
             object_xpos = self.initial_gripper_xpos[:2]
@@ -286,13 +273,6 @@ class Ar4Mk3Env(BaseEnv):
             self.model.geom_size[geom_id] = size
 
         self._mujoco.mj_forward(self.model, self.data)
-
-        # Move mocap to the new gripper position to match the zeroed-out joint state.
-        gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
-        mocap_pos = self.data.xpos[gripper_body_id]
-        mocap_quat = self.data.xquat[gripper_body_id]
-        self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
-        self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
 
         # for _ in range(10):
         #    self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)

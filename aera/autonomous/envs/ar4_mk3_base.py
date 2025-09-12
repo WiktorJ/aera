@@ -294,8 +294,8 @@ class Ar4Mk3Env(BaseEnv):
         self._utils.set_mocap_pos(self.model, self.data, "robot_mocap", mocap_pos)
         self._utils.set_mocap_quat(self.model, self.data, "robot_mocap", mocap_quat)
 
-        for _ in range(10):
-            self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
+        # for _ in range(10):
+        #    self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
 
         # Extract information for sampling goals.
         self.initial_gripper_xpos = self._utils.get_site_xpos(

@@ -134,7 +134,9 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     * v1: the environment depends on `mujoco_py` which is no longer maintained.
     """
 
-    def __init__(self, model_path: str, reward_type="sparse", object_size=0.015, **kwargs):
+    def __init__(
+        self, model_path: str, reward_type="sparse", object_size=0.015, **kwargs
+    ):
         initial_qpos = {
             # "robot0:slide0": 0.405,
             # "robot0:slide1": 0.48,
@@ -157,7 +159,10 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
             distance_threshold=0.05,
             initial_qpos=initial_qpos,
             reward_type=reward_type,
-            object_size=object_size,
+            object_size=(0.025, 0.01, 0.015),
+            # object_size=0.015,
             **kwargs,
         )
-        EzPickle.__init__(self, reward_type=reward_type, object_size=object_size, **kwargs)
+        EzPickle.__init__(
+            self, reward_type=reward_type, object_size=object_size, **kwargs
+        )

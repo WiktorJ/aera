@@ -152,12 +152,6 @@
     </equality>
 
     <actuator>
-        <general name="act1" joint="joint_1" class="size4"/>
-        <general name="act2" joint="joint_2" class="size4"/>
-        <general name="act3" joint="joint_3" class="size3"/>
-        <general name="act4" joint="joint_4" class="size2"/>
-        <general name="act5" joint="joint_5" class="size2"/>
-        <general name="act6" joint="joint_6" class="size2"/>
         <general name="act8" joint="gripper_jaw1_joint" class="size1"/>
         <general name="act9" joint="gripper_jaw2_joint" class="size1"/>
     </actuator>

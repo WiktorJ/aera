@@ -280,7 +280,9 @@ class Ar4Mk3Env(BaseEnv):
                 size = np.array([self.object_size] * 3)
             else:
                 size = np.array(self.object_size)
-            assert size.shape == (3,), "object_size must be a float or a 3-element array-like"
+            assert size.shape == (3,), (
+                "object_size must be a float or a 3-element array-like"
+            )
             self.model.geom_size[geom_id] = size
 
         self._mujoco.mj_forward(self.model, self.data)

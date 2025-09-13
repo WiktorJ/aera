@@ -178,8 +178,11 @@ class Ar4Mk3Env(BaseEnv):
             # ]
             # current_arm_qpos = self.data.qpos[arm_joint_indices]
             arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
-            current_arm_qpos = self._utils.get_joint_qpos(
-                self.model, self.data, arm_joint_names
+            current_arm_qpos = np.array(
+                [
+                    self._utils.get_joint_qpos(self.model, self.data, name)
+                    for name in arm_joint_names
+                ]
             )
             print(f"cur pos: {current_arm_qpos}")
             new_target_arm_qpos = current_arm_qpos + arm_joint_deltas

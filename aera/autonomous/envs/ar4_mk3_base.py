@@ -145,26 +145,26 @@ class Ar4Mk3Env(BaseEnv):
     def _set_action(self, action):
         if self.use_eef_control:
             assert action.shape == (4,)
-            action = action.copy()
+            action = (
+                action.copy()
+            )  # ensure that we don't change the action outside of this scope
             pos_ctrl, gripper_ctrl = action[:3], action[3]
 
             pos_ctrl *= 0.05  # limit maximum change in position
-
-            current_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
-            target_pos = current_pos + pos_ctrl
-
-            current_quat = rotations.mat2quat(
-                self._utils.get_site_xmat(self.model, self.data, "grip")
-            )
-
-            self._utils.set_mocap_pos(
-                self.model, self.data, "robot0:mocap", target_pos, current_quat
-            )
-
+            rot_ctrl = [
+                1.0,
+                0.0,
+                0.0,
+                0.0,
+            ]  # fixed rotation of the end effector, expressed as a quaternion
+            gripper_ctrl = np.array([gripper_ctrl, gripper_ctrl])
+            assert gripper_ctrl.shape == (2,)
+            if self.block_gripper:
+                gripper_ctrl = np.zeros_like(gripper_ctrl)
+            action = np.concatenate([pos_ctrl, rot_ctrl, gripper_ctrl])
             # Gripper control
-            gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
-            if not self.block_gripper:
-                self.data.ctrl[-2:] = np.array([gripper_target_pos, gripper_target_pos])
+            self._utils.ctrl_set_action(self.model, self.data, action)
+            self._utils.mocap_set_action(self.model, self.data, action)
         else:
             assert action.shape == (7,)
             action = action.copy()
@@ -261,6 +261,15 @@ class Ar4Mk3Env(BaseEnv):
         self.data.qvel[:] = np.copy(self.initial_qvel)
         if self.model.na != 0:
             self.data.act[:] = None
+        if self.use_eef_control:
+            self._mujoco.mj_forward(self.model, self.data)
+            gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+            mocap_pos = self.data.xpos[gripper_body_id]
+            mocap_quat = self.data.xquat[gripper_body_id]
+            self._utils.set_mocap_pos(self.model, self.data, "robot0:mocap", mocap_pos)
+            self._utils.set_mocap_quat(
+                self.model, self.data, "robot0:mocap", mocap_quat
+            )
 
         # Randomize start position of object.
         if self.has_object:
@@ -284,18 +293,17 @@ class Ar4Mk3Env(BaseEnv):
     def _env_setup(self, initial_qpos):
         for name, value in initial_qpos.items():
             self._utils.set_joint_qpos(self.model, self.data, name, value)
-        self._mujoco.mj_forward(self.model, self.data)
 
         if self.use_eef_control:
             self._utils.reset_mocap_welds(self.model, self.data)
-            grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
-            grip_rot_mat = self._utils.get_site_xmat(self.model, self.data, "grip")
-            grip_rot_quat = rotations.mat2quat(grip_rot_mat)
-            self._utils.set_mocap_pos(
-                self.model, self.data, "robot0:mocap", grip_pos, grip_rot_quat
+            self._mujoco.mj_forward(self.model, self.data)
+            gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
+            mocap_pos = self.data.xpos[gripper_body_id]
+            mocap_quat = self.data.xquat[gripper_body_id]
+            self._utils.set_mocap_pos(self.model, self.data, "robot0:mocap", mocap_pos)
+            self._utils.set_mocap_quat(
+                self.model, self.data, "robot0:mocap", mocap_quat
             )
-            for _ in range(10):
-                self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
 
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]
@@ -309,9 +317,6 @@ class Ar4Mk3Env(BaseEnv):
             self.model.geom_size[geom_id] = size
 
         self._mujoco.mj_forward(self.model, self.data)
-
-        # for _ in range(10):
-        #    self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
 
         # Extract information for sampling goals.
         self.initial_gripper_xpos = self._utils.get_site_xpos(

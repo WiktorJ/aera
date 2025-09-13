@@ -62,7 +62,6 @@ cam_pos_in_base = -R_cam_to_base.T @ T
 # We transform this direction vector from the camera's frame to the base frame.
 local_cam_view_dir = np.array([0, 0, -1])
 look_dir_in_base = R_cam_to_base @ local_cam_view_dir
-print(f"look_dir_in_base: {look_dir_in_base}")
 
 # Intersect this viewing ray with a horizontal plane (e.g., the tabletop at z=0).
 # Ray: P(t) = cam_pos_in_base + t * look_dir_in_base
@@ -94,7 +93,7 @@ dx, dy, dz = vec_from_lookat_to_cam
 distance = np.linalg.norm(vec_from_lookat_to_cam)
 
 # Azimuth is the angle in the XY-plane from the X-axis
-azimuth = np.degrees(np.arctan2(dy, dx)) + 90
+azimuth = np.degrees(np.arctan2(dy, dx)) + 0
 # Elevation is the angle from the XY-plane
 elevation = np.degrees(np.arcsin(dz / distance)) - 90
 
@@ -105,7 +104,6 @@ camera_config = {
     "elevation": elevation,
     "lookat": lookat,
 }
-print(f"cc: {camera_config}")
 
 env = gym.make(
     "Ar4Mk3PickAndPlaceDenseEnv-v1",
@@ -119,6 +117,7 @@ env.reset()
 terminated, truncated = False, False
 ep_lens = 0
 frames = []
+frames.append(env.render() / 255)
 
 print("Starting frame collection...")
 frame_collection_start = time.time()

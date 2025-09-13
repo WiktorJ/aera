@@ -145,12 +145,6 @@
     </worldbody>
 
     <actuator>
-        <position name="act1" joint="joint_1" kp="1000" ctrlrange="-2.96706 2.96706"/>
-        <position name="act2" joint="joint_2" kp="1000" ctrlrange="-0.733038 1.5708"/>
-        <position name="act3" joint="joint_3" kp="1000" ctrlrange="-1.55334 0.907571"/>
-        <position name="act4" joint="joint_4" kp="1000" ctrlrange="-2.87979 2.87979"/>
-        <position name="act5" joint="joint_5" kp="1000" ctrlrange="-1.8326 1.8326"/>
-        <position name="act6" joint="joint_6" kp="1000" ctrlrange="-2.70526 2.70526"/>
         <position name="act8" joint="gripper_jaw1_joint" kp="100" ctrlrange="-0.014 0"/>
         <position name="act9" joint="gripper_jaw2_joint" kp="100" ctrlrange="-0.014 0"/>
     </actuator>

@@ -4,11 +4,13 @@ import os
 
 def register_robotics_envs():
     """Register all environment ID's to Gymnasium."""
-    
-    # Get the path to the MuJoCo scene file
+
     current_dir = os.path.dirname(__file__)
-    model_path = os.path.join(current_dir, "..", "simulation", "mujoco", "ar4_mk3", "scene.xml")
-    
+
+    # --- Joint control envs ---
+    model_path = os.path.join(
+        current_dir, "..", "simulation", "mujoco", "ar4_mk3", "scene.xml"
+    )
     for reward_type in ["sparse", "dense"]:
         suffix = "Dense" if reward_type == "dense" else ""
         kwargs = {
@@ -17,6 +19,24 @@ def register_robotics_envs():
         }
         register(
             id=f"Ar4Mk3PickAndPlace{suffix}Env-v1",
+            entry_point="aera.autonomous.envs.ar4_mk3_pick_and_place:Ar4Mk3PickAndPlaceEnv",
+            kwargs=kwargs,
+            max_episode_steps=50,
+        )
+
+    # --- EEF control envs ---
+    model_path_eef = os.path.join(
+        current_dir, "..", "simulation", "mujoco", "ar4_mk3", "scene_eef.xml"
+    )
+    for reward_type in ["sparse", "dense"]:
+        suffix = "Dense" if reward_type == "dense" else ""
+        kwargs = {
+            "model_path": model_path_eef,
+            "reward_type": reward_type,
+            "use_eef_control": True,
+        }
+        register(
+            id=f"Ar4Mk3PickAndPlaceEef{suffix}Env-v1",
             entry_point="aera.autonomous.envs.ar4_mk3_pick_and_place:Ar4Mk3PickAndPlaceEnv",
             kwargs=kwargs,
             max_episode_steps=50,

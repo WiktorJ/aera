@@ -31,6 +31,7 @@ class BaseEnv(MujocoRobotEnv):
         distance_threshold,
         reward_type,
         object_size=0.025,
+        use_eef_control=False,
         **kwargs,
     ):
         """Initializes a new Fetch environment.
@@ -61,8 +62,9 @@ class BaseEnv(MujocoRobotEnv):
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
         self.object_size = object_size
+        self.use_eef_control = use_eef_control
 
-        super().__init__(n_actions=7, **kwargs)
+        super().__init__(n_actions=4 if use_eef_control else 7, **kwargs)
 
     # GoalEnv methods
     # ----------------------------
@@ -141,30 +143,53 @@ class Ar4Mk3Env(BaseEnv):
             self._mujoco.mj_forward(self.model, self.data)
 
     def _set_action(self, action):
-        assert action.shape == (7,)
-        action = action.copy()
+        if self.use_eef_control:
+            assert action.shape == (4,)
+            action = action.copy()
+            pos_ctrl, gripper_ctrl = action[:3], action[3]
 
-        # Relative position control for the arm
-        arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
-        arm_joint_indices = [
-            self._model_names.joint_name2id[f"joint_{i+1}"] for i in range(6)
-        ]
-        current_arm_qpos = self.data.qpos[arm_joint_indices]
-        new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
+            pos_ctrl *= 0.05  # limit maximum change in position
 
-        # Absolute position control for the gripper (+1 closed, -1 open)
-        gripper_ctrl = action[6]
-        gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
+            current_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
+            target_pos = current_pos + pos_ctrl
 
-        # Construct and clip the full control vector
-        control_signal = np.concatenate(
-            [new_target_arm_qpos, [gripper_target_pos, gripper_target_pos]]
-        )
-        ctrlrange = self.model.actuator_ctrlrange
-        control_signal = np.clip(control_signal, ctrlrange[:, 0], ctrlrange[:, 1])
+            current_quat = rotations.mat2quat(
+                self._utils.get_site_xmat(self.model, self.data, "grip")
+            )
 
-        # Apply action to simulation
-        self.data.ctrl[:] = control_signal
+            self._utils.set_mocap_pose(
+                self.model, self.data, "robot0:mocap", target_pos, current_quat
+            )
+
+            # Gripper control
+            gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
+            if not self.block_gripper:
+                self.data.ctrl[-2:] = np.array([gripper_target_pos, gripper_target_pos])
+        else:
+            assert action.shape == (7,)
+            action = action.copy()
+
+            # Relative position control for the arm
+            arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
+            arm_joint_indices = [
+                self._model_names.joint_name2id[f"joint_{i+1}"] for i in range(6)
+            ]
+            current_arm_qpos = self.data.qpos[arm_joint_indices]
+            new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
+
+            # Absolute position control for the gripper (+1 closed, -1 open)
+            gripper_ctrl = action[6]
+            gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
+
+            # Construct and clip the full control vector
+            control_signal = np.concatenate(
+                [new_target_arm_qpos, [gripper_target_pos, gripper_target_pos]]
+            )
+            ctrlrange = self.model.actuator_ctrlrange
+            control_signal = np.clip(control_signal, ctrlrange[:, 0], ctrlrange[:, 1])
+
+            # Apply action to simulation
+            self.data.ctrl[:] = control_signal
 
     def generate_mujoco_observations(self):
         # positions
@@ -259,7 +284,18 @@ class Ar4Mk3Env(BaseEnv):
     def _env_setup(self, initial_qpos):
         for name, value in initial_qpos.items():
             self._utils.set_joint_qpos(self.model, self.data, name, value)
-        self._utils.reset_mocap_welds(self.model, self.data)
+        self._mujoco.mj_forward(self.model, self.data)
+
+        if self.use_eef_control:
+            self._utils.reset_mocap_welds(self.model, self.data)
+            grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
+            grip_rot_mat = self._utils.get_site_xmat(self.model, self.data, "grip")
+            grip_rot_quat = rotations.mat2quat(grip_rot_mat)
+            self._utils.set_mocap_pose(
+                self.model, self.data, "robot0:mocap", grip_pos, grip_rot_quat
+            )
+            for _ in range(10):
+                self._mujoco.mj_step(self.model, self.data, nstep=self.n_substeps)
 
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]

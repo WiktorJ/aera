@@ -19,6 +19,10 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
 
     ## Action Space
 
+    The environment supports two control modes for the robot, selected during initialization: joint control (default) and end-effector (EEF) control.
+
+    ### Joint Control
+
     The action space is a `Box(-1.0, 1.0, (7,), float32)`. An action represents the desired change in joint positions for the arm and an absolute position for the gripper.
 
     | Num | Action                                                       | Control Min | Control Max | Joint Name (in corresponding XML file) | Unit         |
@@ -30,6 +34,18 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     | 4   | Change in target position for joint 5                        | -1          | 1           | joint_5                                | angle (rad)  |
     | 5   | Change in target position for joint 6                        | -1          | 1           | joint_6                                | angle (rad)  |
     | 6   | Absolute gripper position (-1: open, 1: closed)              | -1          | 1           | gripper_jaw1_joint, gripper_jaw2_joint | position (m) |
+
+    ### End-Effector (EEF) Control
+
+    To use EEF control, the environment must be created with `use_eef_control=True`. The corresponding XML model with a mocap body must also be used (e.g., `Ar4Mk3PickAndPlaceEef...` environments).
+    The action space is a `Box(-1.0, 1.0, (4,), float32)`. An action represents the desired displacement of the gripper in Cartesian coordinates `(x,y,z)` and the opening of the gripper.
+
+    | Num | Action                                                       | Control Min | Control Max | Unit         |
+    | --- | ------------------------------------------------------------ | ----------- | ----------- | ------------ |
+    | 0   | Delta x-position of the end-effector                         | -1          | 1           | position (m) |
+    | 1   | Delta y-position of the end-effector                         | -1          | 1           | position (m) |
+    | 2   | Delta z-position of the end-effector                         | -1          | 1           | position (m) |
+    | 3   | Absolute gripper position (-1: open, 1: closed)              | -1          | 1           | position (m) |
 
     ## Observation Space
 

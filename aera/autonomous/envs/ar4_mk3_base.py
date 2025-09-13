@@ -180,7 +180,7 @@ class Ar4Mk3Env(BaseEnv):
             arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
             current_arm_qpos = np.array(
                 [
-                    self._utils.get_joint_qpos(self.model, self.data, name)
+                    self._utils.get_joint_qpos(self.model, self.data, name)[0]
                     for name in arm_joint_names
                 ]
             )

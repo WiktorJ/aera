@@ -143,6 +143,8 @@ class Ar4Mk3Env(BaseEnv):
             self._mujoco.mj_forward(self.model, self.data)
 
     def _set_action(self, action):
+        print("-----------")
+        print(f"action: {action}")
         if self.use_eef_control:
             assert action.shape == (4,)
             action = (
@@ -171,10 +173,15 @@ class Ar4Mk3Env(BaseEnv):
 
             # Relative position control for the arm
             arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
-            arm_joint_indices = [
-                self._model_names.joint_name2id[f"joint_{i + 1}"] for i in range(6)
-            ]
-            current_arm_qpos = self.data.qpos[arm_joint_indices]
+            # arm_joint_indices = [
+            #     self._model_names.joint_name2id[f"joint_{i + 1}"] for i in range(6)
+            # ]
+            # current_arm_qpos = self.data.qpos[arm_joint_indices]
+            arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
+            current_arm_qpos = self._utils.get_joint_qpos(
+                self.model, self.data, arm_joint_names
+            )
+            print(f"cur pos: {current_arm_qpos}")
             new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
 
             # Absolute position control for the gripper (+1 closed, -1 open)
@@ -185,8 +192,10 @@ class Ar4Mk3Env(BaseEnv):
             control_signal = np.concatenate(
                 [new_target_arm_qpos, [gripper_target_pos, gripper_target_pos]]
             )
+            print(f"ctrl sig before clip: {control_signal}")
             ctrlrange = self.model.actuator_ctrlrange
             control_signal = np.clip(control_signal, ctrlrange[:, 0], ctrlrange[:, 1])
+            print(f"ctrl: {control_signal}")
 
             # Apply action to simulation
             self.data.ctrl[:] = control_signal

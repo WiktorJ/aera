@@ -157,7 +157,7 @@ class Ar4Mk3Env(BaseEnv):
                 self._utils.get_site_xmat(self.model, self.data, "grip")
             )
 
-            self._utils.set_mocap_pose(
+            self._utils.set_mocap_pos(
                 self.model, self.data, "robot0:mocap", target_pos, current_quat
             )
 
@@ -172,7 +172,7 @@ class Ar4Mk3Env(BaseEnv):
             # Relative position control for the arm
             arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
             arm_joint_indices = [
-                self._model_names.joint_name2id[f"joint_{i+1}"] for i in range(6)
+                self._model_names.joint_name2id[f"joint_{i + 1}"] for i in range(6)
             ]
             current_arm_qpos = self.data.qpos[arm_joint_indices]
             new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
@@ -291,7 +291,7 @@ class Ar4Mk3Env(BaseEnv):
             grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
             grip_rot_mat = self._utils.get_site_xmat(self.model, self.data, "grip")
             grip_rot_quat = rotations.mat2quat(grip_rot_mat)
-            self._utils.set_mocap_pose(
+            self._utils.set_mocap_pos(
                 self.model, self.data, "robot0:mocap", grip_pos, grip_rot_quat
             )
             for _ in range(10):

@@ -143,8 +143,6 @@ class Ar4Mk3Env(BaseEnv):
             self._mujoco.mj_forward(self.model, self.data)
 
     def _set_action(self, action):
-        print("-----------")
-        print(f"action: {action}")
         if self.use_eef_control:
             assert action.shape == (4,)
             action = (
@@ -153,30 +151,30 @@ class Ar4Mk3Env(BaseEnv):
             pos_ctrl, gripper_ctrl = action[:3], action[3]
 
             pos_ctrl *= 0.05  # limit maximum change in position
-            rot_ctrl = [
-                1.0,
-                0.0,
-                0.0,
-                0.0,
-            ]  # fixed rotation of the end effector, expressed as a quaternion
-            gripper_ctrl = np.array([gripper_ctrl, gripper_ctrl])
-            assert gripper_ctrl.shape == (2,)
+
+            current_mocap_pos = self._utils.get_mocap_pos(
+                self.model, self.data, "robot0:mocap"
+            )
+            new_mocap_pos = current_mocap_pos + pos_ctrl
+            self._utils.set_mocap_pos(
+                self.model, self.data, "robot0:mocap", new_mocap_pos
+            )
+
+            # Absolute position control for the gripper (+1 closed, -1 open)
+            gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
+            gripper_action = np.array([gripper_target_pos, gripper_target_pos])
+
             if self.block_gripper:
-                gripper_ctrl = np.zeros_like(gripper_ctrl)
-            action = np.concatenate([pos_ctrl, rot_ctrl, gripper_ctrl])
-            # Gripper control
-            self._utils.ctrl_set_action(self.model, self.data, action)
-            self._utils.mocap_set_action(self.model, self.data, action)
+                gripper_action = np.zeros_like(gripper_action)
+
+            # Apply action to simulation
+            self.data.ctrl[:] = gripper_action
         else:
             assert action.shape == (7,)
             action = action.copy()
 
             # Relative position control for the arm
             arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
-            # arm_joint_indices = [
-            #     self._model_names.joint_name2id[f"joint_{i + 1}"] for i in range(6)
-            # ]
-            # current_arm_qpos = self.data.qpos[arm_joint_indices]
             arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
             current_arm_qpos = np.array(
                 [
@@ -184,7 +182,6 @@ class Ar4Mk3Env(BaseEnv):
                     for name in arm_joint_names
                 ]
             )
-            print(f"cur pos: {current_arm_qpos}")
             new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
 
             # Absolute position control for the gripper (+1 closed, -1 open)
@@ -195,10 +192,8 @@ class Ar4Mk3Env(BaseEnv):
             control_signal = np.concatenate(
                 [new_target_arm_qpos, [gripper_target_pos, gripper_target_pos]]
             )
-            print(f"ctrl sig before clip: {control_signal}")
             ctrlrange = self.model.actuator_ctrlrange
             control_signal = np.clip(control_signal, ctrlrange[:, 0], ctrlrange[:, 1])
-            print(f"ctrl: {control_signal}")
 
             # Apply action to simulation
             self.data.ctrl[:] = control_signal

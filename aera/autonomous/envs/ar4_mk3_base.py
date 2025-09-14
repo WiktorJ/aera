@@ -152,9 +152,8 @@ class Ar4Mk3Env(BaseEnv):
 
             pos_ctrl *= 0.05  # limit maximum change in position
 
-            current_mocap_pos = self._utils.get_mocap_pos(
-                self.model, self.data, "robot0:mocap"
-            )
+            mocap_id = self._model_names.mocap_name2id["robot0:mocap"]
+            current_mocap_pos = self.data.mocap_pos[mocap_id]
             new_mocap_pos = current_mocap_pos + pos_ctrl
             self._utils.set_mocap_pos(
                 self.model, self.data, "robot0:mocap", new_mocap_pos

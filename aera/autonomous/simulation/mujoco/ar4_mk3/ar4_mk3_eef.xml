@@ -68,7 +68,7 @@
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="robot0:mocap" mocap="true" pos="0.3 0.3 0.3" quat="1 0 0 0">
-            <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005" type="box"></geom>
+            <geom conaffinity="0" contype="0" pos="0 0 0" rgba="0 0.5 0 0" size="0.005 0.005 0.005" type="box"></geom>
         </body>
         <body name="base_link" childclass="ar4_mk3">
       		  <joint armature="0.0001" axis="1 0 0" damping="1e+11" name="robot0:slide0" pos="0 0 0" type="slide"></joint>

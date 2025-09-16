@@ -93,7 +93,7 @@ dx, dy, dz = vec_from_lookat_to_cam
 distance = np.linalg.norm(vec_from_lookat_to_cam)
 
 # Azimuth is the angle in the XY-plane from the X-axis
-azimuth = np.degrees(np.arctan2(dy, dx)) + 0
+azimuth = np.degrees(np.arctan2(dy, dx)) + 90
 # Elevation is the angle from the XY-plane
 elevation = np.degrees(np.arcsin(dz / distance)) - 90
 
@@ -106,7 +106,7 @@ camera_config = {
 }
 
 env = gym.make(
-    "Ar4Mk3PickAndPlaceDenseEnv-v1",
+    "Ar4Mk3PickAndPlaceEefDenseEnv-v1",
     render_mode="rgb_array",
     width=1920,
     height=1080,
@@ -123,7 +123,9 @@ print("Starting frame collection...")
 frame_collection_start = time.time()
 
 while not (terminated or truncated) and ep_lens < 100:
+    # action = [5, 0, 0, 0, 0, 0, 0]
     action = env.action_space.sample()
+    # print(action)
     state, reward, terminated, truncated, info = env.step(action)
     ep_lens += 1
     observation = state["observation"]

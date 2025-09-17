@@ -45,8 +45,15 @@ def _tanh_jacobian_diag(x: jnp.ndarray) -> jnp.ndarray:
 def _tanh_squash(
     value: jnp.ndarray, log_prob_base: jnp.ndarray
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    value = jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
+    # The variable change formula states that
+    # pY(y) = p_X(f^{-1}(y)) * det(d/dy f^{-1}(y))
+    # in base variable x or p_Y(y) = p_X(x) * det(d/dx f(x)).
+    # In this case f = tanh and f^{-1} = atanh.
+    # Since we are interested in log_prob, the formula becomes
+    # log(p_Y(y)) = log(p_X(x)) - log(det(d/dx f(x))) =
+    # = log_probs_base - jacobian
     jacobian = _tanh_jacobian_diag(value)
+    value = jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
     return value, log_prob_base - jnp.sum(jnp.log(jacobian))
 
 

@@ -68,16 +68,6 @@ class ReinforcePolicyState:
     obs_dim: int
     key: jnp.ndarray
     oprimizer: optax.GradientTransformationExtraArgs
-    trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]]
-    mean_weights: jnp.ndarray
-    mean_bias: jnp.ndarray
-    log_std_weights: jnp.ndarray
-    log_std_bias: jnp.ndarray
-    opt_state: optax.OptState
-    all_params: (
-        list[tuple[jnp.ndarray, jnp.ndarray]]
-        | list[tuple[tuple[jnp.ndarray, jnp.ndarray], tuple[jnp.ndarray, jnp.ndarray]]]
-    )
     obs_dependent_std: bool = False
     tanh_squash_dist: bool = False
     log_std_min: float = -20.0
@@ -85,47 +75,45 @@ class ReinforcePolicyState:
     dropout_rate: float = 0.0
     temperature: float = 1.0
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu
+    trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]] = dataclasses.field(init=False)
+    mean_weights: jnp.ndarray = dataclasses.field(init=False)
+    mean_bias: jnp.ndarray = dataclasses.field(init=False)
+    log_std_weights: jnp.ndarray = dataclasses.field(init=False)
+    log_std_bias: jnp.ndarray = dataclasses.field(init=False)
+    opt_state: optax.OptState = dataclasses.field(init=False)
+    all_params: (
+        list[tuple[jnp.ndarray, jnp.ndarray]]
+        | list[tuple[tuple[jnp.ndarray, jnp.ndarray], tuple[jnp.ndarray, jnp.ndarray]]]
+    ) = dataclasses.field(init=False)
 
-    def __init__(
-        self,
-        hidden_dims: list[int],
-        action_dim: int,
-        obs_dim: int,
-        key: jnp.ndarray,
-        oprimizer: optax.GradientTransformationExtraArgs,
-        obs_dependent_std: bool = False,
-        tanh_squash_dist: bool = False,
-        log_std_min: float = -20.0,
-        log_std_max: float = 2.0,
-        dropout_rate: float = 0.0,
-        temperature: float = 1.0,
-        activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu,
-    ):
-        self.hidden_dims = hidden_dims
-        self.action_dim = action_dim
-        self.obs_dim = obs_dim
-        self.obs_dependent_std = obs_dependent_std
-        self.tanh_squash_dist = tanh_squash_dist
-        self.log_std_min = log_std_min
-        self.log_std_max = log_std_max
-        self.dropout_rate = dropout_rate
-        self.activation_fn = activation_fn
-        self.temperature = temperature
+    def __post_init__(self):
+        key, trunk_key, mean_key, log_std_key = jax.random.split(self.key, 4)
+        object.__setattr__(self, "key", key)
 
-        self.key, trunk_key, mean_key, log_std_key = jax.random.split(key, 4)
-        self.trunk_weights = _init_network_params(trunk_key, [obs_dim] + hidden_dims)
-        self.mean_weights, self.mean_bias = _init_network_params(
-            mean_key, [hidden_dims[-1], action_dim]
+        trunk_weights = _init_network_params(
+            trunk_key, [self.obs_dim] + self.hidden_dims
+        )
+        object.__setattr__(self, "trunk_weights", trunk_weights)
+
+        mean_weights, mean_bias = _init_network_params(
+            mean_key, [self.hidden_dims[-1], self.action_dim]
         )[0]
-        self.log_std_weights, self.log_std_bias = _init_network_params(
-            log_std_key, [hidden_dims[-1], action_dim]
+        object.__setattr__(self, "mean_weights", mean_weights)
+        object.__setattr__(self, "mean_bias", mean_bias)
+
+        log_std_weights, log_std_bias = _init_network_params(
+            log_std_key, [self.hidden_dims[-1], self.action_dim]
         )[0]
-        self.oprimizer = oprimizer
-        self.all_params = self.trunk_weights + [
-            (self.mean_weights, self.mean_bias),
-            (self.log_std_weights, self.log_std_bias),
+        object.__setattr__(self, "log_std_weights", log_std_weights)
+        object.__setattr__(self, "log_std_bias", log_std_bias)
+
+        all_params = trunk_weights + [
+            (mean_weights, mean_bias),
+            (log_std_weights, log_std_bias),
         ]
-        self.opt_state = self.oprimizer.init(self.all_params)
+        object.__setattr__(self, "all_params", all_params)
+        opt_state = self.oprimizer.init(all_params)
+        object.__setattr__(self, "opt_state", opt_state)
 
 
 def call_reinforce_policy(

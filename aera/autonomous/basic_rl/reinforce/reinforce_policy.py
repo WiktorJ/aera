@@ -1,9 +1,9 @@
 from typing import Callable, Sequence
 
-import optax
-
 import jax
 import jax.numpy as jnp
+import optax
+import dataclasses
 
 from aera.autonomous.basic_rl.reinforce.common import Batch
 
@@ -61,7 +61,31 @@ def _tanh_squash(
     return value, log_prob_base - jnp.sum(jnp.log(jacobian))
 
 
-class ReinforcePolicy:
+@dataclasses.dataclass(frozen=True)
+class ReinforcePolicyState:
+    hidden_dims: list[int]
+    action_dim: int
+    obs_dim: int
+    key: jnp.ndarray
+    oprimizer: optax.GradientTransformationExtraArgs
+    trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]]
+    mean_weights: jnp.ndarray
+    mean_bias: jnp.ndarray
+    log_std_weights: jnp.ndarray
+    log_std_bias: jnp.ndarray
+    opt_state: optax.OptState
+    all_params: (
+        list[tuple[jnp.ndarray, jnp.ndarray]]
+        | list[tuple[tuple[jnp.ndarray, jnp.ndarray], tuple[jnp.ndarray, jnp.ndarray]]]
+    )
+    obs_dependent_std: bool = False
+    tanh_squash_dist: bool = False
+    log_std_min: float = -20.0
+    log_std_max: float = 2.0
+    dropout_rate: float = 0.0
+    temperature: float = 1.0
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu
+
     def __init__(
         self,
         hidden_dims: list[int],
@@ -97,40 +121,62 @@ class ReinforcePolicy:
             log_std_key, [hidden_dims[-1], action_dim]
         )[0]
         self.oprimizer = oprimizer
-        self.opt_state = self.oprimizer.init(
-            self.trunk_weights
-            + [
-                (self.mean_weights, self.mean_bias),
-                (self.log_std_weights, self.log_std_bias),
-            ]
-        )
-
-    def __call__(self, x) -> tuple[jnp.ndarray, jnp.ndarray]:
-        for w, b in self.trunk_weights:
-            x = self.activation_fn(jnp.dot(x, w) + b)
-        x = jnp.tanh(x)
-        mean = jnp.dot(x, self.mean_weights) + self.mean_bias
-        if self.obs_dependent_std:
-            log_std = jnp.dot(x, self.log_std_weights) + self.log_std_bias
-        else:
-            log_std = jnp.zeros_like(mean)
-        log_std = jnp.clip(log_std, self.log_std_min, self.log_std_max)
-        if not self.tanh_squash_dist:
-            mean = jnp.tanh(jnp.clip(mean, -1.0 + 1e-6, 1.0 - 1e-6))
-        self.key, key_gaussian = jax.random.split(self.key)
-        action = _sample_gaussian(key_gaussian, mean, log_std * self.temperature)
-        log_prob = _gaussian_log_prob(action, mean, log_std)
-        if not self.tanh_squash_dist:
-            return action, log_prob
-        return _tanh_squash(action, log_prob)
+        self.all_params = self.trunk_weights + [
+            (self.mean_weights, self.mean_bias),
+            (self.log_std_weights, self.log_std_bias),
+        ]
+        self.opt_state = self.oprimizer.init(self.all_params)
 
 
-def update(
-    policy: ReinforcePolicy,
+def call_reinforce_policy(
+    x: jnp.ndarray,
+    state: ReinforcePolicyState,
+) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
+    for w, b in state.trunk_weights:
+        x = state.activation_fn(jnp.dot(x, w) + b)
+    x = jnp.tanh(x)
+    mean = jnp.dot(x, state.mean_weights) + state.mean_bias
+    if state.obs_dependent_std:
+        log_std = jnp.dot(x, state.log_std_weights) + state.log_std_bias
+    else:
+        log_std = jnp.zeros_like(mean)
+    log_std = jnp.clip(log_std, state.log_std_min, state.log_std_max)
+    if not state.tanh_squash_dist:
+        mean = jnp.tanh(jnp.clip(mean, -1.0 + 1e-6, 1.0 - 1e-6))
+    new_key, key_gaussian = jax.random.split(state.key)
+    new_state = dataclasses.replace(state, key=new_key)  # type: ignore
+    action = _sample_gaussian(key_gaussian, mean, log_std * state.temperature)
+    log_prob = _gaussian_log_prob(action, mean, log_std)
+    if not state.tanh_squash_dist:
+        return action, log_prob, new_state
+    return *_tanh_squash(action, log_prob), new_state
+
+
+def update_reinforce_policy(
+    state: ReinforcePolicyState,
     batch: Batch,
-):
+    baseline: jnp.ndarray,
+) -> tuple[dict[str, jnp.ndarray], ReinforcePolicyState]:
     def loss_fn(log_prob: jnp.ndarray, baseline: jnp.ndarray):
-        loss = (log_prob * baseline).mean()
+        loss = -(log_prob * baseline).mean()
         return loss, {"policy_loss": loss, "log_prob": log_prob.mean()}
 
-    pass
+    _, log_prob, state = call_reinforce_policy(batch.observations, state)
+    grad, info = jax.grad(loss_fn, has_aux=True)(log_prob, baseline)
+    updates, opt_state = state.oprimizer.update(grad, state.opt_state)
+    all_params = optax.apply_updates(state.all_params, updates)
+    new_state = dataclasses.replace(state, opt_state=opt_state, all_params=all_params)  # type: ignore
+    return info, new_state
+
+
+ReinforcePolicyState(
+    hidden_dims=[256, 256],
+    action_dim=1,
+    obs_dim=1,
+    key=jax.random.PRNGKey(0),
+    oprimizer=optax.adam(1e-3),
+    obs_dependent_std=False,
+    tanh_squash_dist=False,
+    log_std_min=-20.0,
+    log_std_max=2.0,
+)

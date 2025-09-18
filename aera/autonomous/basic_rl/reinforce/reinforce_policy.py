@@ -1,7 +1,11 @@
 from typing import Callable, Sequence
 
+import optax
+
 import jax
 import jax.numpy as jnp
+
+from aera.autonomous.basic_rl.reinforce.common import Batch
 
 
 def _random_layer_params(
@@ -64,6 +68,7 @@ class ReinforcePolicy:
         action_dim: int,
         obs_dim: int,
         key: jnp.ndarray,
+        oprimizer: optax.GradientTransformationExtraArgs,
         obs_dependent_std: bool = False,
         tanh_squash_dist: bool = False,
         log_std_min: float = -20.0,
@@ -91,8 +96,16 @@ class ReinforcePolicy:
         self.log_std_weights, self.log_std_bias = _init_network_params(
             log_std_key, [hidden_dims[-1], action_dim]
         )[0]
+        self.oprimizer = oprimizer
+        self.opt_state = self.oprimizer.init(
+            self.trunk_weights
+            + [
+                (self.mean_weights, self.mean_bias),
+                (self.log_std_weights, self.log_std_bias),
+            ]
+        )
 
-    def __call__(self, x):
+    def __call__(self, x) -> tuple[jnp.ndarray, jnp.ndarray]:
         for w, b in self.trunk_weights:
             x = self.activation_fn(jnp.dot(x, w) + b)
         x = jnp.tanh(x)
@@ -110,3 +123,14 @@ class ReinforcePolicy:
         if not self.tanh_squash_dist:
             return action, log_prob
         return _tanh_squash(action, log_prob)
+
+
+def update(
+    policy: ReinforcePolicy,
+    batch: Batch,
+):
+    def loss_fn(log_prob: jnp.ndarray, baseline: jnp.ndarray):
+        loss = (log_prob * baseline).mean()
+        return loss, {"policy_loss": loss, "log_prob": log_prob.mean()}
+
+    pass

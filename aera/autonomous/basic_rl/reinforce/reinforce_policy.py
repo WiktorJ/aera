@@ -84,7 +84,7 @@ def _random_layer_params(
     m: int, n: int, key: jnp.ndarray, scale: float = 1e-2
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
     w_key, b_key = jax.random.split(key)
-    return scale * jax.random.normal(w_key, (n, m)), scale * jax.random.normal(
+    return scale * jax.random.normal(w_key, (m, n)), scale * jax.random.normal(
         b_key, (n,)
     )
 

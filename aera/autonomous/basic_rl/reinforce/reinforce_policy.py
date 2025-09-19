@@ -118,9 +118,9 @@ def _tanh_jacobian_diag(x: jnp.ndarray) -> jnp.ndarray:
     return 1 - jnp.tanh(x) ** 2
 
 
-def _tanh_squash(
+def _tanh_squash_log_prob(
     value: jnp.ndarray, log_prob_base: jnp.ndarray
-) -> tuple[jnp.ndarray, jnp.ndarray]:
+) -> jnp.ndarray:
     # The variable change formula states that
     # pY(y) = p_X(f^{-1}(y)) * det(d/dy f^{-1}(y))
     # in base variable x or p_Y(y) = p_X(x) * det(d/dx f(x)).
@@ -129,8 +129,11 @@ def _tanh_squash(
     # log(p_Y(y)) = log(p_X(x)) - log(det(d/dx f(x))) =
     # = log_probs_base - jacobian
     jacobian = _tanh_jacobian_diag(value)
-    value = jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
-    return value, log_prob_base - jnp.sum(jnp.log(jacobian))
+    return log_prob_base - jnp.sum(jnp.log(jacobian))
+
+
+def _tanh_squash(value: jnp.ndarray):
+    return jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
 
 
 def _call_reinforce_policy(
@@ -138,7 +141,6 @@ def _call_reinforce_policy(
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
     mean_weights: tuple[jnp.ndarray, jnp.ndarray],
     log_std_weights: tuple[jnp.ndarray, jnp.ndarray],
-    key: jnp.ndarray,
     obs_dependent_std: bool,
     tanh_squash_dist: bool,
     log_std_min: float,
@@ -154,27 +156,31 @@ def _call_reinforce_policy(
         log_std = jnp.dot(x, log_std_weights[0]) + log_std_weights[1]
     else:
         log_std = jnp.zeros_like(mean)
-    log_std = jnp.clip(log_std, log_std_min, log_std_max)
+    log_std = jnp.clip(log_std, log_std_min, log_std_max) * temperature
     if not tanh_squash_dist:
-        mean = jnp.tanh(jnp.clip(mean, -1.0 + 1e-6, 1.0 - 1e-6))
-    new_key, key_gaussian = jax.random.split(key)
-    action = _sample_gaussian(key_gaussian, mean, log_std * temperature)
-    log_prob = _gaussian_log_prob(action, mean, log_std)
+        mean = _tanh_squash(mean)
     if not tanh_squash_dist:
-        return action, log_prob, new_key
-    return *_tanh_squash(action, log_prob), new_key
+        return (
+            lambda seed: _sample_gaussian(seed, mean, log_std),
+            lambda sample: _gaussian_log_prob(sample, mean, log_std),
+        )
+    return (
+        lambda seed: _tanh_squash(_sample_gaussian(seed, mean, log_std)),
+        lambda sample: _tanh_squash_log_prob(
+            sample, _gaussian_log_prob(sample, mean, log_std)
+        ),
+    )
 
 
 def call_reinforce_policy(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,
 ) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
-    action, log_prob, new_key = _call_reinforce_policy(
+    action_fn, log_prob_fn = _call_reinforce_policy(
         obs,
         state.trunk_weights,
         state.mean_weights,
         state.log_std_weights,
-        state.key,
         state.obs_dependent_std,
         state.tanh_squash_dist,
         state.log_std_min,
@@ -182,6 +188,9 @@ def call_reinforce_policy(
         state.temperature,
         state.activation_fn,
     )
+    new_key, action_seed = jax.random.split(state.key)
+    action = action_fn(action_seed)
+    log_prob = log_prob_fn(action)
     state = dataclasses.replace(state, key=new_key)
     return action, log_prob, state
 
@@ -196,12 +205,11 @@ def update_reinforce_policy(
         mean_weights: tuple[jnp.ndarray, jnp.ndarray],
         log_std_weights: tuple[jnp.ndarray, jnp.ndarray],
     ):
-        _, log_prob, new_key = _call_reinforce_policy(
+        _, log_prob_fn = _call_reinforce_policy(
             batch.observations,
             trunk_weights,
             mean_weights,
             log_std_weights,
-            state.key,
             state.obs_dependent_std,
             state.tanh_squash_dist,
             state.log_std_min,
@@ -209,11 +217,11 @@ def update_reinforce_policy(
             state.temperature,
             state.activation_fn,
         )
+        log_prob = log_prob_fn(batch.actions)
         loss = -(log_prob * advantate).mean()
         return loss, {
             "policy_loss": loss,
             "log_prob": log_prob.mean(),
-            "new_key": new_key,
         }
 
     grad, aux = jax.grad(loss_fn, has_aux=True, argnums=(0, 1, 2))(
@@ -224,35 +232,35 @@ def update_reinforce_policy(
     updates, opt_state = state.oprimizer.update(grad, state.opt_state)
     trunk_weights, mean_weights, log_std_weights = optax.apply_updates(
         (state.trunk_weights, state.mean_weights, state.log_std_weights), updates
-    )
+    )  # type: ignore
     new_state = dataclasses.replace(
         state,
         opt_state=opt_state,
-        key=aux["new_key"],
         trunk_weights=trunk_weights,
         mean_weights=mean_weights,
         log_std_weights=log_std_weights,
     )
-    del aux["new_key"]
     return aux, new_state
 
 
-state = ReinforcePolicyState.create(
-    hidden_dims=[32, 32],
-    action_dim=1,
-    obs_dim=1,
-    key=jax.random.PRNGKey(0),
-    optimizer=optax.adam(1e-3),
-)
-
-batch = Batch(
-    observations=jnp.ones((10, 1)),
-    actions=jnp.ones((10, 1)),
-    rewards=jnp.ones((10, 1)),
-    next_observations=jnp.ones((10, 1)),
-    masks=jnp.ones((10, 1)),
-)
-
-advantage = jnp.ones((10, 1))
-
-aux, new_state = update_reinforce_policy(state, batch, advantage)
+# state = ReinforcePolicyState.create(
+#     hidden_dims=[32, 32],
+#     action_dim=1,
+#     obs_dim=1,
+#     key=jax.random.PRNGKey(0),
+#     optimizer=optax.adam(1e-3),
+#     obs_dependent_std=True,
+# )
+#
+# ran_key1, ran_key2, ran_key3 = jax.random.split(jax.random.PRNGKey(0), 3)
+#
+# batch = Batch(
+#     observations=jax.random.normal(ran_key1, (10, 1)),
+#     actions=jax.random.normal(ran_key2, (10, 1)),
+#     rewards=jnp.ones((10, 1)),
+#     next_observations=jnp.ones((10, 1)),
+#     masks=jnp.ones((10, 1)),
+# )
+# advantage = jax.random.normal(ran_key3, (10, 1)) * 0.1 + 0.5
+#
+# aux, state = update_reinforce_policy(state, batch, advantage)

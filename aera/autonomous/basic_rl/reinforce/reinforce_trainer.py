@@ -1,18 +1,25 @@
 from typing import Callable
 
+import tqdm
 import gymnasium as gym
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 
 from aera.autonomous.basic_rl.reinforce import reinforce_config, reinforce_policy
+from aera.autonomous.basic_rl.reinforce.common import Batch
 
 
 def _get_activation_fn(name: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
     if name == "relu":
         return jax.nn.relu
     raise ValueError(f"Unknown activation function: {name}")
+
+
+def _get_observation(observation: jnp.ndarray) -> jnp.ndarray:
+    if hasattr(observation, "__getitem__") and "observation" in observation:
+        return observation["observation"]
+    return observation
 
 
 class Trainer:
@@ -23,7 +30,7 @@ class Trainer:
             render_mode=config.env_render_mode,
             width=config.env_render_width,
             height=config.env_render_height,
-            max_episode_steps=config.env_max_steps,
+            max_episode_steps=config.ep_len,
         )
         self.env.reset()
         self.eval_env = gym.make(
@@ -31,7 +38,7 @@ class Trainer:
             render_mode=config.env_render_mode,
             width=config.env_render_width,
             height=config.env_render_height,
-            max_episode_steps=config.env_max_steps,
+            max_episode_steps=config.ep_len,
         )
         self.eval_env.reset()
 
@@ -39,7 +46,7 @@ class Trainer:
         observation_shape = self.env.observation_space.shape
         optimizer = optax.adamw(config.policy_lr)
 
-        self.policy = reinforce_policy.ReinforcePolicyState.create(
+        self.policy_state = reinforce_policy.ReinforcePolicyState.create(
             hidden_dims=config.policy_hidden_dims,
             action_dim=action_shape[0],  # type: ignore
             obs_dim=observation_shape[0],  # type: ignore
@@ -53,3 +60,36 @@ class Trainer:
             temperature=config.policy_temperature,
             activation_fn=_get_activation_fn(config.policy_activation_fn),
         )
+
+    def train(self) -> None:
+        observation, _ = self.env.reset()
+        for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.01):
+            observations = []
+            actions = []
+            masks = []
+            rewards = []
+            for j in range(self.config.batch_size):
+                observation = _get_observation(observation)
+                action = reinforce_policy.call_reinforce_policy(
+                    observation,
+                    self.policy_state,
+                )
+                new_observation, reward, done, truncated, info = self.env.step(action)
+
+                observations.append(observation)
+                actions.append(action)
+                masks.append(not (done or truncated))
+                rewards.append(reward)
+
+                if done or truncated:
+                    observation, _ = self.env.reset()
+                else:
+                    observation = new_observation
+
+            batch = Batch(
+                observations=jnp.array(observations),
+                actions=jnp.array(actions),
+                masks=jnp.array(masks).reshape(-1, 1),
+                rewards=jnp.array(rewards).reshape(-1, 1),
+            )
+            # Calculate reward to go for each state, taking into account masks AI!

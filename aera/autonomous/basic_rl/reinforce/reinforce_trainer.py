@@ -70,7 +70,7 @@ class Trainer:
             rewards = []
             for j in range(self.config.batch_size):
                 observation = _get_observation(observation)
-                action = reinforce_policy.call_reinforce_policy(
+                action, _, self.policy_state = reinforce_policy.call_reinforce_policy(
                     observation,
                     self.policy_state,
                 )
@@ -92,4 +92,26 @@ class Trainer:
                 masks=jnp.array(masks).reshape(-1, 1),
                 rewards=jnp.array(rewards).reshape(-1, 1),
             )
-            # Calculate reward to go for each state, taking into account masks AI!
+            # Calculate reward to go for each state, taking into account masks
+            def reward_to_go_step(carry, xs):
+                reward, mask = xs
+                carry = reward + self.config.gamma * carry * mask
+                return carry, carry
+
+            # We process rewards and masks in reverse order
+            _, reward_to_go_rev = jax.lax.scan(
+                reward_to_go_step,
+                0.0,
+                (jnp.flip(batch.rewards, axis=0), jnp.flip(batch.masks, axis=0)),
+            )
+            # And flip the result back
+            advantate = jnp.flip(reward_to_go_rev, axis=0)
+
+            # Normalize advantage
+            advantate = (advantate - advantate.mean()) / (advantate.std() + 1e-8)
+
+            aux, self.policy_state = reinforce_policy.update_reinforce_policy(
+                self.policy_state,
+                batch,
+                advantate,
+            )

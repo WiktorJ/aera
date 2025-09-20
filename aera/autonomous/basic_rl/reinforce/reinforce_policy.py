@@ -111,7 +111,7 @@ def _gaussian_log_prob(
     variance = jnp.exp(2 * log_std) + 1e-6
     log2pi = jnp.log(2 * jnp.pi)
     log_prob = -0.5 * (((value - mean) ** 2) / variance) - log_std - 0.5 * log2pi
-    return jnp.sum(log_prob)
+    return jnp.sum(log_prob, axis=-1)
 
 
 def _tanh_jacobian_diag(x: jnp.ndarray) -> jnp.ndarray:
@@ -129,7 +129,7 @@ def _tanh_squash_log_prob(
     # log(p_Y(y)) = log(p_X(x)) - log(det(d/dx f(x))) =
     # = log_probs_base - jacobian
     jacobian = _tanh_jacobian_diag(value)
-    return log_prob_base - jnp.sum(jnp.log(jacobian))
+    return log_prob_base - jnp.sum(jnp.log(jacobian), axis=-1)
 
 
 def _tanh_squash(value: jnp.ndarray):
@@ -218,7 +218,9 @@ def update_reinforce_policy(
             state.activation_fn,
         )
         log_prob = log_prob_fn(batch.actions)
-        loss = -(log_prob * advantate).mean()
+        masks = batch.masks.squeeze()
+        active_states = jnp.maximum(masks.sum(), 1.0)
+        loss = -((log_prob * advantate.squeeze() * masks).sum() / active_states)
         return loss, {
             "policy_loss": loss,
             "log_prob": log_prob.mean(),

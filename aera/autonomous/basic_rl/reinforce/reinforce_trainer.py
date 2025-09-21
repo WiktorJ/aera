@@ -70,6 +70,7 @@ class Trainer:
             training_temperature=config.policy_temperature,
             activation_fn=_get_activation_fn(config.policy_activation_fn),
         )
+        self.eval_step_counter = 0
 
     def train(self) -> None:
         mlflow.set_experiment(self.config.env_name)
@@ -190,7 +191,7 @@ class Trainer:
             info = {}
             episode_actions = []
             episode_observations = []
-            
+
             while not (done or truncated):
                 if self.config.eval_render:
                     frame = self.eval_env.render()
@@ -199,27 +200,27 @@ class Trainer:
 
                 observation = _get_observation(observation)
                 episode_observations.append(observation)
-                
+
                 action, _ = reinforce_policy.sample_action(
                     observation, self.policy_state, temperature=0.0
                 )
                 episode_actions.append(action)
-                
+
                 # Log individual action and observation dimensions
                 for action_dim in range(len(action)):
                     mlflow.log_metric(
-                        f"eval/episode_{episode_idx}/action_dim_{action_dim}",
+                        f"eval/episode_{self.eval_step_counter}/action_dim_{action_dim}",
                         action[action_dim].item(),
-                        step=step * 1000 + ep_len
+                        step=ep_len,
                     )
-                
+
                 for obs_dim in range(len(observation)):
                     mlflow.log_metric(
-                        f"eval/episode_{episode_idx}/obs_dim_{obs_dim}",
+                        f"eval/episode_{self.eval_step_counter}/obs_dim_{obs_dim}",
                         observation[obs_dim].item(),
-                        step=step * 1000 + ep_len
+                        step=ep_len,
                     )
-                
+
                 observation, reward, done, truncated, info = self.eval_env.step(
                     unscale_actions(action, self.eval_env)
                 )
@@ -242,14 +243,22 @@ class Trainer:
         if all_actions:
             all_actions_concat = jnp.concatenate(all_actions, axis=0)
             all_observations_concat = jnp.concatenate(all_observations, axis=0)
-            
+
             for action_dim in range(all_actions_concat.shape[1]):
-                metrics[f"eval/action_dim_{action_dim}_mean"] = jnp.mean(all_actions_concat[:, action_dim])
-                metrics[f"eval/action_dim_{action_dim}_std"] = jnp.std(all_actions_concat[:, action_dim])
-                
+                metrics[f"eval/action_dim_{action_dim}_mean"] = jnp.mean(
+                    all_actions_concat[:, action_dim]
+                )
+                metrics[f"eval/action_dim_{action_dim}_std"] = jnp.std(
+                    all_actions_concat[:, action_dim]
+                )
+
             for obs_dim in range(all_observations_concat.shape[1]):
-                metrics[f"eval/obs_dim_{obs_dim}_mean"] = jnp.mean(all_observations_concat[:, obs_dim])
-                metrics[f"eval/obs_dim_{obs_dim}_std"] = jnp.std(all_observations_concat[:, obs_dim])
+                metrics[f"eval/obs_dim_{obs_dim}_mean"] = jnp.mean(
+                    all_observations_concat[:, obs_dim]
+                )
+                metrics[f"eval/obs_dim_{obs_dim}_std"] = jnp.std(
+                    all_observations_concat[:, obs_dim]
+                )
 
         if episode_infos:
             for key in episode_infos[0].keys():
@@ -267,6 +276,7 @@ class Trainer:
                 video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
                 imageio.mimsave(video_path, frames, fps=30)
                 mlflow.log_artifact(video_path, artifact_path="videos")
+        self.eval_step_counter += 1
 
 
 def main():

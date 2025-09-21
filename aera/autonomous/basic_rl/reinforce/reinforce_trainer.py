@@ -5,6 +5,11 @@ import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import optax
+import mlflow
+import dataclasses
+import imageio
+import tempfile
+import os
 
 from aera.autonomous.basic_rl.reinforce import reinforce_config, reinforce_policy
 from aera.autonomous.basic_rl.reinforce.common import Batch
@@ -62,67 +67,71 @@ class Trainer:
         )
 
     def train(self) -> None:
-        observation, _ = self.env.reset()
-        for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.01):
-            observations = []
-            actions = []
-            masks = []
-            rewards = []
-            for j in range(self.config.batch_size):
-                observation = _get_observation(observation)
-                self.key, action_seed = jax.random.split(self.key)
-                action, _ = reinforce_policy.sample_action(
-                    observation,
-                    self.policy_state,
-                    action_seed,
+        with mlflow.start_run():
+            mlflow.log_params(dataclasses.asdict(self.config))
+            observation, _ = self.env.reset()
+            for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.01):
+                observations = []
+                actions = []
+                masks = []
+                rewards = []
+                for j in range(self.config.batch_size):
+                    observation = _get_observation(observation)
+                    self.key, action_seed = jax.random.split(self.key)
+                    action, _ = reinforce_policy.sample_action(
+                        observation,
+                        self.policy_state,
+                        action_seed,
+                    )
+                    new_observation, reward, done, truncated, info = self.env.step(action)
+
+                    observations.append(observation)
+                    actions.append(action)
+                    masks.append(not (done or truncated))
+                    rewards.append(reward)
+
+                    if done or truncated:
+                        observation, _ = self.env.reset()
+                    else:
+                        observation = new_observation
+
+                batch = Batch(
+                    observations=jnp.array(observations),
+                    actions=jnp.array(actions),
+                    masks=jnp.array(masks).reshape(-1, 1),
+                    rewards=jnp.array(rewards).reshape(-1, 1),
                 )
-                new_observation, reward, done, truncated, info = self.env.step(action)
 
-                observations.append(observation)
-                actions.append(action)
-                masks.append(not (done or truncated))
-                rewards.append(reward)
+                def reward_to_go_step(carry, xs):
+                    reward, mask = xs
+                    carry = reward + self.config.gamma * carry * mask
+                    return carry, carry
 
-                if done or truncated:
-                    observation, _ = self.env.reset()
-                else:
-                    observation = new_observation
+                _, reward_to_go_rev = jax.lax.scan(
+                    reward_to_go_step,
+                    0.0,
+                    (batch.rewards, batch.masks),
+                    reverse=True,
+                )
+                advantate = jnp.flip(reward_to_go_rev, axis=0)
 
-            batch = Batch(
-                observations=jnp.array(observations),
-                actions=jnp.array(actions),
-                masks=jnp.array(masks).reshape(-1, 1),
-                rewards=jnp.array(rewards).reshape(-1, 1),
-            )
+                advantate = advantate - advantate.mean()
 
-            def reward_to_go_step(carry, xs):
-                reward, mask = xs
-                carry = reward + self.config.gamma * carry * mask
-                return carry, carry
+                aux, self.policy_state = reinforce_policy.update_policy(
+                    self.policy_state,
+                    batch,
+                    advantate,
+                )
 
-            _, reward_to_go_rev = jax.lax.scan(
-                reward_to_go_step,
-                0.0,
-                (batch.rewards, batch.masks),
-                reverse=True,
-            )
-            advantate = jnp.flip(reward_to_go_rev, axis=0)
+                mlflow.log_metrics({f"train/{k}": v.item() for k, v in aux.items()}, step=i)
 
-            advantate = advantate - advantate.mean()
+                if (
+                    self.config.eval_step_interval > 0
+                    and i % self.config.eval_step_interval == 0
+                ):
+                    self.eval(i)
 
-            aux, self.policy_state = reinforce_policy.update_policy(
-                self.policy_state,
-                batch,
-                advantate,
-            )
-
-            if (
-                self.config.eval_step_interval > 0
-                and i % self.config.eval_step_interval == 0
-            ):
-                self.eval()
-
-    def eval(self) -> tuple[dict, list]:
+    def eval(self, step: int) -> None:
         episode_returns = []
         episode_lengths = []
         frames = []
@@ -167,4 +176,10 @@ class Trainer:
                     # This can happen if info dicts are not consistent or values are not numeric
                     pass
 
-        return metrics, frames
+        mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
+
+        if frames:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
+                imageio.mimsave(video_path, frames, fps=30)
+                mlflow.log_artifact(video_path, artifact_path="videos")

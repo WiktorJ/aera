@@ -137,7 +137,7 @@ class Trainer:
                 )
                 advantate = jnp.flip(reward_to_go_rev, axis=0)
 
-                advantate = advantate - advantate.mean()
+                # advantate = advantate - advantate.mean()
 
                 aux, self.policy_state = reinforce_policy.update_policy(
                     self.policy_state,

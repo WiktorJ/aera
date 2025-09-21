@@ -27,6 +27,11 @@ def _get_observation(observation: jnp.ndarray) -> jnp.ndarray:
     return observation
 
 
+def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
+    low, high = env.action_space.low, env.action_space.high
+    return low + (0.5 * (scaled_action + 1.0) * (high - low))
+
+
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
@@ -91,7 +96,7 @@ class Trainer:
                         action_seed,
                     )
                     new_observation, reward, done, truncated, info = self.env.step(
-                        action
+                        unscale_actions(action, self.env)
                     )
 
                     observations.append(observation)
@@ -100,7 +105,7 @@ class Trainer:
                     rewards.append(reward)
                     infos.append(info)
 
-                    current_episode_return += reward
+                    current_episode_return += reward  # type: ignore
                     current_episode_length += 1
 
                     if done or truncated:
@@ -189,7 +194,9 @@ class Trainer:
                 action, _ = reinforce_policy.sample_action(
                     observation, self.policy_state, temperature=0.0
                 )
-                observation, reward, done, truncated, info = self.eval_env.step(action)
+                observation, reward, done, truncated, info = self.eval_env.step(
+                    unscale_actions(action, self.eval_env)
+                )
                 total_reward += reward  # type: ignore
                 ep_len += 1
 

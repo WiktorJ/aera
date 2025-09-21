@@ -114,10 +114,6 @@ def _gaussian_log_prob(
     return jnp.sum(log_prob, axis=-1)
 
 
-def _tanh_jacobian_diag(x: jnp.ndarray) -> jnp.ndarray:
-    return 1 - jnp.tanh(x) ** 2
-
-
 def _tanh_squash_log_prob(
     value: jnp.ndarray, log_prob_base: jnp.ndarray
 ) -> jnp.ndarray:
@@ -128,12 +124,8 @@ def _tanh_squash_log_prob(
     # Since we are interested in log_prob, the formula becomes
     # log(p_Y(y)) = log(p_X(x)) - log(det(d/dx f(x))) =
     # = log_probs_base - jacobian
-    jacobian = _tanh_jacobian_diag(value)
+    jacobian = 1 - value**2
     return log_prob_base - jnp.sum(jnp.log(jacobian), axis=-1)
-
-
-def _tanh_squash(value: jnp.ndarray):
-    return jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
 
 
 def _get_sampling_fns(
@@ -148,28 +140,36 @@ def _get_sampling_fns(
     temperature: float,
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray],
 ):
+    x = obs
     for w, b in trunk_weights:
-        obs = activation_fn(jnp.dot(obs, w) + b)
-    x = jnp.tanh(obs)
+        x = activation_fn(jnp.dot(x, w) + b)
     mean = jnp.dot(x, mean_weights[0]) + mean_weights[1]
     if obs_dependent_std:
         log_std = jnp.dot(x, log_std_weights[0]) + log_std_weights[1]
     else:
         log_std = jnp.zeros_like(mean)
-    log_std = jnp.clip(log_std, log_std_min, log_std_max) * temperature
+    log_std = jnp.clip(log_std, log_std_min, log_std_max) + jnp.log(temperature)
     if not tanh_squash_dist:
-        mean = _tanh_squash(mean)
+        mean = jnp.tanh(mean)
     if not tanh_squash_dist:
         return (
             lambda seed: _sample_gaussian(seed, mean, log_std),
             lambda sample: _gaussian_log_prob(sample, mean, log_std),
         )
     return (
-        lambda seed: _tanh_squash(_sample_gaussian(seed, mean, log_std)),
+        lambda seed: jnp.tanh(_sample_gaussian(seed, mean, log_std)),
         lambda sample: _tanh_squash_log_prob(
-            sample, _gaussian_log_prob(sample, mean, log_std)
+            sample,
+            _gaussian_log_prob(
+                jnp.arctanh(jnp.clip(sample, -1 + 1e-7, 1 - 1e-7)), mean, log_std
+            ),
         ),
     )
+
+
+def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
+    low, high = env.action_space.low, env.action_space.high
+    return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
 
 def sample_action(
@@ -218,9 +218,7 @@ def update_policy(
             state.activation_fn,
         )
         log_prob = log_prob_fn(batch.actions)
-        masks = batch.masks.squeeze()
-        active_states = jnp.maximum(masks.sum(), 1.0)
-        loss = -((log_prob * advantate.squeeze() * masks).sum() / active_states)
+        loss = -(log_prob * advantate.squeeze()).mean()
         return loss, {
             "policy_loss": loss,
             "log_prob": log_prob.mean(),
@@ -233,9 +231,7 @@ def update_policy(
     )
     params = (state.trunk_weights, state.mean_weights, state.log_std_weights)
     updates, opt_state = state.optimizer.update(grad, state.opt_state, params)
-    trunk_weights, mean_weights, log_std_weights = optax.apply_updates(
-        params, updates
-    )  # type: ignore
+    trunk_weights, mean_weights, log_std_weights = optax.apply_updates(params, updates)  # type: ignore
     new_state = dataclasses.replace(
         state,
         opt_state=opt_state,
@@ -244,26 +240,3 @@ def update_policy(
         log_std_weights=log_std_weights,
     )
     return aux, new_state
-
-
-# state = ReinforcePolicyState.create(
-#     hidden_dims=[32, 32],
-#     action_dim=1,
-#     obs_dim=1,
-#     key=jax.random.PRNGKey(0),
-#     optimizer=optax.adam(1e-3),
-#     obs_dependent_std=True,
-# )
-#
-# ran_key1, ran_key2, ran_key3 = jax.random.split(jax.random.PRNGKey(0), 3)
-#
-# batch = Batch(
-#     observations=jax.random.normal(ran_key1, (10, 1)),
-#     actions=jax.random.normal(ran_key2, (10, 1)),
-#     rewards=jnp.ones((10, 1)),
-#     next_observations=jnp.ones((10, 1)),
-#     masks=jnp.ones((10, 1)),
-# )
-# advantage = jax.random.normal(ran_key3, (10, 1)) * 0.1 + 0.5
-#
-# aux, state = update_reinforce_policy(state, batch, advantage)

@@ -95,26 +95,22 @@ class Trainer:
                 rewards=jnp.array(rewards).reshape(-1, 1),
             )
 
-            # Calculate reward to go for each state, taking into account masks
             def reward_to_go_step(carry, xs):
                 reward, mask = xs
                 carry = reward + self.config.gamma * carry * mask
                 return carry, carry
 
-            # We process rewards and masks in reverse order
             _, reward_to_go_rev = jax.lax.scan(
                 reward_to_go_step,
                 0.0,
                 (batch.rewards, batch.masks),
                 reverse=True,
             )
-            # And flip the result back
             advantate = jnp.flip(reward_to_go_rev, axis=0)
 
-            # Normalize advantage
             advantate = advantate - advantate.mean()
 
-            aux, self.policy_state = reinforce_policy.update_reinforce_policy(
+            aux, self.policy_state = reinforce_policy.update_policy(
                 self.policy_state,
                 batch,
                 advantate,

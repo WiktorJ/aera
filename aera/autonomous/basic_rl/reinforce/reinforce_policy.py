@@ -13,7 +13,6 @@ class ReinforcePolicyState:
     hidden_dims: list[int]
     action_dim: int
     obs_dim: int
-    key: jnp.ndarray
     oprimizer: optax.GradientTransformationExtraArgs
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]]
     mean_weights: tuple[jnp.ndarray, jnp.ndarray]
@@ -24,7 +23,7 @@ class ReinforcePolicyState:
     log_std_min: float = -20.0
     log_std_max: float = 2.0
     dropout_rate: float = 0.0
-    temperature: float = 1.0
+    training_temperature: float = 1.0
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu
 
     @staticmethod
@@ -39,10 +38,10 @@ class ReinforcePolicyState:
         log_std_min: float = -20.0,
         log_std_max: float = 2.0,
         dropout_rate: float = 0.0,
-        temperature: float = 1.0,
+        training_temperature: float = 1.0,
         activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu,
     ):
-        key, trunk_key, mean_key, log_std_key = jax.random.split(key, 4)
+        trunk_key, mean_key, log_std_key = jax.random.split(key, 3)
 
         trunk_weights = _init_network_params(trunk_key, [obs_dim] + hidden_dims)
 
@@ -64,7 +63,6 @@ class ReinforcePolicyState:
             hidden_dims=hidden_dims,
             action_dim=action_dim,
             obs_dim=obs_dim,
-            key=key,
             oprimizer=optimizer,
             trunk_weights=trunk_weights,
             mean_weights=mean_weights,
@@ -75,7 +73,7 @@ class ReinforcePolicyState:
             log_std_min=log_std_min,
             log_std_max=log_std_max,
             dropout_rate=dropout_rate,
-            temperature=temperature,
+            training_temperature=training_temperature,
             activation_fn=activation_fn,
         )
 
@@ -136,21 +134,6 @@ def _tanh_squash(value: jnp.ndarray):
     return jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
 
 
-def _get_action_mean(
-    obs: jnp.ndarray,
-    trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
-    mean_weights: tuple[jnp.ndarray, jnp.ndarray],
-    activation_fn: Callable[[jnp.ndarray], jnp.ndarray],
-) -> jnp.ndarray:
-    x = obs
-    for w, b in trunk_weights:
-        x = activation_fn(jnp.dot(x, w) + b)
-    x = jnp.tanh(x)
-    mean = jnp.dot(x, mean_weights[0]) + mean_weights[1]
-    action = _tanh_squash(mean)
-    return action
-
-
 def _call_reinforce_policy(
     obs: jnp.ndarray,
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
@@ -187,20 +170,12 @@ def _call_reinforce_policy(
     )
 
 
-def call_reinforce_policy(
+def sample_action(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,
-    deterministic: bool = False,
+    key: jnp.ndarray = None,
+    temperature: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
-    if deterministic:
-        action = _get_action_mean(
-            obs,
-            state.trunk_weights,
-            state.mean_weights,
-            state.activation_fn,
-        )
-        return action, jnp.array(0.0), state
-
     action_fn, log_prob_fn = _call_reinforce_policy(
         obs,
         state.trunk_weights,
@@ -210,17 +185,17 @@ def call_reinforce_policy(
         state.tanh_squash_dist,
         state.log_std_min,
         state.log_std_max,
-        state.temperature,
+        temperature,
         state.activation_fn,
     )
-    new_key, action_seed = jax.random.split(state.key)
+    new_key, action_seed = jax.random.split(key)
     action = action_fn(action_seed)
     log_prob = log_prob_fn(action)
     state = dataclasses.replace(state, key=new_key)
     return action, log_prob, state
 
 
-def update_reinforce_policy(
+def update_policy(
     state: ReinforcePolicyState,
     batch: Batch,
     advantate: jnp.ndarray,
@@ -239,7 +214,7 @@ def update_reinforce_policy(
             state.tanh_squash_dist,
             state.log_std_min,
             state.log_std_max,
-            state.temperature,
+            state.training_temperature,
             state.activation_fn,
         )
         log_prob = log_prob_fn(batch.actions)

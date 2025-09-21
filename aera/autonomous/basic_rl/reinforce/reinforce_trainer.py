@@ -88,7 +88,7 @@ class Trainer:
                 masks = []
                 rewards = []
                 infos = []
-                for j in range(self.config.batch_size):
+                while True:
                     observation = _get_observation(observation)
                     self.key, action_seed = jax.random.split(self.key)
                     action, _ = reinforce_policy.sample_action(
@@ -115,6 +115,8 @@ class Trainer:
                         current_episode_return = 0.0
                         current_episode_length = 0
                         observation, _ = self.env.reset()
+                        if len(observations) >= self.config.batch_size:
+                            break
                     else:
                         observation = new_observation
 

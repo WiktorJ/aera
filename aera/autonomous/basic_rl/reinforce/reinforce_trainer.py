@@ -146,6 +146,8 @@ class Trainer:
                 )
 
                 metrics = {f"train/{k}": v for k, v in aux.items()}
+                metrics["train/advantage_mean"] = jnp.mean(advantate)
+                metrics["train/advantage_std"] = jnp.std(advantate)
                 if infos:
                     for key in infos[0].keys():
                         try:

@@ -183,3 +183,14 @@ class Trainer:
                 video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
                 imageio.mimsave(video_path, frames, fps=30)
                 mlflow.log_artifact(video_path, artifact_path="videos")
+
+
+def main():
+    """Creates a default config and runs the trainer."""
+    config = reinforce_config.Config()
+    trainer = Trainer(config)
+    trainer.train()
+
+
+if __name__ == "__main__":
+    main()

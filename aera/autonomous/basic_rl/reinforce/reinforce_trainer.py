@@ -77,6 +77,7 @@ class Trainer:
                 actions = []
                 masks = []
                 rewards = []
+                infos = []
                 for j in range(self.config.batch_size):
                     observation = _get_observation(observation)
                     self.key, action_seed = jax.random.split(self.key)
@@ -91,6 +92,7 @@ class Trainer:
                     actions.append(action)
                     masks.append(not (done or truncated))
                     rewards.append(reward)
+                    infos.append(info)
 
                     if done or truncated:
                         observation, _ = self.env.reset()
@@ -125,7 +127,16 @@ class Trainer:
                     advantate,
                 )
 
-                mlflow.log_metrics({f"train/{k}": v.item() for k, v in aux.items()}, step=i)
+                metrics = {f"train/{k}": v for k, v in aux.items()}
+                if infos:
+                    for key in infos[0].keys():
+                        try:
+                            values = [info[key] for info in infos]
+                            metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
+                        except (TypeError, KeyError, ValueError):
+                            pass
+
+                mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=i)
 
                 if (
                     self.config.eval_step_interval > 0

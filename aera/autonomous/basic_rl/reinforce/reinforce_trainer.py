@@ -67,7 +67,9 @@ class Trainer:
         )
 
     def train(self) -> None:
+        mlflow.set_experiment(self.config.env_name)
         with mlflow.start_run():
+            mlflow.set_tags({"algorithm": "reinforce"})
             mlflow.log_params(dataclasses.asdict(self.config))
             observation, _ = self.env.reset()
             for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.01):

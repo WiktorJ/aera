@@ -45,19 +45,19 @@ class Trainer:
         action_shape = self.env.action_space.shape
         observation_shape = self.env.observation_space.shape
         optimizer = optax.adamw(config.policy_lr)
-
+        self.key, policy_seed = jax.random.split(jax.random.PRNGKey(seed=config.seed))
         self.policy_state = reinforce_policy.ReinforcePolicyState.create(
             hidden_dims=config.policy_hidden_dims,
             action_dim=action_shape[0],  # type: ignore
             obs_dim=observation_shape[0],  # type: ignore
-            key=jax.random.PRNGKey(seed=config.seed),
+            key=policy_seed,
             optimizer=optimizer,
             obs_dependent_std=config.policy_obs_dependent_std,
             tanh_squash_dist=config.policy_tanh_squash_dist,
             log_std_min=config.policy_log_std_min,
             log_std_max=config.policy_log_std_max,
             dropout_rate=config.policy_dropout_rate,
-            temperature=config.policy_temperature,
+            training_temperature=config.policy_temperature,
             activation_fn=_get_activation_fn(config.policy_activation_fn),
         )
 
@@ -70,9 +70,11 @@ class Trainer:
             rewards = []
             for j in range(self.config.batch_size):
                 observation = _get_observation(observation)
-                action, _, self.policy_state = reinforce_policy.call_reinforce_policy(
+                self.key, action_seed = jax.random.split(self.key)
+                action, _ = reinforce_policy.sample_action(
                     observation,
                     self.policy_state,
+                    action_seed,
                 )
                 new_observation, reward, done, truncated, info = self.env.step(action)
 
@@ -141,11 +143,11 @@ class Trainer:
                         frames.append(frame)
 
                 observation = _get_observation(observation)
-                action, _, self.policy_state = reinforce_policy.call_reinforce_policy(
+                action, _ = reinforce_policy.sample_action(
                     observation, self.policy_state, temperature=0.0
                 )
-                observation, reward, done, truncated, _ = self.eval_env.step(action)
-                total_reward += reward
+                observation, reward, done, truncated, info = self.eval_env.step(action)
+                total_reward += reward  # type: ignore
                 ep_len += 1
 
             episode_returns.append(total_reward)

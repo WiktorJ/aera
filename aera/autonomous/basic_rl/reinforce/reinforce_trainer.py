@@ -72,7 +72,7 @@ class Trainer:
             mlflow.set_tags({"algorithm": "reinforce"})
             mlflow.log_params(dataclasses.asdict(self.config))
             observation, _ = self.env.reset()
-            for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.01):
+            for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.1):
                 observations = []
                 actions = []
                 masks = []
@@ -86,7 +86,9 @@ class Trainer:
                         self.policy_state,
                         action_seed,
                     )
-                    new_observation, reward, done, truncated, info = self.env.step(action)
+                    new_observation, reward, done, truncated, info = self.env.step(
+                        action
+                    )
 
                     observations.append(observation)
                     actions.append(action)

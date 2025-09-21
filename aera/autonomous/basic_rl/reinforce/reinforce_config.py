@@ -27,3 +27,4 @@ class Config:
     policy_log_std_max: float = 2.0
     policy_dropout_rate: float = 0.0
     policy_temperature: float = 1.0
+    profile: bool = False

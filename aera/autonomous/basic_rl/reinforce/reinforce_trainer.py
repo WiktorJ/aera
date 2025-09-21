@@ -10,6 +10,7 @@ import dataclasses
 import imageio
 import tempfile
 import os
+import argparse
 
 from aera.autonomous.basic_rl.reinforce import reinforce_config, reinforce_policy
 from aera.autonomous.basic_rl.reinforce.common import Batch
@@ -82,7 +83,9 @@ class Trainer:
             train_episode_lengths = []
             current_episode_return = 0.0
             current_episode_length = 0
-            for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.1):
+            for i in tqdm.tqdm(
+                range(self.config.max_steps), smoothing=0.1, disable=self.config.profile
+            ):
                 observations = []
                 actions = []
                 masks = []
@@ -167,7 +170,10 @@ class Trainer:
                     train_episode_returns.clear()
                     train_episode_lengths.clear()
 
-                mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=i)
+                if not self.config.profile:
+                    mlflow.log_metrics(
+                        {k: v.item() for k, v in metrics.items()}, step=i
+                    )
 
                 if (
                     self.config.eval_step_interval > 0
@@ -206,20 +212,21 @@ class Trainer:
                 )
                 episode_actions.append(action)
 
-                # Log individual action and observation dimensions
-                for action_dim in range(len(action)):
-                    mlflow.log_metric(
-                        f"eval/episode_{self.eval_step_counter}/action_dim_{action_dim}",
-                        action[action_dim].item(),
-                        step=ep_len,
-                    )
+                if not self.config.profile:
+                    # Log individual action and observation dimensions
+                    for action_dim in range(len(action)):
+                        mlflow.log_metric(
+                            f"eval/episode_{self.eval_step_counter}/action_dim_{action_dim}",
+                            action[action_dim].item(),
+                            step=ep_len,
+                        )
 
-                for obs_dim in range(len(observation)):
-                    mlflow.log_metric(
-                        f"eval/episode_{self.eval_step_counter}/obs_dim_{obs_dim}",
-                        observation[obs_dim].item(),
-                        step=ep_len,
-                    )
+                    for obs_dim in range(len(observation)):
+                        mlflow.log_metric(
+                            f"eval/episode_{self.eval_step_counter}/obs_dim_{obs_dim}",
+                            observation[obs_dim].item(),
+                            step=ep_len,
+                        )
 
                 observation, reward, done, truncated, info = self.eval_env.step(
                     unscale_actions(action, self.eval_env)
@@ -269,9 +276,10 @@ class Trainer:
                     # This can happen if info dicts are not consistent or values are not numeric
                     pass
 
-        mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
+        if not self.config.profile:
+            mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
 
-        if frames:
+        if frames and not self.config.profile:
             with tempfile.TemporaryDirectory() as tmpdir:
                 video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
                 imageio.mimsave(video_path, frames, fps=30)
@@ -281,7 +289,20 @@ class Trainer:
 
 def main():
     """Creates a default config and runs the trainer."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Enable profiling mode (disables logging, etc.)",
+    )
+    args, _ = parser.parse_known_args()
+
     config = reinforce_config.Config()
+    if args.profile:
+        config.profile = True
+        config.max_steps = 1000
+        config.eval_step_interval = 0
+
     trainer = Trainer(config)
     trainer.train()
 

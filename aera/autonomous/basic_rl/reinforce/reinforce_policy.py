@@ -10,6 +10,7 @@ from aera.autonomous.basic_rl.reinforce.common import Batch
 
 @dataclasses.dataclass(frozen=True)
 class ReinforcePolicyState:
+    key: jnp.ndarray
     hidden_dims: list[int]
     action_dim: int
     obs_dim: int
@@ -60,6 +61,7 @@ class ReinforcePolicyState:
         )
 
         return ReinforcePolicyState(
+            key=key,
             hidden_dims=hidden_dims,
             action_dim=action_dim,
             obs_dim=obs_dim,
@@ -170,12 +172,14 @@ def _call_reinforce_policy(
     )
 
 
-def sample_action(
+def call_reinforce_policy(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,
     key: jnp.ndarray = None,
     temperature: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
+    if key is None:
+        key = jax.random.PRNGKey(0)
     action_fn, log_prob_fn = _call_reinforce_policy(
         obs,
         state.trunk_weights,
@@ -195,7 +199,7 @@ def sample_action(
     return action, log_prob, state
 
 
-def update_policy(
+def update_reinforce_policy(
     state: ReinforcePolicyState,
     batch: Batch,
     advantate: jnp.ndarray,

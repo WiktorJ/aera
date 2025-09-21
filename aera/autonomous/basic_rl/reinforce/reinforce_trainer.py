@@ -142,7 +142,7 @@ class Trainer:
 
                 observation = _get_observation(observation)
                 action, _, self.policy_state = reinforce_policy.call_reinforce_policy(
-                    observation, self.policy_state, deterministic=True
+                    observation, self.policy_state, temperature=0.0
                 )
                 observation, reward, done, truncated, _ = self.eval_env.step(action)
                 total_reward += reward

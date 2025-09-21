@@ -130,12 +130,14 @@ class Trainer:
         episode_returns = []
         episode_lengths = []
         frames = []
+        episode_infos = []
 
         for _ in range(self.config.eval_num_episodes):
             observation, _ = self.eval_env.reset()
             done, truncated = False, False
             total_reward = 0.0
             ep_len = 0
+            info = {}
             while not (done or truncated):
                 if self.config.eval_render:
                     frame = self.eval_env.render()
@@ -152,9 +154,21 @@ class Trainer:
 
             episode_returns.append(total_reward)
             episode_lengths.append(ep_len)
+            episode_infos.append(info)
 
         metrics = {
             "eval/avg_return": jnp.mean(jnp.array(episode_returns)),
+            "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
             "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
         }
+
+        if episode_infos:
+            for key in episode_infos[0].keys():
+                try:
+                    values = [info[key] for info in episode_infos]
+                    metrics[f"eval/{key}"] = jnp.mean(jnp.array(values))
+                except (TypeError, KeyError, ValueError):
+                    # This can happen if info dicts are not consistent or values are not numeric
+                    pass
+
         return metrics, frames

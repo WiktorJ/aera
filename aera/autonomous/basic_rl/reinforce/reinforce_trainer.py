@@ -72,6 +72,10 @@ class Trainer:
             mlflow.set_tags({"algorithm": "reinforce"})
             mlflow.log_params(dataclasses.asdict(self.config))
             observation, _ = self.env.reset()
+            train_episode_returns = []
+            train_episode_lengths = []
+            current_episode_return = 0.0
+            current_episode_length = 0
             for i in tqdm.tqdm(range(self.config.max_steps), smoothing=0.1):
                 observations = []
                 actions = []
@@ -96,7 +100,14 @@ class Trainer:
                     rewards.append(reward)
                     infos.append(info)
 
+                    current_episode_return += reward
+                    current_episode_length += 1
+
                     if done or truncated:
+                        train_episode_returns.append(current_episode_return)
+                        train_episode_lengths.append(current_episode_length)
+                        current_episode_return = 0.0
+                        current_episode_length = 0
                         observation, _ = self.env.reset()
                     else:
                         observation = new_observation
@@ -137,6 +148,16 @@ class Trainer:
                             metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
                         except (TypeError, KeyError, ValueError):
                             pass
+
+                if train_episode_returns:
+                    metrics["train/avg_return"] = jnp.mean(
+                        jnp.array(train_episode_returns)
+                    )
+                    metrics["train/avg_ep_len"] = jnp.mean(
+                        jnp.array(train_episode_lengths)
+                    )
+                    train_episode_returns.clear()
+                    train_episode_lengths.clear()
 
                 mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=i)
 

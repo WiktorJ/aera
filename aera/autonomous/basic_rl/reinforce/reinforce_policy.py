@@ -14,7 +14,7 @@ class ReinforcePolicyState:
     hidden_dims: tuple[int, ...]
     action_dim: int
     obs_dim: int
-    oprimizer: optax.GradientTransformationExtraArgs
+    optimizer: optax.GradientTransformationExtraArgs
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]]
     mean_weights: tuple[jnp.ndarray, jnp.ndarray]
     log_std_weights: tuple[jnp.ndarray, jnp.ndarray]
@@ -65,7 +65,7 @@ class ReinforcePolicyState:
             hidden_dims=hidden_dims,
             action_dim=action_dim,
             obs_dim=obs_dim,
-            oprimizer=optimizer,
+            optimizer=optimizer,
             trunk_weights=trunk_weights,
             mean_weights=mean_weights,
             log_std_weights=log_std_weights,
@@ -231,9 +231,10 @@ def update_policy(
         state.mean_weights,
         state.log_std_weights,
     )
-    updates, opt_state = state.oprimizer.update(grad, state.opt_state)
+    params = (state.trunk_weights, state.mean_weights, state.log_std_weights)
+    updates, opt_state = state.optimizer.update(grad, state.opt_state, params)
     trunk_weights, mean_weights, log_std_weights = optax.apply_updates(
-        (state.trunk_weights, state.mean_weights, state.log_std_weights), updates
+        params, updates
     )  # type: ignore
     new_state = dataclasses.replace(
         state,

@@ -109,7 +109,7 @@ class Trainer:
 
                 _, reward_to_go_rev = jax.lax.scan(
                     reward_to_go_step,
-                    0.0,
+                    jnp.zeros(1),
                     (batch.rewards, batch.masks),
                     reverse=True,
                 )

@@ -1,5 +1,3 @@
 import collections
 
-Batch = collections.namedtuple(
-    "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
-)
+Batch = collections.namedtuple("Batch", ["observations", "actions", "rewards", "masks"])

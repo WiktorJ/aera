@@ -167,11 +167,6 @@ def _get_sampling_fns(
     )
 
 
-def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
-    low, high = env.action_space.low, env.action_space.high
-    return low + (0.5 * (scaled_action + 1.0) * (high - low))
-
-
 def sample_action(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,

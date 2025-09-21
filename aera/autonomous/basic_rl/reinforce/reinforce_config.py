@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -8,11 +9,12 @@ class Config:
     max_episodes: int = 1000
     env_render_width: int = 1920
     env_render_height: int = 1088
-    env_render_mode: str = "rgb_array"
+    # env_render_mode: str = "rgb_array"
+    env_render_mode: Optional[str] = None
     env_max_steps: int = 1000
     ep_len: int = 1000
-    max_steps: int = 10001
-    batch_size: int = 128
+    max_steps: int = 2001
+    batch_size: int = 1024
     eval_step_interval: int = 50
     eval_num_episodes: int = 1
     eval_render: bool = False

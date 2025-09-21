@@ -54,7 +54,7 @@ class Trainer:
 
         action_shape = self.env.action_space.shape
         observation_shape = self.env.observation_space.shape
-        optimizer = optax.adamw(config.policy_lr)
+        optimizer = optax.adam(config.policy_lr)
         self.key, policy_seed = jax.random.split(jax.random.PRNGKey(seed=config.seed))
         self.policy_state = reinforce_policy.ReinforcePolicyState.create(
             hidden_dims=config.policy_hidden_dims,
@@ -137,7 +137,7 @@ class Trainer:
                 )
                 advantate = jnp.flip(reward_to_go_rev, axis=0)
 
-                # advantate = advantate - advantate.mean()
+                advantate = advantate - advantate.mean()
 
                 aux, self.policy_state = reinforce_policy.update_policy(
                     self.policy_state,

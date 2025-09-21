@@ -11,7 +11,7 @@ from aera.autonomous.basic_rl.reinforce.common import Batch
 @dataclasses.dataclass(frozen=True)
 class ReinforcePolicyState:
     key: jnp.ndarray
-    hidden_dims: list[int]
+    hidden_dims: tuple[int, ...]
     action_dim: int
     obs_dim: int
     oprimizer: optax.GradientTransformationExtraArgs
@@ -29,7 +29,7 @@ class ReinforcePolicyState:
 
     @staticmethod
     def create(
-        hidden_dims: list[int],
+        hidden_dims: tuple[int, ...],
         action_dim: int,
         obs_dim: int,
         key: jnp.ndarray,
@@ -44,9 +44,9 @@ class ReinforcePolicyState:
     ):
         trunk_key, mean_key, log_std_key = jax.random.split(key, 3)
 
-        trunk_weights = _init_network_params(trunk_key, [obs_dim] + hidden_dims)
+        trunk_weights = _init_network_params(trunk_key, (obs_dim,) + hidden_dims)
 
-        mean_weights = _init_network_params(mean_key, [hidden_dims[-1], action_dim])[0]
+        mean_weights = _init_network_params(mean_key, (hidden_dims[-1], action_dim))[0]
 
         log_std_weights = _init_network_params(
             log_std_key, [hidden_dims[-1], action_dim]
@@ -136,7 +136,7 @@ def _tanh_squash(value: jnp.ndarray):
     return jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
 
 
-def _call_reinforce_policy(
+def _get_sampling_fns(
     obs: jnp.ndarray,
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
     mean_weights: tuple[jnp.ndarray, jnp.ndarray],
@@ -172,15 +172,13 @@ def _call_reinforce_policy(
     )
 
 
-def call_reinforce_policy(
+def sample_action(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,
-    key: jnp.ndarray = None,
+    key: jnp.ndarray = jax.random.PRNGKey(0),
     temperature: float = 1.0,
-) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
-    if key is None:
-        key = jax.random.PRNGKey(0)
-    action_fn, log_prob_fn = _call_reinforce_policy(
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    action_fn, log_prob_fn = _get_sampling_fns(
         obs,
         state.trunk_weights,
         state.mean_weights,
@@ -192,14 +190,12 @@ def call_reinforce_policy(
         temperature,
         state.activation_fn,
     )
-    new_key, action_seed = jax.random.split(key)
-    action = action_fn(action_seed)
+    action = action_fn(key)
     log_prob = log_prob_fn(action)
-    state = dataclasses.replace(state, key=new_key)
-    return action, log_prob, state
+    return action, log_prob
 
 
-def update_reinforce_policy(
+def update_policy(
     state: ReinforcePolicyState,
     batch: Batch,
     advantate: jnp.ndarray,
@@ -209,7 +205,7 @@ def update_reinforce_policy(
         mean_weights: tuple[jnp.ndarray, jnp.ndarray],
         log_std_weights: tuple[jnp.ndarray, jnp.ndarray],
     ):
-        _, log_prob_fn = _call_reinforce_policy(
+        _, log_prob_fn = _get_sampling_fns(
             batch.observations,
             trunk_weights,
             mean_weights,

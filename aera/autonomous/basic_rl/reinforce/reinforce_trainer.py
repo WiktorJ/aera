@@ -38,9 +38,6 @@ class Trainer:
         self.config = config
         self.env = gym.make(
             config.env_name,
-            render_mode=config.env_render_mode,
-            width=config.env_render_width,
-            height=config.env_render_height,
             max_episode_steps=config.ep_len,
         )
         self.env.reset()
@@ -139,7 +136,7 @@ class Trainer:
                     (batch.rewards, batch.masks),
                     reverse=True,
                 )
-                advantate = jnp.flip(reward_to_go_rev, axis=0)
+                advantate = reward_to_go_rev
 
                 advantate = advantate - advantate.mean()
 
@@ -212,22 +209,6 @@ class Trainer:
                 )
                 episode_actions.append(action)
 
-                if not self.config.profile:
-                    # Log individual action and observation dimensions
-                    for action_dim in range(len(action)):
-                        mlflow.log_metric(
-                            f"eval/episode_{self.eval_step_counter}/action_dim_{action_dim}",
-                            action[action_dim].item(),
-                            step=ep_len,
-                        )
-
-                    for obs_dim in range(len(observation)):
-                        mlflow.log_metric(
-                            f"eval/episode_{self.eval_step_counter}/obs_dim_{obs_dim}",
-                            observation[obs_dim].item(),
-                            step=ep_len,
-                        )
-
                 observation, reward, done, truncated, info = self.eval_env.step(
                     unscale_actions(action, self.eval_env)
                 )
@@ -245,27 +226,6 @@ class Trainer:
             "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
             "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
         }
-
-        # Log aggregate statistics for actions and observations across all episodes
-        if all_actions:
-            all_actions_concat = jnp.concatenate(all_actions, axis=0)
-            all_observations_concat = jnp.concatenate(all_observations, axis=0)
-
-            for action_dim in range(all_actions_concat.shape[1]):
-                metrics[f"eval/action_dim_{action_dim}_mean"] = jnp.mean(
-                    all_actions_concat[:, action_dim]
-                )
-                metrics[f"eval/action_dim_{action_dim}_std"] = jnp.std(
-                    all_actions_concat[:, action_dim]
-                )
-
-            for obs_dim in range(all_observations_concat.shape[1]):
-                metrics[f"eval/obs_dim_{obs_dim}_mean"] = jnp.mean(
-                    all_observations_concat[:, obs_dim]
-                )
-                metrics[f"eval/obs_dim_{obs_dim}_std"] = jnp.std(
-                    all_observations_concat[:, obs_dim]
-                )
 
         if episode_infos:
             for key in episode_infos[0].keys():

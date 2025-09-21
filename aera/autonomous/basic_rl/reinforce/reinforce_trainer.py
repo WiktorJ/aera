@@ -179,13 +179,18 @@ class Trainer:
         episode_lengths = []
         frames = []
         episode_infos = []
+        all_actions = []
+        all_observations = []
 
-        for _ in range(self.config.eval_num_episodes):
+        for episode_idx in range(self.config.eval_num_episodes):
             observation, _ = self.eval_env.reset()
             done, truncated = False, False
             total_reward = 0.0
             ep_len = 0
             info = {}
+            episode_actions = []
+            episode_observations = []
+            
             while not (done or truncated):
                 if self.config.eval_render:
                     frame = self.eval_env.render()
@@ -193,9 +198,28 @@ class Trainer:
                         frames.append(frame)
 
                 observation = _get_observation(observation)
+                episode_observations.append(observation)
+                
                 action, _ = reinforce_policy.sample_action(
                     observation, self.policy_state, temperature=0.0
                 )
+                episode_actions.append(action)
+                
+                # Log individual action and observation dimensions
+                for action_dim in range(len(action)):
+                    mlflow.log_metric(
+                        f"eval/episode_{episode_idx}/action_dim_{action_dim}",
+                        action[action_dim].item(),
+                        step=step * 1000 + ep_len
+                    )
+                
+                for obs_dim in range(len(observation)):
+                    mlflow.log_metric(
+                        f"eval/episode_{episode_idx}/obs_dim_{obs_dim}",
+                        observation[obs_dim].item(),
+                        step=step * 1000 + ep_len
+                    )
+                
                 observation, reward, done, truncated, info = self.eval_env.step(
                     unscale_actions(action, self.eval_env)
                 )
@@ -205,12 +229,27 @@ class Trainer:
             episode_returns.append(total_reward)
             episode_lengths.append(ep_len)
             episode_infos.append(info)
+            all_actions.append(jnp.array(episode_actions))
+            all_observations.append(jnp.array(episode_observations))
 
         metrics = {
             "eval/avg_return": jnp.mean(jnp.array(episode_returns)),
             "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
             "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
         }
+
+        # Log aggregate statistics for actions and observations across all episodes
+        if all_actions:
+            all_actions_concat = jnp.concatenate(all_actions, axis=0)
+            all_observations_concat = jnp.concatenate(all_observations, axis=0)
+            
+            for action_dim in range(all_actions_concat.shape[1]):
+                metrics[f"eval/action_dim_{action_dim}_mean"] = jnp.mean(all_actions_concat[:, action_dim])
+                metrics[f"eval/action_dim_{action_dim}_std"] = jnp.std(all_actions_concat[:, action_dim])
+                
+            for obs_dim in range(all_observations_concat.shape[1]):
+                metrics[f"eval/obs_dim_{obs_dim}_mean"] = jnp.mean(all_observations_concat[:, obs_dim])
+                metrics[f"eval/obs_dim_{obs_dim}_std"] = jnp.std(all_observations_concat[:, obs_dim])
 
         if episode_infos:
             for key in episode_infos[0].keys():

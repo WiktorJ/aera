@@ -136,6 +136,21 @@ def _tanh_squash(value: jnp.ndarray):
     return jnp.tanh(jnp.clip(value, -1.0 + 1e-6, 1.0 - 1e-6))
 
 
+def _get_action_mean(
+    obs: jnp.ndarray,
+    trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
+    mean_weights: tuple[jnp.ndarray, jnp.ndarray],
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray],
+) -> jnp.ndarray:
+    x = obs
+    for w, b in trunk_weights:
+        x = activation_fn(jnp.dot(x, w) + b)
+    x = jnp.tanh(x)
+    mean = jnp.dot(x, mean_weights[0]) + mean_weights[1]
+    action = _tanh_squash(mean)
+    return action
+
+
 def _call_reinforce_policy(
     obs: jnp.ndarray,
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
@@ -175,7 +190,17 @@ def _call_reinforce_policy(
 def call_reinforce_policy(
     obs: jnp.ndarray,
     state: ReinforcePolicyState,
+    deterministic: bool = False,
 ) -> tuple[jnp.ndarray, jnp.ndarray, ReinforcePolicyState]:
+    if deterministic:
+        action = _get_action_mean(
+            obs,
+            state.trunk_weights,
+            state.mean_weights,
+            state.activation_fn,
+        )
+        return action, jnp.array(0.0), state
+
     action_fn, log_prob_fn = _call_reinforce_policy(
         obs,
         state.trunk_weights,

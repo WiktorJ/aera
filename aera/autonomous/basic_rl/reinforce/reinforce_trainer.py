@@ -124,5 +124,35 @@ class Trainer:
             ):
                 self.eval()
 
-    def eval(self) -> None:
-        pass
+    def eval(self) -> tuple[dict, list]:
+        episode_returns = []
+        episode_lengths = []
+        frames = []
+
+        for _ in range(self.config.eval_num_episodes):
+            observation, _ = self.eval_env.reset()
+            done, truncated = False, False
+            total_reward = 0.0
+            ep_len = 0
+            while not (done or truncated):
+                if self.config.eval_render:
+                    frame = self.eval_env.render()
+                    if frame is not None:
+                        frames.append(frame)
+
+                observation = _get_observation(observation)
+                action, _, self.policy_state = reinforce_policy.call_reinforce_policy(
+                    observation, self.policy_state, deterministic=True
+                )
+                observation, reward, done, truncated, _ = self.eval_env.step(action)
+                total_reward += reward
+                ep_len += 1
+
+            episode_returns.append(total_reward)
+            episode_lengths.append(ep_len)
+
+        metrics = {
+            "eval/avg_return": jnp.mean(jnp.array(episode_returns)),
+            "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
+        }
+        return metrics, frames

@@ -33,6 +33,173 @@ def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
     return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
 
+def _log_train_metrics(
+    config: reinforce_config.Config,
+    step: int,
+    aux: dict,
+    advantate: jnp.ndarray,
+    infos: list,
+    train_episode_returns: list,
+    train_episode_lengths: list,
+):
+    metrics = {f"train/{k}": v for k, v in aux.items()}
+    metrics["train/advantage_mean"] = jnp.mean(advantate)
+    metrics["train/advantage_std"] = jnp.std(advantate)
+    if infos:
+        for key in infos[0].keys():
+            try:
+                values = [info[key] for info in infos]
+                metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
+            except (TypeError, KeyError, ValueError):
+                pass
+
+    if train_episode_returns:
+        metrics["train/avg_return"] = jnp.mean(jnp.array(train_episode_returns))
+        metrics["train/avg_ep_len"] = jnp.mean(jnp.array(train_episode_lengths))
+        train_episode_returns.clear()
+        train_episode_lengths.clear()
+
+    if not config.profile:
+        mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
+
+
+def _gather_batch(
+    key: jnp.ndarray,
+    policy_state: reinforce_policy.ReinforcePolicyState,
+    env: gym.Env,
+    batch_size: int,
+    observation: jnp.ndarray,
+    current_episode_return: float,
+    current_episode_length: int,
+    train_episode_returns: list,
+    train_episode_lengths: list,
+) -> tuple[jnp.ndarray, Batch, list, jnp.ndarray, float, int]:
+    observations = []
+    actions = []
+    masks = []
+    rewards = []
+    infos = []
+    while True:
+        observation = _get_observation(observation)
+        key, action_seed = jax.random.split(key)
+        action, _ = reinforce_policy.sample_action(
+            observation,
+            policy_state,
+            action_seed,
+        )
+        new_observation, reward, done, truncated, info = env.step(
+            unscale_actions(action, env)
+        )
+
+        observations.append(observation)
+        actions.append(action)
+        masks.append(not (done or truncated))
+        rewards.append(reward)
+        infos.append(info)
+
+        current_episode_return += reward  # type: ignore
+        current_episode_length += 1
+
+        if done or truncated:
+            train_episode_returns.append(current_episode_return)
+            train_episode_lengths.append(current_episode_length)
+            current_episode_return = 0.0
+            current_episode_length = 0
+            observation, _ = env.reset()
+            if len(observations) >= batch_size:
+                break
+        else:
+            observation = new_observation
+
+    batch = Batch(
+        observations=jnp.array(observations),
+        actions=jnp.array(actions),
+        masks=jnp.array(masks).reshape(-1, 1),
+        rewards=jnp.array(rewards).reshape(-1, 1),
+    )
+    return (
+        key,
+        batch,
+        infos,
+        observation,
+        current_episode_return,
+        current_episode_length,
+    )
+
+
+def eval_policy(
+    step: int,
+    config: reinforce_config.Config,
+    eval_env: gym.Env,
+    policy_state: reinforce_policy.ReinforcePolicyState,
+) -> None:
+    episode_returns = []
+    episode_lengths = []
+    frames = []
+    episode_infos = []
+    all_actions = []
+    all_observations = []
+
+    for episode_idx in range(config.eval_num_episodes):
+        observation, _ = eval_env.reset()
+        done, truncated = False, False
+        total_reward = 0.0
+        ep_len = 0
+        info = {}
+        episode_actions = []
+        episode_observations = []
+
+        while not (done or truncated):
+            if config.eval_render:
+                frame = eval_env.render()
+                if frame is not None:
+                    frames.append(frame)
+
+            observation = _get_observation(observation)
+            episode_observations.append(observation)
+
+            action, _ = reinforce_policy.sample_action(
+                observation, policy_state, temperature=0.0
+            )
+            episode_actions.append(action)
+
+            observation, reward, done, truncated, info = eval_env.step(
+                unscale_actions(action, eval_env)
+            )
+            total_reward += reward  # type: ignore
+            ep_len += 1
+
+        episode_returns.append(total_reward)
+        episode_lengths.append(ep_len)
+        episode_infos.append(info)
+        all_actions.append(jnp.array(episode_actions))
+        all_observations.append(jnp.array(episode_observations))
+
+    metrics = {
+        "eval/avg_return": jnp.mean(jnp.array(episode_returns)),
+        "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
+        "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
+    }
+
+    if episode_infos:
+        for key in episode_infos[0].keys():
+            try:
+                values = [info[key] for info in episode_infos]
+                metrics[f"eval/{key}"] = jnp.mean(jnp.array(values))
+            except (TypeError, KeyError, ValueError):
+                # This can happen if info dicts are not consistent or values are not numeric
+                pass
+
+    if not config.profile:
+        mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
+
+    if frames and not config.profile:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
+            imageio.mimsave(video_path, frames, fps=30)
+            mlflow.log_artifact(video_path, artifact_path="videos")
+
+
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
@@ -69,94 +236,6 @@ class Trainer:
             activation_fn=_get_activation_fn(config.policy_activation_fn),
         )
 
-    def _log_train_metrics(
-        self,
-        step: int,
-        aux: dict,
-        advantate: jnp.ndarray,
-        infos: list,
-        train_episode_returns: list,
-        train_episode_lengths: list,
-    ):
-        metrics = {f"train/{k}": v for k, v in aux.items()}
-        metrics["train/advantage_mean"] = jnp.mean(advantate)
-        metrics["train/advantage_std"] = jnp.std(advantate)
-        if infos:
-            for key in infos[0].keys():
-                try:
-                    values = [info[key] for info in infos]
-                    metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
-                except (TypeError, KeyError, ValueError):
-                    pass
-
-        if train_episode_returns:
-            metrics["train/avg_return"] = jnp.mean(jnp.array(train_episode_returns))
-            metrics["train/avg_ep_len"] = jnp.mean(jnp.array(train_episode_lengths))
-            train_episode_returns.clear()
-            train_episode_lengths.clear()
-
-        if not self.config.profile:
-            mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
-
-    def _gather_batch(
-        self,
-        observation: jnp.ndarray,
-        current_episode_return: float,
-        current_episode_length: int,
-        train_episode_returns: list,
-        train_episode_lengths: list,
-    ) -> tuple[Batch, list, jnp.ndarray, float, int]:
-        observations = []
-        actions = []
-        masks = []
-        rewards = []
-        infos = []
-        while True:
-            observation = _get_observation(observation)
-            self.key, action_seed = jax.random.split(self.key)
-            action, _ = reinforce_policy.sample_action(
-                observation,
-                self.policy_state,
-                action_seed,
-            )
-            new_observation, reward, done, truncated, info = self.env.step(
-                unscale_actions(action, self.env)
-            )
-
-            observations.append(observation)
-            actions.append(action)
-            masks.append(not (done or truncated))
-            rewards.append(reward)
-            infos.append(info)
-
-            current_episode_return += reward  # type: ignore
-            current_episode_length += 1
-
-            if done or truncated:
-                train_episode_returns.append(current_episode_return)
-                train_episode_lengths.append(current_episode_length)
-                current_episode_return = 0.0
-                current_episode_length = 0
-                observation, _ = self.env.reset()
-                if len(observations) >= self.config.batch_size:
-                    break
-            else:
-                observation = new_observation
-
-        batch = Batch(
-            observations=jnp.array(observations),
-            actions=jnp.array(actions),
-            masks=jnp.array(masks).reshape(-1, 1),
-            rewards=jnp.array(rewards).reshape(-1, 1),
-        )
-        return (
-            batch,
-            infos,
-            observation,
-            current_episode_return,
-            current_episode_length,
-        )
-
     def train(self) -> None:
         mlflow.set_experiment(self.config.env_name)
         with mlflow.start_run():
@@ -171,12 +250,17 @@ class Trainer:
                 range(self.config.max_steps), smoothing=0.1, disable=self.config.profile
             ):
                 (
+                    self.key,
                     batch,
                     infos,
                     observation,
                     current_episode_return,
                     current_episode_length,
-                ) = self._gather_batch(
+                ) = _gather_batch(
+                    self.key,
+                    self.policy_state,
+                    self.env,
+                    self.config.batch_size,
                     observation,
                     current_episode_return,
                     current_episode_length,
@@ -205,7 +289,8 @@ class Trainer:
                     advantate,
                 )
 
-                self._log_train_metrics(
+                _log_train_metrics(
+                    self.config,
                     i,
                     aux,
                     advantate,
@@ -218,74 +303,7 @@ class Trainer:
                     self.config.eval_step_interval > 0
                     and i % self.config.eval_step_interval == 0
                 ):
-                    self.eval(i)
-
-    def eval(self, step: int) -> None:
-        episode_returns = []
-        episode_lengths = []
-        frames = []
-        episode_infos = []
-        all_actions = []
-        all_observations = []
-
-        for episode_idx in range(self.config.eval_num_episodes):
-            observation, _ = self.eval_env.reset()
-            done, truncated = False, False
-            total_reward = 0.0
-            ep_len = 0
-            info = {}
-            episode_actions = []
-            episode_observations = []
-
-            while not (done or truncated):
-                if self.config.eval_render:
-                    frame = self.eval_env.render()
-                    if frame is not None:
-                        frames.append(frame)
-
-                observation = _get_observation(observation)
-                episode_observations.append(observation)
-
-                action, _ = reinforce_policy.sample_action(
-                    observation, self.policy_state, temperature=0.0
-                )
-                episode_actions.append(action)
-
-                observation, reward, done, truncated, info = self.eval_env.step(
-                    unscale_actions(action, self.eval_env)
-                )
-                total_reward += reward  # type: ignore
-                ep_len += 1
-
-            episode_returns.append(total_reward)
-            episode_lengths.append(ep_len)
-            episode_infos.append(info)
-            all_actions.append(jnp.array(episode_actions))
-            all_observations.append(jnp.array(episode_observations))
-
-        metrics = {
-            "eval/avg_return": jnp.mean(jnp.array(episode_returns)),
-            "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
-            "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
-        }
-
-        if episode_infos:
-            for key in episode_infos[0].keys():
-                try:
-                    values = [info[key] for info in episode_infos]
-                    metrics[f"eval/{key}"] = jnp.mean(jnp.array(values))
-                except (TypeError, KeyError, ValueError):
-                    # This can happen if info dicts are not consistent or values are not numeric
-                    pass
-
-        if not self.config.profile:
-            mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
-
-        if frames and not self.config.profile:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
-                imageio.mimsave(video_path, frames, fps=30)
-                mlflow.log_artifact(video_path, artifact_path="videos")
+                    eval_policy(i, self.config, self.eval_env, self.policy_state)
 
 
 def main():

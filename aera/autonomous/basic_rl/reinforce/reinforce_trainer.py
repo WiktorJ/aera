@@ -98,6 +98,65 @@ class Trainer:
         if not self.config.profile:
             mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
 
+    def _gather_batch(
+        self,
+        observation: jnp.ndarray,
+        current_episode_return: float,
+        current_episode_length: int,
+        train_episode_returns: list,
+        train_episode_lengths: list,
+    ) -> tuple[Batch, list, jnp.ndarray, float, int]:
+        observations = []
+        actions = []
+        masks = []
+        rewards = []
+        infos = []
+        while True:
+            observation = _get_observation(observation)
+            self.key, action_seed = jax.random.split(self.key)
+            action, _ = reinforce_policy.sample_action(
+                observation,
+                self.policy_state,
+                action_seed,
+            )
+            new_observation, reward, done, truncated, info = self.env.step(
+                unscale_actions(action, self.env)
+            )
+
+            observations.append(observation)
+            actions.append(action)
+            masks.append(not (done or truncated))
+            rewards.append(reward)
+            infos.append(info)
+
+            current_episode_return += reward  # type: ignore
+            current_episode_length += 1
+
+            if done or truncated:
+                train_episode_returns.append(current_episode_return)
+                train_episode_lengths.append(current_episode_length)
+                current_episode_return = 0.0
+                current_episode_length = 0
+                observation, _ = self.env.reset()
+                if len(observations) >= self.config.batch_size:
+                    break
+            else:
+                observation = new_observation
+
+        batch = Batch(
+            observations=jnp.array(observations),
+            actions=jnp.array(actions),
+            masks=jnp.array(masks).reshape(-1, 1),
+            rewards=jnp.array(rewards).reshape(-1, 1),
+        )
+        return (
+            batch,
+            infos,
+            observation,
+            current_episode_return,
+            current_episode_length,
+        )
+
     def train(self) -> None:
         mlflow.set_experiment(self.config.env_name)
         with mlflow.start_run():
@@ -111,48 +170,18 @@ class Trainer:
             for i in tqdm.tqdm(
                 range(self.config.max_steps), smoothing=0.1, disable=self.config.profile
             ):
-                observations = []
-                actions = []
-                masks = []
-                rewards = []
-                infos = []
-                while True:
-                    observation = _get_observation(observation)
-                    self.key, action_seed = jax.random.split(self.key)
-                    action, _ = reinforce_policy.sample_action(
-                        observation,
-                        self.policy_state,
-                        action_seed,
-                    )
-                    new_observation, reward, done, truncated, info = self.env.step(
-                        unscale_actions(action, self.env)
-                    )
-
-                    observations.append(observation)
-                    actions.append(action)
-                    masks.append(not (done or truncated))
-                    rewards.append(reward)
-                    infos.append(info)
-
-                    current_episode_return += reward  # type: ignore
-                    current_episode_length += 1
-
-                    if done or truncated:
-                        train_episode_returns.append(current_episode_return)
-                        train_episode_lengths.append(current_episode_length)
-                        current_episode_return = 0.0
-                        current_episode_length = 0
-                        observation, _ = self.env.reset()
-                        if len(observations) >= self.config.batch_size:
-                            break
-                    else:
-                        observation = new_observation
-
-                batch = Batch(
-                    observations=jnp.array(observations),
-                    actions=jnp.array(actions),
-                    masks=jnp.array(masks).reshape(-1, 1),
-                    rewards=jnp.array(rewards).reshape(-1, 1),
+                (
+                    batch,
+                    infos,
+                    observation,
+                    current_episode_return,
+                    current_episode_length,
+                ) = self._gather_batch(
+                    observation,
+                    current_episode_return,
+                    current_episode_length,
+                    train_episode_returns,
+                    train_episode_lengths,
                 )
 
                 def reward_to_go_step(carry, xs):

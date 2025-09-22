@@ -70,6 +70,35 @@ class Trainer:
         )
         self.eval_step_counter = 0
 
+    def _log_train_metrics(
+        self,
+        step: int,
+        aux: dict,
+        advantate: jnp.ndarray,
+        infos: list,
+        train_episode_returns: list,
+        train_episode_lengths: list,
+    ):
+        metrics = {f"train/{k}": v for k, v in aux.items()}
+        metrics["train/advantage_mean"] = jnp.mean(advantate)
+        metrics["train/advantage_std"] = jnp.std(advantate)
+        if infos:
+            for key in infos[0].keys():
+                try:
+                    values = [info[key] for info in infos]
+                    metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
+                except (TypeError, KeyError, ValueError):
+                    pass
+
+        if train_episode_returns:
+            metrics["train/avg_return"] = jnp.mean(jnp.array(train_episode_returns))
+            metrics["train/avg_ep_len"] = jnp.mean(jnp.array(train_episode_lengths))
+            train_episode_returns.clear()
+            train_episode_lengths.clear()
+
+        if not self.config.profile:
+            mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
+
     def train(self) -> None:
         mlflow.set_experiment(self.config.env_name)
         with mlflow.start_run():
@@ -148,31 +177,9 @@ class Trainer:
                     advantate,
                 )
 
-                metrics = {f"train/{k}": v for k, v in aux.items()}
-                metrics["train/advantage_mean"] = jnp.mean(advantate)
-                metrics["train/advantage_std"] = jnp.std(advantate)
-                if infos:
-                    for key in infos[0].keys():
-                        try:
-                            values = [info[key] for info in infos]
-                            metrics[f"train/{key}"] = jnp.mean(jnp.array(values))
-                        except (TypeError, KeyError, ValueError):
-                            pass
-
-                if train_episode_returns:
-                    metrics["train/avg_return"] = jnp.mean(
-                        jnp.array(train_episode_returns)
-                    )
-                    metrics["train/avg_ep_len"] = jnp.mean(
-                        jnp.array(train_episode_lengths)
-                    )
-                    train_episode_returns.clear()
-                    train_episode_lengths.clear()
-
-                if not self.config.profile:
-                    mlflow.log_metrics(
-                        {k: v.item() for k, v in metrics.items()}, step=i
-                    )
+                self._log_train_metrics(
+                    i, aux, advantate, infos, train_episode_returns, train_episode_lengths
+                )
 
                 if (
                     self.config.eval_step_interval > 0

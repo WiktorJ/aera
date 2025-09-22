@@ -68,7 +68,6 @@ class Trainer:
             training_temperature=config.policy_temperature,
             activation_fn=_get_activation_fn(config.policy_activation_fn),
         )
-        self.eval_step_counter = 0
 
     def _log_train_metrics(
         self,
@@ -178,7 +177,12 @@ class Trainer:
                 )
 
                 self._log_train_metrics(
-                    i, aux, advantate, infos, train_episode_returns, train_episode_lengths
+                    i,
+                    aux,
+                    advantate,
+                    infos,
+                    train_episode_returns,
+                    train_episode_lengths,
                 )
 
                 if (
@@ -253,7 +257,6 @@ class Trainer:
                 video_path = os.path.join(tmpdir, f"eval_video_step_{step}.mp4")
                 imageio.mimsave(video_path, frames, fps=30)
                 mlflow.log_artifact(video_path, artifact_path="videos")
-        self.eval_step_counter += 1
 
 
 def main():

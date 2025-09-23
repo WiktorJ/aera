@@ -1,19 +1,24 @@
+import argparse
+import dataclasses
+import enum
+import os
+import tempfile
 from typing import Callable
 
-import tqdm
 import gymnasium as gym
+import imageio
 import jax
 import jax.numpy as jnp
-import optax
 import mlflow
-import dataclasses
-import imageio
-import tempfile
-import os
-import argparse
+import optax
+import tqdm
 
 from aera.autonomous.basic_rl.reinforce import reinforce_config, reinforce_policy
-from aera.autonomous.basic_rl.reinforce.common import Batch
+from aera.autonomous.basic_rl.reinforce.common import (
+    Batch,
+    _init_network_params,
+    _apply_dropout,
+)
 
 
 def _get_activation_fn(name: str) -> Callable[[jnp.ndarray], jnp.ndarray]:
@@ -34,13 +39,13 @@ def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
 
 
 def _log_train_metrics(
-    config: reinforce_config.Config,
     step: int,
     aux: dict,
     advantate: jnp.ndarray,
     infos: list,
     train_episode_returns: list,
     train_episode_lengths: list,
+    profile: bool = False,
 ):
     metrics = {f"train/{k}": v for k, v in aux.items()}
     metrics["train/advantage_mean"] = jnp.mean(advantate)
@@ -59,7 +64,7 @@ def _log_train_metrics(
         train_episode_returns.clear()
         train_episode_lengths.clear()
 
-    if not config.profile:
+    if not profile:
         mlflow.log_metrics({k: v.item() for k, v in metrics.items()}, step=step)
 
 
@@ -200,6 +205,80 @@ def eval_policy(
             mlflow.log_artifact(video_path, artifact_path="videos")
 
 
+@dataclasses.dataclass(frozen=True)
+class ValueFunctionState:
+    weights: list[tuple[jnp.ndarray, jnp.ndarray]]
+    optimizer: optax.GradientTransformationExtraArgs
+    opt_state: optax.OptState
+    dropout_rate: float = 0.0
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu
+
+    @staticmethod
+    def create(
+        hidden_dims: tuple[int, ...],
+        obs_dim: int,
+        key: jnp.ndarray,
+        optimizer: optax.GradientTransformationExtraArgs,
+        dropout_rate: float = 0.0,
+        activation_fn: Callable[[jnp.ndarray], jnp.ndarray] = jax.nn.relu,
+    ):
+        weights = _init_network_params(key, (obs_dim,) + hidden_dims + (1,))
+        opt_state = optimizer.init(weights)
+        return ValueFunctionState(
+            weights=weights,
+            optimizer=optimizer,
+            opt_state=opt_state,
+            dropout_rate=dropout_rate,
+            activation_fn=activation_fn,
+        )
+
+
+def _value_fn(
+    obs: jnp.ndarray,
+    weights: list[tuple[jnp.ndarray, jnp.ndarray]],
+    activation_fn: Callable[[jnp.ndarray], jnp.ndarray],
+    dropout_key=jax.random.PRNGKey(0),
+    dropout_rate: float = 0.0,
+    activate_final: bool = False,
+) -> jnp.ndarray:
+    x = obs
+    dropout_keys = jax.random.split(dropout_key, len(weights) + int(activate_final))
+    for i, (w, b) in enumerate(weights[:-1]):
+        x = _apply_dropout(
+            activation_fn(jnp.dot(x, w) + b), dropout_rate, dropout_keys[i]
+        )
+    x = jnp.dot(x, weights[-1][0]) + weights[-1][1]
+    if activate_final:
+        return _apply_dropout(activation_fn(x), dropout_rate, dropout_keys[-1])
+    return x
+
+
+def _update_value_function(
+    obs: jnp.ndarray,
+    reward_to_go: jnp.ndarray,
+    state: ValueFunctionState,
+    dropout_key: jnp.ndarray,
+):
+    def loss_fn(
+        weights: list[tuple[jnp.ndarray, jnp.ndarray]],
+    ):
+        values = _value_fn(
+            obs, weights, state.activation_fn, dropout_key, state.dropout_rate
+        )
+        loss = jnp.mean((reward_to_go - values) ** 2)
+        return loss, {
+            "value_loss": loss,
+            "value_pred": values.mean(),
+        }
+
+    grad, aux = jax.grad(loss_fn, has_aux=True)(state.weights)
+    updates, opt_state = state.optimizer.update(grad, state.opt_state, state.weights)
+    new_state = dataclasses.replace(
+        state, weights=optax.apply_updates(state.weights, updates), opt_state=opt_state
+    )
+    return aux, new_state
+
+
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
@@ -220,7 +299,9 @@ class Trainer:
         action_shape = self.env.action_space.shape
         observation_shape = self.env.observation_space.shape
         optimizer = optax.adam(config.policy_lr)
-        self.key, policy_seed = jax.random.split(jax.random.PRNGKey(seed=config.seed))
+        self.key, policy_seed, value_seed = jax.random.split(
+            jax.random.PRNGKey(seed=config.seed), 3
+        )
         self.policy_state = reinforce_policy.ReinforcePolicyState.create(
             hidden_dims=config.policy_hidden_dims,
             action_dim=action_shape[0],  # type: ignore
@@ -234,6 +315,15 @@ class Trainer:
             dropout_rate=config.policy_dropout_rate,
             training_temperature=config.policy_temperature,
             activation_fn=_get_activation_fn(config.policy_activation_fn),
+        )
+
+        self.value_state = ValueFunctionState.create(
+            hidden_dims=config.value_hidden_dims,
+            obs_dim=observation_shape[0],  # type: ignore
+            key=value_seed,
+            optimizer=optax.adam(config.value_lr),
+            dropout_rate=config.value_dropout_rate,
+            activation_fn=_get_activation_fn(config.value_activation_fn),
         )
 
     def train(self) -> None:
@@ -279,24 +369,37 @@ class Trainer:
                     (batch.rewards, batch.masks),
                     reverse=True,
                 )
-                advantate = reward_to_go_rev
 
-                advantate = advantate - advantate.mean()
-
-                aux, self.policy_state = reinforce_policy.update_policy(
-                    self.policy_state,
-                    batch,
-                    advantate,
+                values = _value_fn(
+                    batch.observations,
+                    self.value_state.weights,
+                    self.value_state.activation_fn,
+                )
+                advantage = reward_to_go_rev - values
+                advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)
+                self.key, dropout_key_policy, dropout_key_value = jax.random.split(
+                    self.key, 3
                 )
 
+                aux, self.policy_state = reinforce_policy.update_policy(
+                    self.policy_state, batch, advantage, dropout_key_policy
+                )
+                val_aux, self.value_state = _update_value_function(
+                    batch.observations,
+                    reward_to_go_rev,
+                    self.value_state,
+                    dropout_key_value,
+                )
+                aux = aux | val_aux
+
                 _log_train_metrics(
-                    self.config,
                     i,
                     aux,
-                    advantate,
+                    advantage,
                     infos,
                     train_episode_returns,
                     train_episode_lengths,
+                    self.config.profile,
                 )
 
                 if (

@@ -1,19 +1,19 @@
+import dataclasses
 from typing import Callable, Sequence
 
 import jax
 import jax.numpy as jnp
 import optax
-import dataclasses
 
-from aera.autonomous.basic_rl.reinforce.common import Batch
+from aera.autonomous.basic_rl.reinforce.common import (
+    Batch,
+    _init_network_params,
+    _apply_dropout,
+)
 
 
 @dataclasses.dataclass(frozen=True)
 class ReinforcePolicyState:
-    key: jnp.ndarray
-    hidden_dims: tuple[int, ...]
-    action_dim: int
-    obs_dim: int
     optimizer: optax.GradientTransformationExtraArgs
     trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]]
     mean_weights: tuple[jnp.ndarray, jnp.ndarray]
@@ -61,10 +61,6 @@ class ReinforcePolicyState:
         )
 
         return ReinforcePolicyState(
-            key=key,
-            hidden_dims=hidden_dims,
-            action_dim=action_dim,
-            obs_dim=obs_dim,
             optimizer=optimizer,
             trunk_weights=trunk_weights,
             mean_weights=mean_weights,
@@ -78,25 +74,6 @@ class ReinforcePolicyState:
             training_temperature=training_temperature,
             activation_fn=activation_fn,
         )
-
-
-def _random_layer_params(
-    m: int, n: int, key: jnp.ndarray, scale: float = 1e-2
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    w_key, b_key = jax.random.split(key)
-    return scale * jax.random.normal(w_key, (m, n)), scale * jax.random.normal(
-        b_key, (n,)
-    )
-
-
-def _init_network_params(
-    key: jnp.ndarray, dims: Sequence[int]
-) -> list[tuple[jnp.ndarray, jnp.ndarray]]:
-    keys = jax.random.split(key, len(dims) - 1)
-    layers = [
-        _random_layer_params(m, n, k) for m, n, k in zip(dims[:-1], dims[1:], keys)
-    ]
-    return layers
 
 
 def _sample_gaussian(
@@ -139,10 +116,15 @@ def _get_sampling_fns(
     log_std_max: float,
     temperature: float,
     activation_fn: Callable[[jnp.ndarray], jnp.ndarray],
+    dropout_rate: float = 0.0,
+    dropout_key: jnp.ndarray = jax.random.PRNGKey(0),
 ):
     x = obs
-    for w, b in trunk_weights:
-        x = activation_fn(jnp.dot(x, w) + b)
+    dropout_keys = jax.random.split(dropout_key, len(trunk_weights))
+    for i, (w, b) in enumerate(trunk_weights):
+        x = _apply_dropout(
+            activation_fn(jnp.dot(x, w) + b), dropout_rate, dropout_keys[i]
+        )
     mean = jnp.dot(x, mean_weights[0]) + mean_weights[1]
     if obs_dependent_std:
         log_std = jnp.dot(x, log_std_weights[0]) + log_std_weights[1]
@@ -194,6 +176,7 @@ def update_policy(
     state: ReinforcePolicyState,
     batch: Batch,
     advantate: jnp.ndarray,
+    dropout_key: jnp.ndarray,
 ) -> tuple[dict[str, jnp.ndarray], ReinforcePolicyState]:
     def loss_fn(
         trunk_weights: list[tuple[jnp.ndarray, jnp.ndarray]],
@@ -211,6 +194,8 @@ def update_policy(
             state.log_std_max,
             state.training_temperature,
             state.activation_fn,
+            state.dropout_rate,
+            dropout_key,
         )
         log_prob = log_prob_fn(batch.actions)
         loss = -(log_prob * advantate.squeeze()).mean()

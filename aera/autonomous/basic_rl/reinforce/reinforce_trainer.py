@@ -288,7 +288,7 @@ def _update_value_function(
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
-        self.env = gym.vector.make(
+        self.env = gym.make_vec(
             config.env_name,
             num_envs=config.num_envs,
             max_episode_steps=config.ep_len,

@@ -15,6 +15,7 @@ class Config:
     ep_len: int = 512
     max_steps: int = 2001
     batch_size: int = 8192
+    num_envs: int = 16
     eval_step_interval: int = 50
     eval_num_episodes: int = 1
     eval_render: bool = False

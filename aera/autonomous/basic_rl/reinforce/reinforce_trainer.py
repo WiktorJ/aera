@@ -34,7 +34,10 @@ def _get_observation(observation: jnp.ndarray) -> jnp.ndarray:
 
 
 def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
-    low, high = env.action_space.low, env.action_space.high
+    action_space = (
+        env.single_action_space if hasattr(env, "single_action_space") else env.action_space
+    )
+    low, high = action_space.low, action_space.high
     return low + (0.5 * (scaled_action + 1.0) * (high - low))
 
 
@@ -73,18 +76,20 @@ def _gather_batch(
     policy_state: reinforce_policy.ReinforcePolicyState,
     env: gym.Env,
     batch_size: int,
+    num_envs: int,
     observation: jnp.ndarray,
-    current_episode_return: float,
-    current_episode_length: int,
+    current_episode_return: jnp.ndarray,
+    current_episode_length: jnp.ndarray,
     train_episode_returns: list,
     train_episode_lengths: list,
-) -> tuple[jnp.ndarray, Batch, list, jnp.ndarray, float, int]:
+) -> tuple[jnp.ndarray, Batch, list, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     observations = []
     actions = []
     masks = []
     rewards = []
     infos = []
-    while True:
+    num_steps = batch_size // num_envs
+    for _ in range(num_steps):
         observation = _get_observation(observation)
         key, action_seed = jax.random.split(key)
         action, _ = reinforce_policy.sample_action(
@@ -92,33 +97,34 @@ def _gather_batch(
             policy_state,
             action_seed,
         )
-        new_observation, reward, done, truncated, info = env.step(
+        new_observation, reward, terminated, truncated, info = env.step(
             unscale_actions(action, env)
         )
 
         observations.append(observation)
         actions.append(action)
-        masks.append(not (done or truncated))
+        masks.append(~(terminated | truncated))
         rewards.append(reward)
-        infos.append(info)
 
-        current_episode_return += reward  # type: ignore
+        current_episode_return += reward
         current_episode_length += 1
 
-        if done or truncated:
-            train_episode_returns.append(current_episode_return)
-            train_episode_lengths.append(current_episode_length)
-            current_episode_return = 0.0
-            current_episode_length = 0
-            observation, _ = env.reset()
-            if len(observations) >= batch_size:
-                break
-        else:
-            observation = new_observation
+        if "final_info" in info:
+            for i, final_inf in enumerate(info["final_info"]):
+                if final_inf is not None:
+                    train_episode_returns.append(current_episode_return[i])
+                    train_episode_lengths.append(current_episode_length[i])
+                    infos.append(final_inf)
+
+        done = terminated | truncated
+        current_episode_return = current_episode_return * (1 - done)
+        current_episode_length = current_episode_length * (1 - done)
+
+        observation = new_observation
 
     batch = Batch(
-        observations=jnp.array(observations),
-        actions=jnp.array(actions),
+        observations=jnp.concatenate(observations),
+        actions=jnp.concatenate(actions),
         masks=jnp.array(masks).reshape(-1, 1),
         rewards=jnp.array(rewards).reshape(-1, 1),
     )
@@ -282,8 +288,9 @@ def _update_value_function(
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
-        self.env = gym.make(
+        self.env = gym.vector.make(
             config.env_name,
+            num_envs=config.num_envs,
             max_episode_steps=config.ep_len,
         )
         self.env.reset()
@@ -334,8 +341,8 @@ class Trainer:
             observation, _ = self.env.reset()
             train_episode_returns = []
             train_episode_lengths = []
-            current_episode_return = 0.0
-            current_episode_length = 0
+            current_episode_return = jnp.zeros(self.config.num_envs)
+            current_episode_length = jnp.zeros(self.config.num_envs, dtype=jnp.int32)
             for i in tqdm.tqdm(
                 range(self.config.max_steps), smoothing=0.1, disable=self.config.profile
             ):
@@ -351,6 +358,7 @@ class Trainer:
                     self.policy_state,
                     self.env,
                     self.config.batch_size,
+                    self.config.num_envs,
                     observation,
                     current_episode_return,
                     current_episode_length,

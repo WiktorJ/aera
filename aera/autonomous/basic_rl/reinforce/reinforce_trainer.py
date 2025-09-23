@@ -303,8 +303,8 @@ class Trainer:
         )
         self.eval_env.reset()
 
-        action_shape = self.env.action_space.shape
-        observation_shape = self.env.observation_space.shape
+        action_shape = self.env.single_action_space.shape
+        observation_shape = self.env.single_observation_space.shape
         optimizer = optax.adam(config.policy_lr)
         self.key, policy_seed, value_seed = jax.random.split(
             jax.random.PRNGKey(seed=config.seed), 3

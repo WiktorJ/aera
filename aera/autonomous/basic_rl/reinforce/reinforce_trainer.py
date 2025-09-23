@@ -109,14 +109,15 @@ def _gather_batch(
         current_episode_return += reward
         current_episode_length += 1
 
-        if "final_info" in info:
-            for i, final_inf in enumerate(info["final_info"]):
-                if final_inf is not None:
+        done = terminated | truncated
+        if jnp.any(done):
+            final_infos = info.get("final_info")
+            for i, d in enumerate(done):
+                if d:
                     train_episode_returns.append(current_episode_return[i])
                     train_episode_lengths.append(current_episode_length[i])
-                    infos.append(final_inf)
-
-        done = terminated | truncated
+                    if final_infos is not None and final_infos[i] is not None:
+                        infos.append(final_infos[i])
         current_episode_return = current_episode_return * (1 - done)
         current_episode_length = current_episode_length * (1 - done)
 

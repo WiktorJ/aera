@@ -35,7 +35,9 @@ def _get_observation(observation: jnp.ndarray) -> jnp.ndarray:
 
 def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
     action_space = (
-        env.single_action_space if hasattr(env, "single_action_space") else env.action_space
+        env.single_action_space
+        if hasattr(env, "single_action_space")
+        else env.action_space
     )
     low, high = action_space.low, action_space.high
     return low + (0.5 * (scaled_action + 1.0) * (high - low))
@@ -74,7 +76,7 @@ def _log_train_metrics(
 def _gather_batch(
     key: jnp.ndarray,
     policy_state: reinforce_policy.ReinforcePolicyState,
-    env: gym.Env,
+    env: gym.vector.VectorEnv,
     batch_size: int,
     num_envs: int,
     observation: jnp.ndarray,
@@ -105,19 +107,17 @@ def _gather_batch(
         actions.append(action)
         masks.append(~(terminated | truncated))
         rewards.append(reward)
+        infos.append(info)
 
         current_episode_return += reward
         current_episode_length += 1
 
         done = terminated | truncated
         if jnp.any(done):
-            final_infos = info.get("final_info")
             for i, d in enumerate(done):
                 if d:
                     train_episode_returns.append(current_episode_return[i])
                     train_episode_lengths.append(current_episode_length[i])
-                    if final_infos is not None and final_infos[i] is not None:
-                        infos.append(final_infos[i])
         current_episode_return = current_episode_return * (1 - done)
         current_episode_length = current_episode_length * (1 - done)
 
@@ -335,7 +335,9 @@ class Trainer:
         )
 
     def train(self) -> None:
-        mlflow.set_experiment(self.config.env_name)
+        experiment = mlflow.set_experiment(self.config.env_name)
+        print("Starting Experiment")
+        print(experiment)
         with mlflow.start_run():
             mlflow.set_tags({"algorithm": "reinforce"})
             mlflow.log_params(dataclasses.asdict(self.config))
@@ -372,7 +374,7 @@ class Trainer:
                     carry = reward + self.config.gamma * carry * mask
                     return carry, carry
 
-                _, reward_to_go_rev = jax.lax.scan(
+                _, reward_to_go = jax.lax.scan(
                     reward_to_go_step,
                     jnp.zeros(1),
                     (batch.rewards, batch.masks),
@@ -384,7 +386,7 @@ class Trainer:
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
-                advantage = reward_to_go_rev - values
+                advantage = reward_to_go - values
                 advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3
@@ -395,7 +397,7 @@ class Trainer:
                 )
                 val_aux, self.value_state = _update_value_function(
                     batch.observations,
-                    reward_to_go_rev,
+                    reward_to_go,
                     self.value_state,
                     dropout_key_value,
                 )

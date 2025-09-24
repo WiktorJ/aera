@@ -5,7 +5,7 @@ from typing import Optional
 @dataclass
 class Config:
     seed: int = 42
-    env_name: str = "Pendulum-v1"
+    env_name: str = "Hopper-v5"
     max_episodes: int = 1000
     env_render_width: int = 1920
     env_render_height: int = 1088

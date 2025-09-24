@@ -295,18 +295,28 @@ class Trainer:
             max_episode_steps=config.ep_len,
         )
         self.env.reset()
-        self.eval_env = gym.make(
-            config.env_name,
-            render_mode=config.env_render_mode,
-            width=config.env_render_width,
-            height=config.env_render_height,
-            max_episode_steps=config.ep_len,
-        )
+        try:
+            self.eval_env = gym.make(
+                config.env_name,
+                render_mode=config.env_render_mode,
+                width=config.env_render_width,
+                height=config.env_render_height,
+                max_episode_steps=config.ep_len,
+            )
+        except Exception as _:
+            self.eval_env = gym.make(
+                config.env_name,
+                render_mode=config.env_render_mode,
+                max_episode_steps=config.ep_len,
+            )
+
         self.eval_env.reset()
 
         action_shape = self.env.single_action_space.shape
         observation_shape = self.env.single_observation_space.shape
-        optimizer = optax.adam(config.policy_lr)
+        optimizer = optax.chain(
+            optax.clip_by_global_norm(1.0), optax.adam(config.policy_lr)
+        )
         self.key, policy_seed, value_seed = jax.random.split(
             jax.random.PRNGKey(seed=config.seed), 3
         )

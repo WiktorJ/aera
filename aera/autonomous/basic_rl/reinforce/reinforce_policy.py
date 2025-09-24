@@ -210,7 +210,6 @@ def update_policy(
         state.log_std_weights,
     )
     params = (state.trunk_weights, state.mean_weights, state.log_std_weights)
-    # Apply gradient clipping before the update AI!
     updates, opt_state = state.optimizer.update(grad, state.opt_state, params)
     trunk_weights, mean_weights, log_std_weights = optax.apply_updates(params, updates)  # type: ignore
     new_state = dataclasses.replace(

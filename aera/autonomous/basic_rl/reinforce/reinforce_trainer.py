@@ -379,6 +379,13 @@ class Trainer:
                     train_episode_lengths,
                 )
 
+                next_observation = _get_observation(observation)
+                next_values = _value_fn(
+                    next_observation,
+                    self.value_state.weights,
+                    self.value_state.activation_fn,
+                )
+
                 def reward_to_go_step(carry, xs):
                     reward, mask = xs
                     carry = reward + self.config.gamma * carry * mask
@@ -390,7 +397,7 @@ class Trainer:
 
                 _, reward_to_go_by_env = jax.lax.scan(
                     reward_to_go_step,
-                    jnp.zeros((self.config.num_envs, 1)),
+                    next_values,
                     (rewards, masks),
                     reverse=True,
                 )

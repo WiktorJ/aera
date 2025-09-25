@@ -384,12 +384,17 @@ class Trainer:
                     carry = reward + self.config.gamma * carry * mask
                     return carry, carry
 
-                _, reward_to_go = jax.lax.scan(
+                num_steps = self.config.batch_size // self.config.num_envs
+                rewards = batch.rewards.reshape((num_steps, self.config.num_envs, -1))
+                masks = batch.masks.reshape((num_steps, self.config.num_envs, -1))
+
+                _, reward_to_go_by_env = jax.lax.scan(
                     reward_to_go_step,
-                    jnp.zeros(1),
-                    (batch.rewards, batch.masks),
+                    jnp.zeros((self.config.num_envs, 1)),
+                    (rewards, masks),
                     reverse=True,
                 )
+                reward_to_go = reward_to_go_by_env.reshape((-1, 1))
 
                 values = _value_fn(
                     batch.observations,

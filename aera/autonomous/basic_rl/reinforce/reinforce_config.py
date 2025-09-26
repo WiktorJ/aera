@@ -36,3 +36,6 @@ class Config:
     value_activation_fn: str = "relu"
     value_lr: float = 1e-4
     value_dropout_rate: float = 0.2
+
+    use_gae = True
+    gae_lambda = 0.95

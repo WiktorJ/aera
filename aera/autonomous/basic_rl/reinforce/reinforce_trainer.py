@@ -287,7 +287,11 @@ def _update_value_function(
 
 
 def _calculate_gae(
-    batch: Batch, values: jnp.ndarray, gamma: float, gae_lambda: float
+    rewards: jnp.ndarray,
+    masks: jnp.ndarray,
+    values: jnp.ndarray,
+    gamma: float,
+    gae_lambda: float,
 ) -> jnp.ndarray:
     def gae_fn(gae, xs):
         delta, mask = xs
@@ -295,10 +299,12 @@ def _calculate_gae(
         return gea, gea
 
     deltas = jax.vmap(lambda r, v, nx, m: r + gamma * nx * m - v)(
-        batch.rewards, values[:-1], values[1:], batch.masks
+        rewards, values[:-1], values[1:], masks
     )
 
-    return jax.lax.scan(gae_fn, 0.0, (deltas, batch.masks), reverse=True)[0]
+    return jax.lax.scan(
+        gae_fn, jnp.zeros(rewards.shape[1:]), (deltas, masks), reverse=True
+    )[1]
 
 
 class Trainer:
@@ -394,7 +400,7 @@ class Trainer:
                     train_episode_lengths,
                 )
 
-                next_values = _value_fn(
+                next_value = _value_fn(
                     _get_observation(observation),
                     self.value_state.weights,
                     self.value_state.activation_fn,
@@ -411,7 +417,7 @@ class Trainer:
 
                 _, reward_to_go_by_env = jax.lax.scan(
                     reward_to_go_step,
-                    next_values,
+                    next_value,
                     (rewards, masks),
                     reverse=True,
                 )
@@ -422,14 +428,22 @@ class Trainer:
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
-                gae = _calculate_gae(
-                    batch,
-                    jnp.concatenate([values, next_values]),
-                    self.config.gamma,
-                    self.config.gae_lambda,
-                )
-                advantage = reward_to_go - values
-                advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)
+                if self.config.use_gae:
+                    values_by_env = values.reshape(
+                        (num_steps, self.config.num_envs, -1)
+                    )
+                    advantage = _calculate_gae(
+                        rewards,
+                        masks,
+                        jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)]),
+                        self.config.gamma,
+                        self.config.gae_lambda,
+                    ).reshape((-1, 1))
+                else:
+                    advantage = reward_to_go - values
+                    advantage = (advantage - advantage.mean()) / (
+                        advantage.std() - 1e-8
+                    )
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3
                 )

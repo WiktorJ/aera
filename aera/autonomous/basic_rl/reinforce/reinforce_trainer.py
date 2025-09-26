@@ -307,6 +307,33 @@ def _calculate_gae(
     )[1]
 
 
+def _calculate_advantage(
+    use_gae: bool,
+    reward_to_go: jnp.ndarray,
+    values: jnp.ndarray,
+    rewards: jnp.ndarray,
+    masks: jnp.ndarray,
+    next_value: jnp.ndarray,
+    num_steps: int,
+    num_envs: int,
+    gamma: float,
+    gae_lambda: float,
+) -> jnp.ndarray:
+    if use_gae:
+        values_by_env = values.reshape((num_steps, num_envs, -1))
+        advantage = _calculate_gae(
+            rewards,
+            masks,
+            jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)]),
+            gamma,
+            gae_lambda,
+        ).reshape((-1, 1))
+    else:
+        advantage = reward_to_go - values
+        advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)
+    return advantage
+
+
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
@@ -428,22 +455,18 @@ class Trainer:
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
-                if self.config.use_gae:
-                    values_by_env = values.reshape(
-                        (num_steps, self.config.num_envs, -1)
-                    )
-                    advantage = _calculate_gae(
-                        rewards,
-                        masks,
-                        jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)]),
-                        self.config.gamma,
-                        self.config.gae_lambda,
-                    ).reshape((-1, 1))
-                else:
-                    advantage = reward_to_go - values
-                    advantage = (advantage - advantage.mean()) / (
-                        advantage.std() - 1e-8
-                    )
+                advantage = _calculate_advantage(
+                    use_gae=self.config.use_gae,
+                    reward_to_go=reward_to_go,
+                    values=values,
+                    rewards=rewards,
+                    masks=masks,
+                    next_value=next_value,
+                    num_steps=num_steps,
+                    num_envs=self.config.num_envs,
+                    gamma=self.config.gamma,
+                    gae_lambda=self.config.gae_lambda,
+                )
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3
                 )

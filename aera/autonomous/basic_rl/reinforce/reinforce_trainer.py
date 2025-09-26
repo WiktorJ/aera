@@ -286,6 +286,21 @@ def _update_value_function(
     return aux, new_state
 
 
+def _calculate_gae(
+    batch: Batch, values: jnp.ndarray, gamma: float, gae_lambda: float
+) -> jnp.ndarray:
+    def gae_fn(gae, xs):
+        delta, mask = xs
+        gea = delta + gamma * gae_lambda * gae * mask
+        return gea, gea
+
+    deltas = jax.vmap(lambda r, v, nx, m: r + gamma * nx * m - v)(
+        batch.rewards, values[:-1], values[1:], batch.masks
+    )
+
+    return jax.lax.scan(gae_fn, 0.0, (deltas, batch.masks), reverse=True)[0]
+
+
 class Trainer:
     def __init__(self, config: reinforce_config.Config) -> None:
         self.config = config
@@ -379,9 +394,8 @@ class Trainer:
                     train_episode_lengths,
                 )
 
-                next_observation = _get_observation(observation)
                 next_values = _value_fn(
-                    next_observation,
+                    _get_observation(observation),
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
@@ -407,6 +421,12 @@ class Trainer:
                     batch.observations,
                     self.value_state.weights,
                     self.value_state.activation_fn,
+                )
+                gae = _calculate_gae(
+                    batch,
+                    jnp.concatenate([values, next_values]),
+                    self.config.gamma,
+                    self.config.gae_lambda,
                 )
                 advantage = reward_to_go - values
                 advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)

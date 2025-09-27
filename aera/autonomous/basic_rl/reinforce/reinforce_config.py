@@ -26,7 +26,7 @@ class Config:
     policy_lr: float = 1e-4
     policy_obs_dependent_std: bool = True
     policy_tanh_squash_dist: bool = True
-    policy_log_std_min: float = -20.0
+    policy_log_std_min: float = -5.0
     policy_log_std_max: float = 2.0
     policy_dropout_rate: float = 0.2
     policy_temperature: float = 1.0

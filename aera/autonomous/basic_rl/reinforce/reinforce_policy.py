@@ -101,6 +101,7 @@ def _tanh_squash_log_prob(
     # Since we are interested in log_prob, the formula becomes
     # log(p_Y(y)) = log(p_X(x)) - log(det(d/dx f(x))) =
     # = log_probs_base - jacobian
+    value = jnp.clip(value, -1 + 1e-7, 1 - 1e-7)
     jacobian = 1 - value**2
     return log_prob_base - jnp.sum(jnp.log(jacobian), axis=-1)
 

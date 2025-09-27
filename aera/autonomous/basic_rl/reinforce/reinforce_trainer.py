@@ -192,6 +192,10 @@ def eval_policy(
         "eval/sum_return": jnp.sum(jnp.array(episode_returns)),
         "eval/avg_ep_len": jnp.mean(jnp.array(episode_lengths)),
     }
+    if all_actions:
+        avg_action_per_dim = jnp.mean(jnp.concatenate(all_actions), axis=0)
+        for i, avg_action in enumerate(avg_action_per_dim):
+            metrics[f"eval/avg_action_dim_{i}"] = avg_action
 
     if episode_infos:
         for key in episode_infos[0].keys():
@@ -262,7 +266,7 @@ def _value_fn(
 
 def _update_value_function(
     obs: jnp.ndarray,
-    reward_to_go: jnp.ndarray,
+    targets: jnp.ndarray,
     state: ValueFunctionState,
     dropout_key: jnp.ndarray,
 ):
@@ -272,12 +276,13 @@ def _update_value_function(
         values = _value_fn(
             obs, weights, state.activation_fn, dropout_key, state.dropout_rate
         )
-        loss = jnp.mean((reward_to_go - values) ** 2)
+        loss = jnp.mean((targets - values) ** 2)
         return loss, {
             "value_loss": loss,
             "value_pred": values.mean(),
         }
 
+    targets = jax.lax.stop_gradient(targets)
     grad, aux = jax.grad(loss_fn, has_aux=True)(state.weights)
     updates, opt_state = state.optimizer.update(grad, state.opt_state, state.weights)
     new_state = dataclasses.replace(
@@ -330,8 +335,7 @@ def _calculate_advantage(
         ).reshape((-1, 1))
     else:
         advantage = reward_to_go - values
-        advantage = (advantage - advantage.mean()) / (advantage.std() - 1e-8)
-    return advantage
+    return (advantage - advantage.mean()) / (advantage.std() - 1e-8)
 
 
 class Trainer:
@@ -449,12 +453,18 @@ class Trainer:
                     reverse=True,
                 )
                 reward_to_go = reward_to_go_by_env.reshape((-1, 1))
-
                 values = _value_fn(
                     batch.observations,
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
+                values_by_env = values.reshape((num_steps, self.config.num_envs, -1))
+
+                bootstrap_targets = jax.vmap(lambda r, v: r + self.config.gamma * v)(
+                    rewards,
+                    jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)])[1:],
+                ).reshape((-1, 1))
+
                 advantage = _calculate_advantage(
                     use_gae=self.config.use_gae,
                     reward_to_go=reward_to_go,
@@ -476,7 +486,8 @@ class Trainer:
                 )
                 val_aux, self.value_state = _update_value_function(
                     batch.observations,
-                    reward_to_go,
+                    # reward_to_go,
+                    bootstrap_targets,
                     self.value_state,
                     dropout_key_value,
                 )

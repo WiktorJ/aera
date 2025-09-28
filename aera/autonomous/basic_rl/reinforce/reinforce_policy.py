@@ -138,6 +138,8 @@ def _get_sampling_fns(
         return (
             lambda seed: _sample_gaussian(seed, mean, log_std),
             lambda sample: _gaussian_log_prob(sample, mean, log_std),
+            mean,
+            log_std,
         )
     return (
         lambda seed: jnp.tanh(_sample_gaussian(seed, mean, log_std)),
@@ -147,6 +149,8 @@ def _get_sampling_fns(
                 jnp.arctanh(jnp.clip(sample, -1 + 1e-6, 1 - 1e-6)), mean, log_std
             ),
         ),
+        mean,
+        log_std,
     )
 
 
@@ -156,7 +160,7 @@ def sample_action(
     key: jnp.ndarray = jax.random.PRNGKey(0),
     temperature: float = 1.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    action_fn, log_prob_fn = _get_sampling_fns(
+    action_fn, log_prob_fn, _, _ = _get_sampling_fns(
         obs,
         state.trunk_weights,
         state.mean_weights,
@@ -184,7 +188,7 @@ def update_policy(
         mean_weights: tuple[jnp.ndarray, jnp.ndarray],
         log_std_weights: tuple[jnp.ndarray, jnp.ndarray],
     ):
-        _, log_prob_fn = _get_sampling_fns(
+        _, log_prob_fn, mean, log_std = _get_sampling_fns(
             batch.observations,
             trunk_weights,
             mean_weights,
@@ -203,6 +207,8 @@ def update_policy(
         return loss, {
             "policy_loss": loss,
             "log_prob": log_prob.mean(),
+            "mean": mean.mean(),
+            "log_std": log_std.mean(),
         }
 
     grad, aux = jax.grad(loss_fn, has_aux=True, argnums=(0, 1, 2))(

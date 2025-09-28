@@ -46,6 +46,7 @@ def unscale_actions(scaled_action: jnp.ndarray, env) -> jnp.ndarray:
 def _log_train_metrics(
     step: int,
     aux: dict,
+    batch: Batch,
     advantate: jnp.ndarray,
     targets: jnp.ndarray,
     infos: list,
@@ -58,6 +59,14 @@ def _log_train_metrics(
     metrics["train/advantage_std"] = jnp.std(advantate)
     metrics["train/targets_mean"] = jnp.mean(targets)
     metrics["train/targets_std"] = jnp.std(targets)
+
+    avg_action_per_dim = jnp.mean(batch.actions, axis=0)
+    for i, avg_action in enumerate(avg_action_per_dim):
+        metrics[f"train/avg_action_dim_{i}"] = avg_action
+    std_action_per_dim = jnp.std(batch.actions, axis=0)
+    for i, std_action in enumerate(std_action_per_dim):
+        metrics[f"train/std_action_dim_{i}"] = std_action
+
     if infos:
         for key in infos[0].keys():
             try:
@@ -505,6 +514,7 @@ class Trainer:
                 _log_train_metrics(
                     i,
                     aux,
+                    batch,
                     advantage,
                     targets,
                     infos,

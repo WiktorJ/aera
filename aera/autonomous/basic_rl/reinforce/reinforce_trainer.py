@@ -282,7 +282,6 @@ def _update_value_function(
             "value_pred": values.mean(),
         }
 
-    targets = jax.lax.stop_gradient(targets)
     grad, aux = jax.grad(loss_fn, has_aux=True)(state.weights)
     updates, opt_state = state.optimizer.update(grad, state.opt_state, state.weights)
     new_state = dataclasses.replace(
@@ -326,7 +325,7 @@ def _calculate_advantage(
 ) -> jnp.ndarray:
     if use_gae:
         values_by_env = values.reshape((num_steps, num_envs, -1))
-        advantage = _calculate_gae(
+        return _calculate_gae(
             rewards,
             masks,
             jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)]),
@@ -334,8 +333,7 @@ def _calculate_advantage(
             gae_lambda,
         ).reshape((-1, 1))
     else:
-        advantage = reward_to_go - values
-    return (advantage - advantage.mean()) / (advantage.std() - 1e-8)
+        return reward_to_go - values
 
 
 class Trainer:
@@ -460,10 +458,16 @@ class Trainer:
                 )
                 values_by_env = values.reshape((num_steps, self.config.num_envs, -1))
 
-                bootstrap_targets = jax.vmap(lambda r, v: r + self.config.gamma * v)(
-                    rewards,
-                    jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)])[1:],
-                ).reshape((-1, 1))
+                if self.config.use_bootstrap_targets:
+                    targets = jax.vmap(lambda r, v: r + self.config.gamma * v)(
+                        rewards,
+                        jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)])[
+                            1:
+                        ],
+                    ).reshape((-1, 1))
+                    targets = jax.lax.stop_gradient(targets)
+                else:
+                    targets = reward_to_go
 
                 advantage = _calculate_advantage(
                     use_gae=self.config.use_gae,
@@ -477,6 +481,8 @@ class Trainer:
                     gamma=self.config.gamma,
                     gae_lambda=self.config.gae_lambda,
                 )
+                advantage = jax.lax.stop_gradient(advantage)
+
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3
                 )
@@ -486,8 +492,7 @@ class Trainer:
                 )
                 val_aux, self.value_state = _update_value_function(
                     batch.observations,
-                    # reward_to_go,
-                    bootstrap_targets,
+                    targets,
                     self.value_state,
                     dropout_key_value,
                 )

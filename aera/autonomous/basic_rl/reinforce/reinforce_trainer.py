@@ -47,6 +47,7 @@ def _log_train_metrics(
     step: int,
     aux: dict,
     advantate: jnp.ndarray,
+    targets: jnp.ndarray,
     infos: list,
     train_episode_returns: list,
     train_episode_lengths: list,
@@ -55,6 +56,8 @@ def _log_train_metrics(
     metrics = {f"train/{k}": v for k, v in aux.items()}
     metrics["train/advantage_mean"] = jnp.mean(advantate)
     metrics["train/advantage_std"] = jnp.std(advantate)
+    metrics["train/targets_mean"] = jnp.mean(targets)
+    metrics["train/targets_std"] = jnp.std(targets)
     if infos:
         for key in infos[0].keys():
             try:
@@ -502,6 +505,7 @@ class Trainer:
                     i,
                     aux,
                     advantage,
+                    targets,
                     infos,
                     train_episode_returns,
                     train_episode_lengths,

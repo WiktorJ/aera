@@ -4,21 +4,22 @@ from typing import Optional
 
 @dataclass
 class Config:
-    seed: int = 42
-    env_name: str = "Hopper-v5"
+    seed: int = 44
+    env_name: str = "InvertedDoublePendulum-v5"
+    # env_name: str = "Hopper-v5"
     max_episodes: int = 1000
     env_render_width: int = 1920
     env_render_height: int = 1088
-    # env_render_mode: str = "rgb_array"
-    env_render_mode: Optional[str] = None
+    env_render_mode: str = "rgb_array"
+    # env_render_mode: Optional[str] = None
     env_max_steps: int = 1000
     ep_len: int = 512
-    max_steps: int = 2001
-    batch_size: int = 8192
-    num_envs: int = 16
+    max_steps: int = 1001
+    batch_size: int = 16384
+    num_envs: int = 32
     eval_step_interval: int = 50
     eval_num_episodes: int = 1
-    eval_render: bool = False
+    eval_render: bool = True
 
     gamma = 0.99
     policy_hidden_dims: tuple[int, ...] = (256, 256)
@@ -38,4 +39,5 @@ class Config:
     value_dropout_rate: float = 0.2
 
     use_gae = True
+    use_bootstrap_targets = False
     gae_lambda = 0.95

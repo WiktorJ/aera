@@ -462,11 +462,12 @@ class Trainer:
                 values_by_env = values.reshape((num_steps, self.config.num_envs, -1))
 
                 if self.config.use_bootstrap_targets:
-                    targets = jax.vmap(lambda r, v: r + self.config.gamma * v)(
+                    targets = jax.vmap(lambda r, v, m: r + self.config.gamma * v * m)(
                         rewards,
                         jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)])[
                             1:
                         ],
+                        masks,
                     ).reshape((-1, 1))
                     targets = jax.lax.stop_gradient(targets)
                 else:

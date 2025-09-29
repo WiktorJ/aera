@@ -314,9 +314,7 @@ def _calculate_gae(
         gea = delta + gamma * gae_lambda * gae * mask
         return gea, gea
 
-    deltas = jax.vmap(lambda r, v, nx, m: r + gamma * nx * m - v)(
-        rewards, values[:-1], values[1:], masks
-    )
+    deltas = rewards + gamma * values[1:] * masks - values[:-1]
 
     return jax.lax.scan(
         gae_fn, jnp.zeros(rewards.shape[1:]), (deltas, masks), reverse=True
@@ -468,19 +466,6 @@ class Trainer:
                     self.value_state.weights,
                     self.value_state.activation_fn,
                 )
-                values_by_env = values.reshape((num_steps, self.config.num_envs, -1))
-
-                if self.config.use_bootstrap_targets:
-                    targets = jax.vmap(lambda r, v, m: r + self.config.gamma * v * m)(
-                        rewards,
-                        jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)])[
-                            1:
-                        ],
-                        masks,
-                    ).reshape((-1, 1))
-                    targets = jax.lax.stop_gradient(targets)
-                else:
-                    targets = reward_to_go
 
                 advantage = _calculate_advantage(
                     use_gae=self.config.use_gae,
@@ -495,6 +480,7 @@ class Trainer:
                     gae_lambda=self.config.gae_lambda,
                 )
                 advantage = jax.lax.stop_gradient(advantage)
+                targets = jax.lax.stop_gradient(values) + advantage
 
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3

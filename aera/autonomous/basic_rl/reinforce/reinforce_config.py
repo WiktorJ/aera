@@ -24,20 +24,20 @@ class Config:
     gamma = 0.99
     policy_hidden_dims: tuple[int, ...] = (256, 256)
     policy_activation_fn: str = "relu"
-    policy_lr: float = 1e-4
-    policy_obs_dependent_std: bool = True
+    policy_lr: float = 3e-4
+    policy_obs_dependent_std: bool = False
     policy_tanh_squash_dist: bool = True
     policy_log_std_min: float = -5.0
     policy_log_std_max: float = 2.0
-    policy_dropout_rate: float = 0.2
+    policy_dropout_rate: float = 0.0
     policy_temperature: float = 1.0
     profile: bool = False
 
     value_hidden_dims: tuple[int, ...] = (256, 256)
     value_activation_fn: str = "relu"
-    value_lr: float = 1e-4
-    value_dropout_rate: float = 0.2
+    value_lr: float = 3e-4
+    value_dropout_rate: float = 0.0
 
     use_gae = True
-    use_bootstrap_targets = False
+    use_bootstrap_targets = True
     gae_lambda = 0.95

@@ -130,10 +130,8 @@ def _get_sampling_fns(
     if obs_dependent_std:
         log_std = jnp.dot(x, log_std_weights[0]) + log_std_weights[1]
     else:
-        log_std = jnp.zeros_like(mean)
+        log_std = log_std_weights[1]
     log_std = jnp.clip(log_std, log_std_min, log_std_max) + jnp.log(temperature)
-    if not tanh_squash_dist:
-        mean = jnp.tanh(mean)
     if not tanh_squash_dist:
         return (
             lambda seed: _sample_gaussian(seed, mean, log_std),

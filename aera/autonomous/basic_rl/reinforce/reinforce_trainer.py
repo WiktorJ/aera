@@ -1,6 +1,5 @@
 import argparse
 import dataclasses
-import enum
 import os
 import tempfile
 from typing import Callable
@@ -335,7 +334,7 @@ def _calculate_advantage(
 ) -> jnp.ndarray:
     if use_gae:
         values_by_env = values.reshape((num_steps, num_envs, -1))
-        return _calculate_gae(
+        advantage = _calculate_gae(
             rewards,
             masks,
             jnp.concatenate([values_by_env, next_value.reshape(1, -1, 1)]),
@@ -343,7 +342,8 @@ def _calculate_advantage(
             gae_lambda,
         ).reshape((-1, 1))
     else:
-        return reward_to_go - values
+        advantage = reward_to_go - values
+    return advantage
 
 
 class Trainer:
@@ -374,9 +374,6 @@ class Trainer:
 
         action_shape = self.env.single_action_space.shape
         observation_shape = self.env.single_observation_space.shape
-        optimizer = optax.chain(
-            optax.clip_by_global_norm(1.0), optax.adam(config.policy_lr)
-        )
         self.key, policy_seed, value_seed = jax.random.split(
             jax.random.PRNGKey(seed=config.seed), 3
         )
@@ -385,7 +382,9 @@ class Trainer:
             action_dim=action_shape[0],  # type: ignore
             obs_dim=observation_shape[0],  # type: ignore
             key=policy_seed,
-            optimizer=optimizer,
+            optimizer=optax.chain(
+                optax.clip_by_global_norm(1.0), optax.adam(config.policy_lr)
+            ),
             obs_dependent_std=config.policy_obs_dependent_std,
             tanh_squash_dist=config.policy_tanh_squash_dist,
             log_std_min=config.policy_log_std_min,
@@ -399,7 +398,9 @@ class Trainer:
             hidden_dims=config.value_hidden_dims,
             obs_dim=observation_shape[0],  # type: ignore
             key=value_seed,
-            optimizer=optax.adam(config.value_lr),
+            optimizer=optax.chain(
+                optax.clip_by_global_norm(1.0), optax.adam(config.value_lr)
+            ),
             dropout_rate=config.value_dropout_rate,
             activation_fn=_get_activation_fn(config.value_activation_fn),
         )
@@ -481,6 +482,7 @@ class Trainer:
                 )
                 advantage = jax.lax.stop_gradient(advantage)
                 targets = jax.lax.stop_gradient(values) + advantage
+                advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
 
                 self.key, dropout_key_policy, dropout_key_value = jax.random.split(
                     self.key, 3

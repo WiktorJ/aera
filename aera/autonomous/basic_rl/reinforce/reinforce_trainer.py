@@ -5,6 +5,7 @@ import tempfile
 from typing import Callable
 
 import gymnasium as gym
+import gymnasium_robotics
 import imageio
 import jax
 import jax.numpy as jnp

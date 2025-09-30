@@ -374,7 +374,10 @@ class Trainer:
         self.eval_env.reset()
 
         action_shape = self.env.single_action_space.shape
-        observation_shape = self.env.single_observation_space.shape
+        if isinstance(self.env.single_observation_space, gym.spaces.Dict):
+            observation_shape = self.env.single_observation_space["observation"].shape
+        else:
+            observation_shape = self.env.single_observation_space.shape
         self.key, policy_seed, value_seed = jax.random.split(
             jax.random.PRNGKey(seed=config.seed), 3
         )

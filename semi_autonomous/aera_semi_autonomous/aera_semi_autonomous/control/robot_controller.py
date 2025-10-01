@@ -45,11 +45,11 @@ class RobotController:
             callback_group=gripper_callback_group,
         )
 
-    def move_to(self, pose: Pose):
+    def move_to(self, pose: Pose) -> bool:
         """Move the robot arm to the specified pose."""
         if self.moveit2.joint_state is None:
             self.logger.error("Cannot move, arm joint state is not available.")
-            return
+            return False
 
         self.logger.info(
             f"Joint states before move: {self.moveit2.joint_state.position}"
@@ -65,32 +65,38 @@ class RobotController:
         if trajectory:
             self.moveit2.execute(trajectory, feedback_callback=self.feedback_callback)
             self.moveit2.wait_until_executed()
+            return True
         else:
             self.logger.error("Failed to plan trajectory for move_to.")
+            return False
 
-    def release_gripper(self):
+    def release_gripper(self) -> bool:
         """Open the gripper to release objects."""
         if self.debug_mode:
-            return
+            return True
         self.gripper_interface.open()
         self.gripper_interface.wait_until_executed()
+        return True
 
-    def grasp_at(self, pose: Pose, gripper_pos: float):
+    def grasp_at(self, pose: Pose, gripper_pos: float) -> bool:
         """Perform a grasp at the specified pose with the given gripper position."""
         self.logger.info(f"Grasp at: {pose} with opening: {gripper_pos}")
         if self.debug_mode:
-            return
+            return True
 
-        self.release_gripper()
+        if not self.release_gripper():
+            return False
 
         # move 5cm above the item first
         pose.position.z += 0.05
-        self.move_to(pose)
+        if not self.move_to(pose):
+            return False
         time.sleep(0.05)
 
         # grasp the item
         pose.position.z -= 0.05
-        self.move_to(pose)
+        if not self.move_to(pose):
+            return False
         time.sleep(0.05)
 
         self.gripper_interface.move_to_position(gripper_pos)
@@ -98,21 +104,24 @@ class RobotController:
 
         # lift the item
         pose.position.z += 0.12
-        self.move_to(pose)
+        if not self.move_to(pose):
+            return False
         time.sleep(0.05)
         self.logger.info(
             f"done grasping object. Joint states: {self.moveit2.joint_state.position}"
         )
+        return True
 
-    def release_at(self, pose: Pose):
+    def release_at(self, pose: Pose) -> bool:
         """Move to the specified pose and release the gripper."""
         # NOTE: straight down is wxyz 0, 0, 1, 0
         # good pose is 0, -0.3, 0.35
         self.logger.info(f"Releasing at: {pose}")
         if self.debug_mode:
-            return
-        self.move_to(pose)
-        self.release_gripper()
+            return True
+        if not self.move_to(pose):
+            return False
+        return self.release_gripper()
 
     def compute_end_effector_pose(self, joint_positions=None):
         """Compute end-effector pose from joint positions using MoveIt2 forward kinematics."""
@@ -164,13 +173,13 @@ class RobotController:
             self.logger.error(f"Failed to get end-effector pose via TF: {e}")
             return None
 
-    def go_home(self):
+    def go_home(self) -> bool:
         """Move the robot arm to the home position."""
         if self.debug_mode:
-            return
-        if self.moveit2.joint_state is None:
+            return True
+        if self AeraSemiAutonomousNode.moveit2.joint_state is None:
             self.logger.error("Cannot go home, arm joint state is not available.")
-            return
+            return False
 
         joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         trajectory = self.moveit2.plan(
@@ -182,5 +191,7 @@ class RobotController:
         if trajectory:
             self.moveit2.execute(trajectory, feedback_callback=self.feedback_callback)
             self.moveit2.wait_until_executed()
+            return True
         else:
             self.logger.error("Failed to plan trajectory for go_home.")
+            return False

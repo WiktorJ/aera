@@ -7,7 +7,7 @@ import supervision as sv
 from sensor_msgs.msg import Image
 
 from aera_semi_autonomous.vision.point_cloud_processor import PointCloudProcessor
-from aera_semi_autonomous.control.robot_controller import RobotController
+from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera_semi_autonomous.utils.debug_utils import DebugUtils
 
 
@@ -15,7 +15,7 @@ class ManipulationHandler:
     def __init__(
         self,
         point_cloud_processor: PointCloudProcessor,
-        robot_controller: RobotController,
+        robot: RobotInterface,
         debug_utils: DebugUtils,
         camera_intrinsics: o3d.camera.PinholeCameraIntrinsic,
         cam_to_base_affine: np.ndarray,
@@ -26,7 +26,7 @@ class ManipulationHandler:
         n_frames_processed: int = 0,
     ) -> None:
         self.point_cloud_processor = point_cloud_processor
-        self.robot_controller = robot_controller
+        self.robot = robot
         self.debug_utils = debug_utils
         self.camera_intrinsics = camera_intrinsics
         self.cam_to_base_affine = cam_to_base_affine
@@ -35,7 +35,7 @@ class ManipulationHandler:
         self.default_offset_z = offset_z
         self.gripper_squeeze_factor = gripper_squeeze_factor
         self.n_frames_processed = n_frames_processed
-        self.logger = robot_controller.logger
+        self.logger = robot.get_logger()
 
     def update_offsets(
         self, offset_x: float = None, offset_y: float = None, offset_z: float = None
@@ -57,7 +57,7 @@ class ManipulationHandler:
         detections: sv.Detections,
         depth_image: np.ndarray,
         last_rgb_msg: Optional[Image] = None,
-    ) -> None:
+    ) -> bool:
         """Perform a top-down grasp on the object."""
         if (
             detections is None
@@ -67,7 +67,7 @@ class ManipulationHandler:
             self.logger.error(
                 f"Invalid detections or object_index for pick_object. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}"
             )
-            return
+            return False
 
         self.debug_utils.debug_visualize_selected_mask(
             detections, object_index, "Pick", last_rgb_msg
@@ -95,7 +95,7 @@ class ManipulationHandler:
             self.logger.error(
                 f"Not enough points ({len(points_camera_frame)}) near grasp_z for minAreaRect. Mask might be too small or object too thin/far."
             )
-            return
+            return False
 
         grasp_pose_camera, gripper_angle_camera, gripper_opening = (
             self.point_cloud_processor.get_pose_and_angle_camera_base(
@@ -145,7 +145,7 @@ class ManipulationHandler:
             points_base_frame, "Pick_Base", self.n_frames_processed
         )
 
-        self.robot_controller.grasp_at(grasp_pose, gripper_pos)
+        return self.robot.grasp_at(grasp_pose, gripper_pos)
 
     def release_above(
         self,
@@ -153,7 +153,7 @@ class ManipulationHandler:
         detections: sv.Detections,
         depth_image: np.ndarray,
         last_rgb_msg: Optional[Image] = None,
-    ) -> None:
+    ) -> bool:
         """Move the robot arm above the object and release the gripper."""
         if (
             detections is None
@@ -163,7 +163,7 @@ class ManipulationHandler:
             self.logger.error(
                 f"Invalid detections or object_index for release_above. Index: {object_index}, Num Masks: {len(detections.mask) if detections.mask is not None else 'None'}"
             )
-            return
+            return False
 
         self.debug_utils.debug_visualize_selected_mask(
             detections, object_index, "Release", last_rgb_msg
@@ -189,7 +189,7 @@ class ManipulationHandler:
 
         grasp_pose_camera = self.point_cloud_processor.get_drop_pose_from_points(points)
         if grasp_pose_camera is None:
-            return
+            return False
 
         drop_pose_base = self.cam_to_base_affine @ grasp_pose_camera
 
@@ -213,4 +213,4 @@ class ManipulationHandler:
             points_base_frame[:, :3], "Release_Base", self.n_frames_processed
         )
 
-        self.robot_controller.release_at(drop_pose)
+        return self.robot.release_at(drop_pose)

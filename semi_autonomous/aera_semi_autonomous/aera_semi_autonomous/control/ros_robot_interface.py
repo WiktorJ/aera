@@ -131,7 +131,7 @@ class RosRobotInterface(RobotInterface):
     def get_latest_depth_image(self) -> Optional[np.ndarray]:
         if self._last_depth_msg is None:
             return None
-        return selfcv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+        return self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
 
     def get_camera_intrinsics(self) -> Optional[o3d.camera.PinholeCameraIntrinsic]:
         return self.camera_intrinsics

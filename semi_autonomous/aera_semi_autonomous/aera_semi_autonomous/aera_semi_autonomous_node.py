@@ -115,7 +115,7 @@ class AeraSemiAutonomous(Node):
 
         self.robot_interface = RosRobotInterface(
             self,
-            selfLAGIAGE.arm_joint_names,
+            self.arm_joint_names,
             self.debug_mode,
             self._moveit_feedback_callback,
             trajectory_collector=self.trajectory_collector,
@@ -179,7 +179,7 @@ class AeraSemiAutonomous(Node):
             camera_intrinsics,
             cam_to_base_affine,
             self.offset_x,
-            selfLAGIAGE.offset_y,
+            self.offset_y,
             self.offset_z,
             self.gripper_squeeze_factor,
             self.n_frames_processed,

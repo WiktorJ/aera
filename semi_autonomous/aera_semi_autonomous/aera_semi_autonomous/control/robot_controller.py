@@ -177,7 +177,7 @@ class RobotController:
         """Move the robot arm to the home position."""
         if self.debug_mode:
             return True
-        if self AeraSemiAutonomousNode.moveit2.joint_state is None:
+        if self.moveit2.joint_state is None:
             self.logger.error("Cannot go home, arm joint state is not available.")
             return False
 

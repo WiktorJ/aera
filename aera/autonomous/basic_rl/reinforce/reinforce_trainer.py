@@ -535,7 +535,7 @@ def main():
     config = reinforce_config.Config()
     if args.profile:
         config.profile = True
-        config.max_steps = 1000
+        config.max_steps = 50
         config.eval_step_interval = 0
 
     trainer = Trainer(config)

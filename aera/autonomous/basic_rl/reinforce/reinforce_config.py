@@ -5,21 +5,22 @@ from typing import Optional
 @dataclass
 class Config:
     seed: int = 42
-    env_name: str = "InvertedDoublePendulum-v5"
+    env_name: str = "FetchReach-v4"
+    # env_name: str = "InvertedDoublePendulum-v5"
     # env_name: str = "Hopper-v5"
     max_episodes: int = 1000
     env_render_width: int = 1920
     env_render_height: int = 1088
-    # env_render_mode: Optional[str] = "rgb_array"
-    env_render_mode: Optional[str] = None
-    env_max_steps: int = 1000
+    env_render_mode: Optional[str] = "rgb_array"
+    # env_render_mode: Optional[str] = None
+    env_max_steps: int = 5000
     ep_len: int = 1024
     max_steps: int = 4001
     batch_size: int = 16384
     num_envs: int = 16
     eval_step_interval: int = 50
     eval_num_episodes: int = 1
-    eval_render: bool = False
+    eval_render: bool = True
 
     gamma = 0.99
     policy_hidden_dims: tuple[int, ...] = (256, 256)

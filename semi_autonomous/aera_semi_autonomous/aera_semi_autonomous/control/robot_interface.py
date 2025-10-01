@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import logging
 from typing import Optional
 
 import numpy as np
@@ -15,7 +16,7 @@ class RobotInterface(ABC):
     """
 
     @abstractmethod
-    def get_logger(self):
+    def get_logger(self) -> logging.Logger:
         """Returns the logger object."""
         pass
 

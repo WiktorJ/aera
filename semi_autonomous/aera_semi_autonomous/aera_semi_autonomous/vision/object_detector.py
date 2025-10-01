@@ -80,8 +80,10 @@ class ObjectDetector:
         )
 
         detections.xyxy = detections.xyxy[nms_idx]
-        detections.confidence = detections.confidence[nms_idx]
-        detections.class_id = detections.class_id[nms_idx]
+        if detections.confidence is not None:
+            detections.confidence = detections.confidence[nms_idx]
+        if detections.class_id is not None:
+            detections.class_id = detections.class_id[nms_idx]
 
         detections.mask = segment(
             sam_predictor=self.sam_predictor,

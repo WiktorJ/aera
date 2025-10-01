@@ -48,7 +48,7 @@ class RosRobotInterface(RobotInterface):
 
         # Initialize TF components
         self.tf_buffer = tf2_ros.Buffer()
-        selff_listener = tf2_ros.TransformListener(self.tf_buffer, self._node)
+        self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self._node)
 
         # Initialize subscriptions
         self.camera_info_sub = self._node.create_subscription(

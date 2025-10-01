@@ -111,7 +111,7 @@ class CommandProcessor:
         """Handle a single tool call and return updated object_in_gripper status."""
         if tool_call == _PICK_OBJECT:
             detections = object_detector.detect_objects(rgb_image, [object_to_detect])
-            if len(detections.class_id) == 0:
+            if detections.class_id is None or len(detections.class_id) == 0:
                 self.logger.info(
                     f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )
@@ -127,7 +127,7 @@ class CommandProcessor:
 
         elif tool_call == _MOVE_ABOVE_OBJECT_AND_RELEASE:
             detections = object_detector.detect_objects(rgb_image, [object_to_detect])
-            if len(detections.class_id) == 0:
+            if detections.class_id is None or len(detections.class_id) == 0:
                 self.logger.info(
                     f"No {object_to_detect} detected. Got the following detection: {detections.class_id}"
                 )

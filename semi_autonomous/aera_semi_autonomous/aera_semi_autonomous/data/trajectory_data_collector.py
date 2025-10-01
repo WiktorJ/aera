@@ -174,7 +174,7 @@ class TrajectoryDataCollector:
 
         for joint_name in self.arm_joint_names:
             if joint_name in joint_state.name:
-                idx = joint_state.name.index(joint_name)
+                idx = list(joint_state.name).index(joint_name)
                 arm_positions.append(joint_state.position[idx])
                 arm_velocities.append(
                     joint_state.velocity[idx] if joint_state.velocity else 0.0
@@ -186,7 +186,7 @@ class TrajectoryDataCollector:
 
         for joint_name in self.gripper_joint_names:
             if joint_name in joint_state.name:
-                idx = joint_state.name.index(joint_name)
+                idx = list(joint_state.name).index(joint_name)
                 gripper_positions.append(joint_state.position[idx])
                 gripper_velocities.append(
                     joint_state.velocity[idx] if joint_state.velocity else 0.0
@@ -307,7 +307,7 @@ class TrajectoryDataCollector:
         arm_positions = []
         for joint_name in self.arm_joint_names:
             if joint_name in joint_state.name:
-                idx = joint_state.name.index(joint_name)
+                idx = list(joint_state.name).index(joint_name)
                 arm_positions.append(joint_state.position[idx])
 
         # Only compute pose if we have complete arm joint data

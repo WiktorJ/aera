@@ -3,8 +3,6 @@ from geometry_msgs.msg import Pose, PoseStamped
 from pymoveit2 import GripperInterface, MoveIt2
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
-from rclpy.time import Time
-from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import JointState
 
 from aera_semi_autonomous.config.constants import BASE_LINK_NAME

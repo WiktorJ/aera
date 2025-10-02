@@ -36,14 +36,14 @@ class ObjectDetector:
     def __init__(self, logger, debug_utils):
         self.logger = logger
         self.debug_utils = debug_utils
-        
+
         # Initialize GroundingDINO model
         self.grounding_dino_model = Model(
             model_config_path=GROUNDING_DINO_CONFIG_PATH,
             model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH,
             device=DEVICE,
         )
-        
+
         # Initialize SAM model
         self.sam = sam_model_registry[SAM_ENCODER_VERSION](
             checkpoint=SAM_CHECKPOINT_PATH
@@ -53,17 +53,17 @@ class ObjectDetector:
 
     def detect_objects(
         self, image: np.ndarray, object_classes: List[str]
-    ) -> sv.Detections:
+    ) -> sv.Detections:  # type: ignore
         """Detect objects in the image using GroundingDINO and segment them with SAM."""
         self.logger.info(f"Detecting objects of classes: {object_classes}")
 
-        detections: sv.Detections = self.grounding_dino_model.predict_with_classes(
+        detections: sv.Detections = self.grounding_dino_model.predict_with_classes(  # type: ignore
             image=image,
             classes=object_classes,
             box_threshold=BOX_THRESHOLD,
             text_threshold=TEXT_THRESHOLD,
         )
-        
+
         if len(detections.xyxy) == 0:  # Check after NMS
             self.logger.warn("No detections.")
             detections.mask = np.array([])
@@ -93,11 +93,11 @@ class ObjectDetector:
 
         self.logger.info(f"Detected {detections}.")
         self.logger.info(f"detection confidence: {detections.confidence}")
-        
+
         # Debug visualization
         if self.debug_utils.debug_visualizations or self.debug_utils.save_debug_images:
             self.debug_utils.debug_visualize_detections(
                 image, detections, object_classes, frame_count=0
             )
-        
+
         return detections

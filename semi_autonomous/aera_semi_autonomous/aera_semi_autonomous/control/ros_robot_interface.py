@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 import open3d as o3d
@@ -75,7 +75,7 @@ class RosRobotInterface(RobotInterface):
             callback_group=self.depth_image_callback_group,
         )
 
-    def get_logger(self):
+    def get_logger(self) -> Any:
         return self._logger
 
     def _camera_info_callback(self, msg: CameraInfo):
@@ -165,9 +165,9 @@ class RosRobotInterface(RobotInterface):
             affine[:3, 3] = cam_to_base_pos
             return affine
         except (
-            tf2_ros.LookupException,
-            tf2_ros.ConnectivityException,
-            tf2_ros.ExtrapolationException,
+            tf2_ros.LookupException,  # type: ignore
+            tf2_ros.ConnectivityException,  # type: ignore
+            tf2_ros.ExtrapolationException,  # type: ignore
         ) as e:
             self._logger.error(f"Could not get cam_to_base_transform: {e}")
             return None

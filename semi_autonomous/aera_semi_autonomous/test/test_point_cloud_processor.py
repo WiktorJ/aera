@@ -38,7 +38,7 @@ class TestPointCloudProcessor(unittest.TestCase):
         ])
 
         result = self.processor.get_pose_and_angle_camera_base(points)
-        center, dims, angle, third_coord = result  # Unpack all 4 values
+        center, dims, angle = result  # Unpack 3 values
 
         self.assertTrue(np.allclose(center[:3], [0.5, 1.0, 0.0]))
         # Dimensions could be (2, 1) or (1, 2)

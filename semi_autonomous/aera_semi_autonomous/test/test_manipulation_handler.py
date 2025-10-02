@@ -2,8 +2,8 @@ import unittest
 from unittest.mock import Mock
 import numpy as np
 
-# NOTE: This test assumes 'aera_semi_autonomous.manipulation_handler' can be imported.
-from aera_semi_autonomous.manipulation_handler import ManipulationHandler
+# NOTE: This test assumes 'aera_semi_autonomous.manipulation.manipulation_handler' can be imported.
+from aera_semi_autonomous.manipulation.manipulation_handler import ManipulationHandler
 
 
 class TestManipulationHandler(unittest.TestCase):

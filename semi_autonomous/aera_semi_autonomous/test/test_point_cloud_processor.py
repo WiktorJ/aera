@@ -2,8 +2,8 @@ import unittest
 import numpy as np
 import open3d as o3d
 
-# NOTE: This test assumes 'aera_semi_autonomous.point_cloud_processor' can be imported.
-from aera_semi_autonomous.point_cloud_processor import PointCloudProcessor
+# NOTE: This test assumes 'aera_semi_autonomous.vision.point_cloud_processor' can be imported.
+from aera_semi_autonomous.vision.point_cloud_processor import PointCloudProcessor
 
 
 class TestPointCloudProcessor(unittest.TestCase):

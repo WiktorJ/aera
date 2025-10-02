@@ -2,9 +2,9 @@ import unittest
 import json
 from unittest.mock import Mock
 
-# NOTE: This test assumes 'aera_semi_autonomous.command_processor' can be imported
+# NOTE: This test assumes 'aera_semi_autonomous.commands.command_processor' can be imported
 # and that the CommandProcessor class is initialized with its dependencies.
-from aera_semi_autonomous.command_processor import CommandProcessor
+from aera_semi_autonomous.commands.command_processor import CommandProcessor
 
 
 class TestCommandProcessor(unittest.TestCase):

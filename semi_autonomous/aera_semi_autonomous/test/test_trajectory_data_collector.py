@@ -4,8 +4,8 @@ import time
 import numpy as np
 from collections import OrderedDict
 
-# NOTE: This test assumes 'aera_semi_autonomous.trajectory_data_collector' can be imported.
-from aera_semi_autonomous.trajectory_data_collector import TrajectoryDataCollector
+# NOTE: This test assumes 'aera_semi_autonomous.data.trajectory_data_collector' can be imported.
+from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 
 
 class TestTrajectoryDataCollector(unittest.TestCase):

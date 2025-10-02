@@ -41,7 +41,7 @@ class ObjectDetector:
         self.grounding_dino_model = Model(
             model_config_path=GROUNDING_DINO_CONFIG_PATH,
             model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH,
-            device=DEVICE,
+            device=str(DEVICE),
         )
 
         # Initialize SAM model

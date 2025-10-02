@@ -38,7 +38,10 @@ class ManipulationHandler:
         self.logger = robot.get_logger()
 
     def update_offsets(
-        self, offset_x: float = None, offset_y: float = None, offset_z: float = None
+        self,
+        offset_x: Optional[float] = None,
+        offset_y: Optional[float] = None,
+        offset_z: Optional[float] = None,
     ):
         """Update the current offsets, using defaults if not provided."""
         self.current_offset_x = (
@@ -54,7 +57,7 @@ class ManipulationHandler:
     def pick_object(
         self,
         object_index: int,
-        detections: sv.Detections,
+        detections: sv.Detections,  # type: ignore
         depth_image: np.ndarray,
         last_rgb_msg: Optional[Image] = None,
     ) -> bool:
@@ -150,7 +153,7 @@ class ManipulationHandler:
     def release_above(
         self,
         object_index: int,
-        detections: sv.Detections,
+        detections: sv.Detections,  # type: ignore
         depth_image: np.ndarray,
         last_rgb_msg: Optional[Image] = None,
     ) -> bool:

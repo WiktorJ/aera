@@ -38,7 +38,5 @@ AVAILABLE_ACTIONS = (
     _RELEASE_GRIPPER,
 )
 
-# For only single object supported.
-_OBJECT_DETECTION_INDEX = 0
 _TF_PREFIX = "camera"
 BASE_LINK_NAME = f"{_TF_PREFIX}base_link"

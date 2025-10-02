@@ -37,8 +37,11 @@ class TestManipulationHandler(unittest.TestCase):
         
         # Mock the point cloud processor to return valid pose
         self.mock_pc_processor.create_point_cloud_from_depth.return_value = np.array([[0, 0, 1], [0.1, 0, 1], [0, 0.1, 1]])
-        self.mock_pc_processor.get_pose_and_angle_camera_base.return_value = ([0, 0, 0, 1], [0.1, 0.1], 0)
+        self.mock_pc_processor.get_pose_and_angle_camera_base.return_value = (np.array([0, 0, 0, 1]), [0.1, 0.1], 0)
         self.mock_robot.grasp_at.return_value = True
+        
+        # Mock the cam_to_base_affine as a proper numpy array
+        self.handler.cam_to_base_affine = np.eye(4)
         
         result = self.handler.pick_object(0, mock_detections, mock_depth_image)
         
@@ -69,6 +72,7 @@ class TestManipulationHandler(unittest.TestCase):
         
         # Mock the cam_to_base_affine as a proper numpy array
         self.handler.cam_to_base_affine = np.eye(4)
+        self.mock_cam_to_base_affine = np.eye(4)
         
         # Mock the current_offset attributes that are used in the method
         self.handler.current_offset_x = 0.0

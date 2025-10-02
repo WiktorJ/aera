@@ -44,6 +44,11 @@ class TestManipulationHandler(unittest.TestCase):
         # Mock the cam_to_base_affine as a proper numpy array
         self.handler.cam_to_base_affine = np.eye(4)
         
+        # Mock the current_offset attributes that are used in the method
+        self.handler.current_offset_x = 0.0
+        self.handler.current_offset_y = 0.0
+        self.handler.current_offset_z = 0.05
+        
         result = self.handler.pick_object(0, mock_detections, mock_depth_image)
         
         # Just verify the method can be called

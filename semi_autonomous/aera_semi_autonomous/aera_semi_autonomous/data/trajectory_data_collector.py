@@ -24,7 +24,6 @@ class TrajectoryDataCollector:
         logger,
         arm_joint_names: List[str],
         gripper_joint_names: List[str],
-        robot_controller=None,
         save_directory: str = "rl_training_data",
         sync_tolerance: float = 0.05,
     ):
@@ -35,14 +34,12 @@ class TrajectoryDataCollector:
             logger: ROS logger instance
             arm_joint_names: List of arm joint names to track
             gripper_joint_names: List of gripper joint names to track
-            robot_controller: RobotController instance for FK computation
             save_directory: Directory to save collected data
             sync_tolerance: Time tolerance in seconds for data synchronization
         """
         self.logger = logger
         self.arm_joint_names = arm_joint_names
         self.gripper_joint_names = gripper_joint_names
-        self.robot_controller = robot_controller
         self.save_directory = save_directory
         self.cv_bridge = CvBridge()
 
@@ -293,59 +290,41 @@ class TrajectoryDataCollector:
         except Exception as e:
             self.logger.error(f"Failed to record depth image data: {e}")
 
-    def record_pose(self, joint_state: JointState) -> None:
+    def record_pose(self, end_effector_pose, ros_timestamp: float) -> None:
         """
-        Record end effector pose calculated from joint and gripper states.
+        Record end effector pose.
 
         Args:
-            joint_state: Current joint state message containing arm and gripper positions
+            end_effector_pose: The computed end effector pose.
+            ros_timestamp: The ROS timestamp for the pose.
         """
-        if not self.is_collecting or not self.robot_controller:
+        if not self.is_collecting:
             return
 
-        # Extract arm joint positions for FK computation
-        arm_positions = []
-        for joint_name in self.arm_joint_names:
-            if joint_name in joint_state.name:
-                idx = list(joint_state.name).index(joint_name)
-                arm_positions.append(joint_state.position[idx])
-
-        # Only compute pose if we have complete arm joint data
-        if len(arm_positions) == len(self.arm_joint_names):
+        if end_effector_pose is not None:
             try:
-                # Compute end effector pose using forward kinematics
-                end_effector_pose = self.robot_controller.compute_end_effector_pose(
-                    arm_positions
-                )
+                pose_dict = {
+                    "timestamp": time.time(),
+                    "ros_timestamp": ros_timestamp,
+                    "pose_type": "end_effector",
+                    "position": {
+                        "x": end_effector_pose.position.x,
+                        "y": end_effector_pose.position.y,
+                        "z": end_effector_pose.position.z,
+                    },
+                    "orientation": {
+                        "x": end_effector_pose.orientation.x,
+                        "y": end_effector_pose.orientation.y,
+                        "z": end_effector_pose.orientation.z,
+                        "w": end_effector_pose.orientation.w,
+                    },
+                }
 
-                if end_effector_pose is not None:
-                    pose_dict = {
-                        "timestamp": time.time(),
-                        "ros_timestamp": joint_state.header.stamp.sec
-                        + joint_state.header.stamp.nanosec * 1e-9,
-                        "pose_type": "end_effector",
-                        "position": {
-                            "x": end_effector_pose.position.x,
-                            "y": end_effector_pose.position.y,
-                            "z": end_effector_pose.position.z,
-                        },
-                        "orientation": {
-                            "x": end_effector_pose.orientation.x,
-                            "y": end_effector_pose.orientation.y,
-                            "z": end_effector_pose.orientation.z,
-                            "w": end_effector_pose.orientation.w,
-                        },
-                    }
-
-                    # Store in synchronized buffer using ROS timestamp as key
-                    ros_timestamp = (
-                        joint_state.header.stamp.sec
-                        + joint_state.header.stamp.nanosec * 1e-9
-                    )
-                    self.pose_buffer[ros_timestamp] = pose_dict
+                # Store in synchronized buffer using ROS timestamp as key
+                self.pose_buffer[ros_timestamp] = pose_dict
 
             except Exception as e:
-                self.logger.error(f"Failed to compute end effector pose: {e}")
+                self.logger.error(f"Failed to record end effector pose: {e}")
 
     def record_current_prompt(self, prompt: str) -> None:
         """

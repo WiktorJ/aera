@@ -100,15 +100,10 @@ class AeraSemiAutonomous(Node):
 
         trajectory_collector = None
         if self.collect_trajectory_data:
-            # robot_controller is needed for trajectory collector's FK
-            # This is a bit awkward, but we can get it from the interface
-            # For now, we create it, but it will be replaced.
-            # Let's pass the robot_controller from the interface.
             trajectory_collector = TrajectoryDataCollector(
                 self.logger,
                 self.arm_joint_names,
                 self.gripper_joint_names,
-                None,  # Will be set later
                 sync_tolerance=self.sync_tolerance,
             )
         self.trajectory_collector = trajectory_collector
@@ -121,10 +116,6 @@ class AeraSemiAutonomous(Node):
             trajectory_collector=self.trajectory_collector,
         )
 
-        if self.collect_trajectory_data:
-            self.trajectory_collector.robot_controller = (
-                self.robot_interface.robot_controller
-            )
 
         self.prompt_sub = self.create_subscription(
             String,
@@ -145,7 +136,29 @@ class AeraSemiAutonomous(Node):
     def _joint_state_callback_for_rl(self, msg: JointState):
         """Callback for joint state updates for RL data collection."""
         self.trajectory_collector.record_joint_state(msg)
-        self.trajectory_collector.record_pose(msg)
+
+        # Extract arm joint positions for FK computation
+        arm_positions = []
+        for joint_name in self.arm_joint_names:
+            if joint_name in msg.name:
+                idx = list(msg.name).index(joint_name)
+                arm_positions.append(msg.position[idx])
+
+        # Only compute pose if we have complete arm joint data
+        if len(arm_positions) == len(self.arm_joint_names):
+            try:
+                # Compute end effector pose using forward kinematics
+                end_effector_pose = (
+                    self.robot_interface.robot_controller.compute_end_effector_pose(
+                        arm_positions
+                    )
+                )
+                ros_timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+                self.trajectory_collector.record_pose(end_effector_pose, ros_timestamp)
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to compute end effector pose for data collection: {e}"
+                )
 
     def _moveit_feedback_callback(self, feedback_msg):
         """Callback for MoveIt2 execution feedback. Logs infrequently to avoid spam."""

@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, mock_open, MagicMock, Mock
 import time
 import numpy as np
 from collections import OrderedDict

@@ -32,33 +32,45 @@ class TestManipulationHandler(unittest.TestCase):
     def test_pick_object_success(self):
         """Test successful picking of an object."""
         mock_detections = Mock()
+        mock_detections.mask = [np.ones((10, 10), dtype=bool)]  # Mock mask as list
         mock_depth_image = np.zeros((10, 10))
         
-        # Mock the method to return True for success
+        # Mock the point cloud processor to return valid pose
+        self.mock_pc_processor.create_point_cloud_from_depth.return_value = np.array([[0, 0, 1]])
+        self.mock_pc_processor.get_pose_and_angle_camera_base.return_value = ([0, 0, 0], [0.1, 0.1], 0)
+        self.mock_robot.grasp_at.return_value = True
+        
         result = self.handler.pick_object(0, mock_detections, mock_depth_image)
         
-        # Just verify the method can be called
-        self.assertIsNotNone(result)
+        # Verify the method returns True for success
+        self.assertTrue(result)
 
     def test_pick_object_no_points_found(self):
         """Test picking an object when no points are found for it."""
         mock_detections = Mock()
+        mock_detections.mask = []  # Empty mask list
         mock_depth_image = np.zeros((10, 10))
         
         result = self.handler.pick_object(0, mock_detections, mock_depth_image)
         
-        # Just verify the method can be called
-        self.assertIsNotNone(result)
+        # Should return False when no detections
+        self.assertFalse(result)
 
     def test_release_above_success(self):
         """Test successful release above a target object."""
         mock_detections = Mock()
+        mock_detections.mask = [np.ones((10, 10), dtype=bool)]  # Mock mask as list
         mock_depth_image = np.zeros((10, 10))
+        
+        # Mock the point cloud processor to return valid pose
+        self.mock_pc_processor.create_point_cloud_from_depth.return_value = np.array([[0, 0, 1]])
+        self.mock_pc_processor.get_pose_and_angle_camera_base.return_value = ([0, 0, 0], [0.1, 0.1], 0)
+        self.mock_robot.release_at.return_value = True
         
         result = self.handler.release_above(0, mock_detections, mock_depth_image)
         
-        # Just verify the method can be called
-        self.assertIsNotNone(result)
+        # Verify the method returns True for success
+        self.assertTrue(result)
 
     def test_update_offsets(self):
         """Test updating the pick and release offsets."""
@@ -66,8 +78,14 @@ class TestManipulationHandler(unittest.TestCase):
         new_offset_y = 0.2
         new_offset_z = 0.3
 
+        # Store original values
+        original_x = self.handler.offset_x
+        original_y = self.handler.offset_y
+        original_z = self.handler.offset_z
+
         self.handler.update_offsets(offset_x=new_offset_x, offset_y=new_offset_y, offset_z=new_offset_z)
 
+        # Verify offsets were updated
         self.assertEqual(self.handler.offset_x, new_offset_x)
         self.assertEqual(self.handler.offset_y, new_offset_y)
         self.assertEqual(self.handler.offset_z, new_offset_z)

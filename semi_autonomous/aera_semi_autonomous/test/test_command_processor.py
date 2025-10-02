@@ -21,27 +21,30 @@ class TestCommandProcessor(unittest.TestCase):
         prompt = '{"tool_calls": [{"name": "pick_object", "args": {"object_name": "red_cube"}}]}'
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNotNone(result)
-        tool_name, args = result
-        self.assertEqual(tool_name, "pick_object")
-        self.assertEqual(args, {"object_name": "red_cube"})
+        tool_calls, args = result
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0][0], "pick_object")
+        self.assertEqual(tool_calls[0][1], "red_cube")
 
     def test_parse_prompt_message_release_above(self):
         """Test parsing a valid 'move_above_object_and_release' prompt."""
         prompt = '{"tool_calls": [{"name": "move_above_object_and_release", "args": {"object_name": "blue_bowl"}}]}'
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNotNone(result)
-        tool_name, args = result
-        self.assertEqual(tool_name, "move_above_object_and_release")
-        self.assertEqual(args, {"object_name": "blue_bowl"})
+        tool_calls, args = result
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0][0], "move_above_object_and_release")
+        self.assertEqual(tool_calls[0][1], "blue_bowl")
 
     def test_parse_prompt_message_release_gripper(self):
         """Test parsing a valid 'release_gripper' prompt."""
         prompt = '{"tool_calls": [{"name": "release_gripper", "args": {}}]}'
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNotNone(result)
-        tool_name, args = result
-        self.assertEqual(tool_name, "release_gripper")
-        self.assertEqual(args, {})
+        tool_calls, args = result
+        self.assertEqual(len(tool_calls), 1)
+        self.assertEqual(tool_calls[0][0], "release_gripper")
+        self.assertEqual(tool_calls[0][1], "")
 
     def test_parse_prompt_message_malformed(self):
         """Test parsing a malformed (non-JSON) prompt string."""
@@ -64,6 +67,12 @@ class TestCommandProcessor(unittest.TestCase):
         mock_rgb_image = Mock()
         mock_depth_image = Mock()
         
+        # Mock the detections object properly
+        mock_detections = Mock()
+        mock_detections.class_id = [0]  # Mock as list with one detection
+        mock_object_detector.detect_objects.return_value = mock_detections
+        mock_manipulation_handler.pick_object.return_value = True
+        
         result = self.processor.handle_tool_call(
             "pick_object",
             "red_cube", 
@@ -75,8 +84,8 @@ class TestCommandProcessor(unittest.TestCase):
             False
         )
 
-        # Just verify the method can be called without error
-        self.assertIsNotNone(result)
+        # Verify the method returns True for successful pick
+        self.assertTrue(result)
 
     def test_handle_tool_call_move_above_object_and_release(self):
         """Test handling a 'move_above_object_and_release' tool call."""
@@ -87,6 +96,12 @@ class TestCommandProcessor(unittest.TestCase):
         mock_rgb_image = Mock()
         mock_depth_image = Mock()
         
+        # Mock the detections object properly
+        mock_detections = Mock()
+        mock_detections.class_id = [0]  # Mock as list with one detection
+        mock_object_detector.detect_objects.return_value = mock_detections
+        mock_manipulation_handler.release_above.return_value = True
+        
         result = self.processor.handle_tool_call(
             "move_above_object_and_release",
             "blue_bowl",
@@ -95,11 +110,11 @@ class TestCommandProcessor(unittest.TestCase):
             mock_manipulation_handler,
             mock_rgb_image,
             mock_depth_image,
-            False
+            True  # object_in_gripper = True
         )
 
-        # Just verify the method can be called without error
-        self.assertIsNotNone(result)
+        # Verify the method returns False for successful release
+        self.assertFalse(result)
 
     def test_handle_tool_call_release_gripper(self):
         """Test handling a 'release_gripper' tool call."""

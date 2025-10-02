@@ -38,6 +38,7 @@ class TestManipulationHandler(unittest.TestCase):
         # Mock the point cloud processor to return valid pose
         self.mock_pc_processor.create_point_cloud_from_depth.return_value = np.array([[0, 0, 1], [0.1, 0, 1], [0, 0.1, 1]])
         self.mock_pc_processor.get_pose_and_angle_camera_base.return_value = (np.array([0, 0, 0, 1]), [0.1, 0.1], 0)
+        self.mock_pc_processor.transform_gripper_angle_to_base_frame.return_value = 45.0  # Return a numeric value
         self.mock_robot.grasp_at.return_value = True
         
         # Mock the cam_to_base_affine as a proper numpy array

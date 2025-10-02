@@ -10,7 +10,8 @@ class TestPointCloudProcessor(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.processor = PointCloudProcessor()
+        mock_logger = Mock()
+        self.processor = PointCloudProcessor(mock_logger)
 
     def test_create_point_cloud_from_depth(self):
         """Test creating a point cloud from a depth image."""

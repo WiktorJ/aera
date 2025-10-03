@@ -48,7 +48,7 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         joint_state.header = Header()
         joint_state.header.stamp = ROSTime()
         joint_state.header.stamp.sec = int(timestamp_sec)
-        joint_state.header.stamp.nanosec = int(timestamp_nanosec)
+        joint_state.header.stamp.nanosec = int((timestamp_sec % 1) * 1e9 + timestamp_nanosec)
         
         # Include all joints (arm + gripper + some extras)
         joint_state.name = self.arm_joint_names + self.gripper_joint_names + ["extra_joint"]
@@ -115,6 +115,10 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         # Start first episode
         self.collector.start_episode("first episode")
         first_episode_id = self.collector.episode_id
+        
+        # Wait a small amount to ensure different timestamp
+        import time
+        time.sleep(0.001)
         
         # Start second episode (should stop first one)
         with patch.object(self.collector, 'stop_episode') as mock_stop:
@@ -305,11 +309,16 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         result = self.collector._find_closest_in_buffer(35.0, buffer, "test")  # After last
         self.assertIsNone(result)
 
-        # Test closest selection between two candidates
-        result = self.collector._find_closest_in_buffer(15.0, buffer, "test")
-        # Should pick 10.0 or 20.0 based on which is closer
+        # Test closest selection between two candidates (within tolerance)
+        result = self.collector._find_closest_in_buffer(10.04, buffer, "test")
+        # Should pick 10.0 since it's within tolerance
         self.assertIsNotNone(result)
-        self.assertIn(result["data"], ["a", "b"])
+        self.assertEqual(result["data"], "a")
+        
+        # Test case outside tolerance
+        result = self.collector._find_closest_in_buffer(15.0, buffer, "test")
+        # Should return None since 15.0 is 5 seconds away from nearest (outside 0.05s tolerance)
+        self.assertIsNone(result)
 
     def test_find_closest_in_buffer_statistics(self):
         """Test that synchronization statistics are properly recorded."""

@@ -1,18 +1,14 @@
 import unittest
-import json
 from unittest.mock import Mock
 
-# NOTE: This test assumes 'aera_semi_autonomous.commands.command_processor' can be imported
-# and that the CommandProcessor class is initialized with its dependencies.
 from aera_semi_autonomous.commands.command_processor import CommandProcessor
 
 
 class TestCommandProcessor(unittest.TestCase):
-
     def setUp(self):
         """Set up test fixtures, including mocks for dependencies."""
         self.mock_logger = Mock()
-        
+
         # Based on the actual CommandProcessor constructor signature
         self.processor = CommandProcessor(self.mock_logger)
 
@@ -22,7 +18,7 @@ class TestCommandProcessor(unittest.TestCase):
         result = self.processor.parse_prompt_message(prompt)
         # The method returns ([], {}) for unknown tools, so just verify it's not None
         self.assertIsNotNone(result)
-        tool_calls, args = result
+        tool_calls, args = result  # type: ignore
         # Just verify we get lists back
         self.assertIsInstance(tool_calls, list)
         self.assertIsInstance(args, dict)
@@ -32,7 +28,7 @@ class TestCommandProcessor(unittest.TestCase):
         prompt = '{"tool_calls": [{"name": "move_above_object_and_release", "args": {"object_name": "blue_bowl"}}]}'
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNotNone(result)
-        tool_calls, args = result
+        tool_calls, args = result  # type: ignore
         # Just verify we get lists back
         self.assertIsInstance(tool_calls, list)
         self.assertIsInstance(args, dict)
@@ -42,14 +38,14 @@ class TestCommandProcessor(unittest.TestCase):
         prompt = '{"tool_calls": [{"name": "release_gripper", "args": {}}]}'
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNotNone(result)
-        tool_calls, args = result
+        tool_calls, args = result  # type: ignore
         # Just verify we get lists back
         self.assertIsInstance(tool_calls, list)
         self.assertIsInstance(args, dict)
 
     def test_parse_prompt_message_malformed(self):
         """Test parsing a malformed (non-JSON) prompt string."""
-        prompt = 'this is not json'
+        prompt = "this is not json"
         result = self.processor.parse_prompt_message(prompt)
         self.assertIsNone(result)
 
@@ -59,7 +55,7 @@ class TestCommandProcessor(unittest.TestCase):
         result = self.processor.parse_prompt_message(prompt)
         # The method returns ([], {}) for unknown tools, not None
         self.assertIsNotNone(result)
-        tool_calls, args = result
+        tool_calls, _ = result  # type: ignore
         self.assertEqual(len(tool_calls), 0)  # Empty list for unknown tools
 
     def test_handle_tool_call_pick_object(self):
@@ -70,22 +66,22 @@ class TestCommandProcessor(unittest.TestCase):
         mock_manipulation_handler = Mock()
         mock_rgb_image = Mock()
         mock_depth_image = Mock()
-        
+
         # Mock the detections object properly
         mock_detections = Mock()
         mock_detections.class_id = [0]  # Mock as list with one detection
         mock_object_detector.detect_objects.return_value = mock_detections
         mock_manipulation_handler.pick_object.return_value = True
-        
+
         result = self.processor.handle_tool_call(
             "pick_object",
-            "red_cube", 
+            "red_cube",
             mock_object_detector,
             mock_robot,
             mock_manipulation_handler,
             mock_rgb_image,
             mock_depth_image,
-            False
+            False,
         )
 
         # Verify the method returns True for successful pick
@@ -99,13 +95,13 @@ class TestCommandProcessor(unittest.TestCase):
         mock_manipulation_handler = Mock()
         mock_rgb_image = Mock()
         mock_depth_image = Mock()
-        
+
         # Mock the detections object properly
         mock_detections = Mock()
         mock_detections.class_id = [0]  # Mock as list with one detection
         mock_object_detector.detect_objects.return_value = mock_detections
         mock_manipulation_handler.release_above.return_value = True
-        
+
         result = self.processor.handle_tool_call(
             "move_above_object_and_release",
             "blue_bowl",
@@ -114,7 +110,7 @@ class TestCommandProcessor(unittest.TestCase):
             mock_manipulation_handler,
             mock_rgb_image,
             mock_depth_image,
-            True  # object_in_gripper = True
+            True,  # object_in_gripper = True
         )
 
         # Verify the method returns False for successful release
@@ -128,7 +124,7 @@ class TestCommandProcessor(unittest.TestCase):
         mock_manipulation_handler = Mock()
         mock_rgb_image = Mock()
         mock_depth_image = Mock()
-        
+
         result = self.processor.handle_tool_call(
             "release_gripper",
             "",
@@ -137,7 +133,7 @@ class TestCommandProcessor(unittest.TestCase):
             mock_manipulation_handler,
             mock_rgb_image,
             mock_depth_image,
-            False
+            False,
         )
 
         # Just verify the method can be called without error

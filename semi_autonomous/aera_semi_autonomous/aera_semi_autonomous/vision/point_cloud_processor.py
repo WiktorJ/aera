@@ -4,6 +4,7 @@ import open3d as o3d
 from scipy.spatial.transform import Rotation
 
 
+# Add return types in this file AI!
 class PointCloudProcessor:
     def __init__(self, logger):
         self.logger = logger

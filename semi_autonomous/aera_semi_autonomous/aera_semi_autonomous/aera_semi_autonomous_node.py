@@ -216,7 +216,7 @@ class AeraSemiAutonomous(Node):
         )
 
         # Start RL data collection
-        if self.collect_trajectory_data:
+        if self.trajectory_collector:
             self.trajectory_collector.start_episode(msg.data)
 
         # Initialize manipulation handler

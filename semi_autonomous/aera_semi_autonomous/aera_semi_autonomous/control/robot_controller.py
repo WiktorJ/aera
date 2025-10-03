@@ -1,6 +1,6 @@
 import time
 from geometry_msgs.msg import Pose, PoseStamped
-from pymoveit2 import GripperInterface, MoveIt2
+from pymoveit2 import GripperInterface, MoveIt2  # type: ignore
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.duration import Duration
 from sensor_msgs.msg import JointState

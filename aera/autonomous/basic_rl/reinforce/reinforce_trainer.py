@@ -5,7 +5,6 @@ import tempfile
 from typing import Callable
 
 import gymnasium as gym
-import gymnasium_robotics
 import imageio
 import jax
 import jax.numpy as jnp
@@ -164,7 +163,7 @@ def eval_policy(
     all_actions = []
     all_observations = []
 
-    for episode_idx in range(config.eval_num_episodes):
+    for _ in range(config.eval_num_episodes):
         observation, _ = eval_env.reset()
         done, truncated = False, False
         total_reward = 0.0

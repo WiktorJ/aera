@@ -89,8 +89,8 @@ class TestPointCloudProcessor(unittest.TestCase):
             [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]]
         )
 
-        grasp_pose, gripper_angle, gripper_opening = (
-            self.processor.get_pose_and_angle_camera_base(points)
+        grasp_pose, _, gripper_opening = self.processor.get_pose_and_angle_camera_base(
+            points
         )
 
         # Check pose is at center of square

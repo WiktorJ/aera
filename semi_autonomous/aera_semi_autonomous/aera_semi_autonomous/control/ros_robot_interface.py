@@ -1,4 +1,3 @@
-import logging
 from functools import cached_property
 from typing import Optional, Any
 
@@ -76,7 +75,7 @@ class RosRobotInterface(RobotInterface):
             callback_group=self.depth_image_callback_group,
         )
 
-    def get_logger(self) -> logging.Logger:
+    def get_logger(self) -> Any:
         return self._logger
 
     def _camera_info_callback(self, msg: CameraInfo):

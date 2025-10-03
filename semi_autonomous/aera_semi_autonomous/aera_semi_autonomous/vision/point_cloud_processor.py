@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import open3d as o3d
-from scipy.spatial.transform import Rotation
 from typing import Tuple, Optional
 
 
@@ -9,7 +8,9 @@ class PointCloudProcessor:
     def __init__(self, logger) -> None:
         self.logger = logger
 
-    def get_pose_and_angle_camera_base(self, points_camera_frame: np.ndarray) -> Tuple[np.ndarray, float, float]:
+    def get_pose_and_angle_camera_base(
+        self, points_camera_frame: np.ndarray
+    ) -> Tuple[np.ndarray, float, float]:
         """Calculate grasp pose and angle from camera frame points."""
         # TODO: Try with max
         grasp_z_camera = np.mean(points_camera_frame[:, 2])
@@ -54,7 +55,11 @@ class PointCloudProcessor:
 
         return gripper_rotation
 
-    def create_point_cloud_from_depth(self, masked_depth_image: np.ndarray, camera_intrinsics: o3d.camera.PinholeCameraIntrinsic) -> np.ndarray:
+    def create_point_cloud_from_depth(
+        self,
+        masked_depth_image: np.ndarray,
+        camera_intrinsics: o3d.camera.PinholeCameraIntrinsic,
+    ) -> np.ndarray:
         """Create point cloud from masked depth image."""
         pcd = o3d.geometry.PointCloud.create_from_depth_image(
             o3d.geometry.Image(masked_depth_image),
@@ -62,7 +67,9 @@ class PointCloudProcessor:
         )
         return np.asarray(pcd.points).astype(np.float32)
 
-    def get_drop_pose_from_points(self, points_camera_frame: np.ndarray) -> Optional[np.ndarray]:
+    def get_drop_pose_from_points(
+        self, points_camera_frame: np.ndarray
+    ) -> Optional[np.ndarray]:
         """Calculate drop pose from camera frame points."""
         xy_points = points_camera_frame[:, :2].astype(np.float32)
 

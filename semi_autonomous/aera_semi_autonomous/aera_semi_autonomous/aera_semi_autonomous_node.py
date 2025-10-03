@@ -98,15 +98,14 @@ class AeraSemiAutonomous(Node):
         self.point_cloud_processor = PointCloudProcessor(self.logger)
         self.command_processor = CommandProcessor(self.logger)
 
-        trajectory_collector = None
+        self.trajectory_collector = None
         if self.collect_trajectory_data:
-            trajectory_collector = TrajectoryDataCollector(
+            self.trajectory_collector = TrajectoryDataCollector(
                 self.logger,
                 self.arm_joint_names,
                 self.gripper_joint_names,
                 sync_tolerance=self.sync_tolerance,
             )
-        self.trajectory_collector = trajectory_collector
 
         self.robot_interface = RosRobotInterface(
             self,
@@ -115,7 +114,6 @@ class AeraSemiAutonomous(Node):
             self._moveit_feedback_callback,
             trajectory_collector=self.trajectory_collector,
         )
-
 
         self.prompt_sub = self.create_subscription(
             String,
@@ -135,6 +133,9 @@ class AeraSemiAutonomous(Node):
 
     def _joint_state_callback_for_rl(self, msg: JointState):
         """Callback for joint state updates for RL data collection."""
+        if not self.trajectory_collector:
+            return
+
         self.trajectory_collector.record_joint_state(msg)
 
         # Extract arm joint positions for FK computation
@@ -257,7 +258,7 @@ class AeraSemiAutonomous(Node):
                 f"Executing action: '{action}' on object: '{object_to_detect}'"
             )
             # Use the verbose action description with object name placeholder
-            if self.collect_trajectory_data:
+            if self.trajectory_collector:
                 action_description = ACTION_DESCRIPTIONS.get(action, action)
                 formatted_description = action_description.format(
                     object_name=object_to_detect
@@ -280,10 +281,9 @@ class AeraSemiAutonomous(Node):
         self.robot_interface.go_home()
 
         # Stop RL data collection and log summary
-        if self.collect_trajectory_data:
+        if self.trajectory_collector:
             self.trajectory_collector.stop_episode()
             self.trajectory_collector.log_trajectory_summary()
-
 
 
 def main():

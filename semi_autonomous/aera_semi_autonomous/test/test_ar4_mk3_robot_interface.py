@@ -1,9 +1,14 @@
+import sys
+import os
 import unittest
 from unittest.mock import Mock, MagicMock, patch, call
 import numpy as np
 import open3d as o3d
 from geometry_msgs.msg import Pose, Point, Quaternion
 from sensor_msgs.msg import Image
+
+# Add the project root to Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
 
 from semi_autonomous.aera_semi_autonomous.aera_semi_autonomous.control.ar4_mk3_robot_interface import (
     Ar4Mk3RobotInterface,

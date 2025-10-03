@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, MagicMock, patch, call
 import numpy as np
 import open3d as o3d
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -90,7 +90,13 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test move_to with end-effector control mode."""
         self.mock_env.use_eef_control = True
         self.mock_env.step.return_value = (None, None, None, None, None)
-        self.mock_env._utils.get_site_xpos.return_value = np.array([0.0, 0.0, 0.0])
+        # Mock the gripper position to be close to target after a few steps
+        positions = [
+            np.array([0.0, 0.0, 0.0]),  # Initial position
+            np.array([0.05, 0.05, 0.05]),  # After first step
+            np.array([0.1, 0.1, 0.1]),  # Final position (close to target)
+        ]
+        self.mock_env._utils.get_site_xpos.side_effect = positions
         
         pose = Pose()
         pose.position = Point(x=0.1, y=0.1, z=0.1)
@@ -134,8 +140,11 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         result = self.robot_interface.release_gripper()
         
         self.assertTrue(result)
+        # Check that step was called with the correct action
+        self.mock_env.step.assert_called_once()
+        call_args = self.mock_env.step.call_args[0][0]
         expected_action = np.array([0.0, 0.0, 0.0, -1.0])
-        self.mock_env.step.assert_called_with(expected_action)
+        np.testing.assert_array_equal(call_args, expected_action)
 
     def test_release_gripper_joint_control_success(self):
         """Test release_gripper with joint control mode."""
@@ -145,8 +154,11 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         result = self.robot_interface.release_gripper()
         
         self.assertTrue(result)
+        # Check that step was called with the correct action
+        self.mock_env.step.assert_called_once()
+        call_args = self.mock_env.step.call_args[0][0]
         expected_action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])
-        self.mock_env.step.assert_called_with(expected_action)
+        np.testing.assert_array_equal(call_args, expected_action)
 
     def test_release_gripper_exception(self):
         """Test release_gripper when an exception occurs."""
@@ -156,65 +168,61 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         
         self.assertFalse(result)
 
-    @patch.object(Ar4Mk3RobotInterface, 'move_to')
-    def test_grasp_at_success(self, mock_move_to):
+    def test_grasp_at_success(self):
         """Test grasp_at successful execution."""
-        mock_move_to.return_value = True
-        self.mock_env.step.return_value = (None, None, None, None, None)
-        
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        gripper_pos = 0.5
-        
-        result = self.robot_interface.grasp_at(pose, gripper_pos)
-        
-        self.assertTrue(result)
-        self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
+        with patch.object(self.robot_interface, 'move_to', return_value=True) as mock_move_to:
+            self.mock_env.step.return_value = (None, None, None, None, None)
+            
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            gripper_pos = 0.5
+            
+            result = self.robot_interface.grasp_at(pose, gripper_pos)
+            
+            self.assertTrue(result)
+            self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
+            self.mock_env.step.assert_called_once()  # For gripper action
 
-    @patch.object(Ar4Mk3RobotInterface, 'move_to')
-    def test_grasp_at_move_failure(self, mock_move_to):
+    def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""
-        mock_move_to.return_value = False
-        
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        gripper_pos = 0.5
-        
-        result = self.robot_interface.grasp_at(pose, gripper_pos)
-        
-        self.assertFalse(result)
+        with patch.object(self.robot_interface, 'move_to', return_value=False) as mock_move_to:
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            gripper_pos = 0.5
+            
+            result = self.robot_interface.grasp_at(pose, gripper_pos)
+            
+            self.assertFalse(result)
+            mock_move_to.assert_called_once()  # Should fail on first move_to call
 
-    @patch.object(Ar4Mk3RobotInterface, 'move_to')
-    @patch.object(Ar4Mk3RobotInterface, 'release_gripper')
-    def test_release_at_success(self, mock_release_gripper, mock_move_to):
+    def test_release_at_success(self):
         """Test release_at successful execution."""
-        mock_move_to.return_value = True
-        mock_release_gripper.return_value = True
-        
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        
-        result = self.robot_interface.release_at(pose)
-        
-        self.assertTrue(result)
-        mock_move_to.assert_called_once_with(pose)
-        mock_release_gripper.assert_called_once()
+        with patch.object(self.robot_interface, 'move_to', return_value=True) as mock_move_to, \
+             patch.object(self.robot_interface, 'release_gripper', return_value=True) as mock_release_gripper:
+            
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            
+            result = self.robot_interface.release_at(pose)
+            
+            self.assertTrue(result)
+            mock_move_to.assert_called_once_with(pose)
+            mock_release_gripper.assert_called_once()
 
-    @patch.object(Ar4Mk3RobotInterface, 'move_to')
-    def test_release_at_move_failure(self, mock_move_to):
+    def test_release_at_move_failure(self):
         """Test release_at when move_to fails."""
-        mock_move_to.return_value = False
-        
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        
-        result = self.robot_interface.release_at(pose)
-        
-        self.assertFalse(result)
+        with patch.object(self.robot_interface, 'move_to', return_value=False) as mock_move_to:
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            
+            result = self.robot_interface.release_at(pose)
+            
+            self.assertFalse(result)
+            mock_move_to.assert_called_once_with(pose)
 
     def test_get_end_effector_pose_success(self):
         """Test get_end_effector_pose successful execution."""
@@ -232,6 +240,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertAlmostEqual(pose.position.y, 0.2)
         self.assertAlmostEqual(pose.position.z, 0.3)
         # For identity matrix, quaternion should be [0, 0, 0, 1]
+        self.assertAlmostEqual(pose.orientation.x, 0.0, places=5)
+        self.assertAlmostEqual(pose.orientation.y, 0.0, places=5)
+        self.assertAlmostEqual(pose.orientation.z, 0.0, places=5)
         self.assertAlmostEqual(pose.orientation.w, 1.0, places=5)
 
     def test_get_end_effector_pose_exception(self):
@@ -278,6 +289,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         
         self.assertIsNotNone(depth)
         np.testing.assert_array_equal(depth, mock_depth)
+        # Verify render was called with correct mode
+        self.mock_env.render.assert_called_with(mode="depth_array")
 
     def test_get_latest_depth_image_exception(self):
         """Test get_latest_depth_image when an exception occurs."""

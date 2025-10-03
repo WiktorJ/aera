@@ -6,9 +6,7 @@ from geometry_msgs.msg import Pose
 from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
 
-from semi_autonomous.aera_semi_autonomous.aera_semi_autonomous.control.robot_interface import (
-    RobotInterface,
-)
+from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
 
@@ -83,7 +81,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Execute multiple steps to reach home
             for _ in range(50):  # Adjust number of steps as needed
-                obs, _, _, _, _ = self.env.step(home_action)
+                _, _, _, _, _ = self.env.step(home_action)
                 # Check if close enough to home
                 if self.env.use_eef_control:
                     break  # For EEF control, single action might be enough
@@ -104,7 +102,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             # Convert ROS Pose to target position and orientation
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
-            target_quat = np.array(
+            _ = np.array(
                 [
                     pose.orientation.x,
                     pose.orientation.y,
@@ -125,7 +123,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                 # Execute multiple steps to reach target
                 for _ in range(100):
-                    obs, _, _, _, _ = self.env.step(action)
+                    _, _, _, _, _ = self.env.step(action)
                     current_pos = self.env._utils.get_site_xpos(
                         self.env.model, self.env.data, "grip"
                     )
@@ -156,7 +154,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])  # Open gripper
 
             # Execute action to open gripper
-            obs, _, _, _, _ = self.env.step(action)
+            _, _, _, _, _ = self.env.step(action)
             self.logger.info("Gripper released")
             return True
 
@@ -188,7 +186,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             else:
                 action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, gripper_action])
 
-            obs, _, _, _, _ = self.env.step(action)
+            _, _, _, _, _ = self.env.step(action)
 
             # Lift object
             lift_pose = Pose()
@@ -256,8 +254,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             rgb_image = self.env.render()
             if rgb_image is not None:
                 self._latest_rgb_image = rgb_image
-                return rgb_image
-            return self._latest_rgb_image
+                return rgb_image  # type: ignore
+            return self._latest_rgb_image  # type: ignore
 
         except Exception as e:
             self.logger.error(f"Failed to get RGB image: {e}")
@@ -291,18 +289,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # For simulation, we don't have ROS messages
         # Return None or create a mock message if needed
         return self._latest_rgb_msg
-
-    def update_camera_config(self, config: dict):
-        """Update camera configuration."""
-        self.camera_config.update(config)
-        self.camera_intrinsics = o3d.camera.PinholeCameraIntrinsic(
-            width=self.camera_config["width"],
-            height=self.camera_config["height"],
-            fx=self.camera_config["fx"],
-            fy=self.camera_config["fy"],
-            cx=self.camera_config["cx"],
-            cy=self.camera_config["cy"],
-        )
 
     def set_cam_to_base_transform(self, transform: np.ndarray):
         """Set the camera to base transformation matrix."""

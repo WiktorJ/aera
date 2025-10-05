@@ -63,12 +63,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
         return self.logger
 
     def go_home(self) -> bool:
-        """Move robot to home position using move_to."""
+        """Move robot to home position and release gripper."""
         try:
             if self.home_pose is None:
                 self._initialize_home_pose()
 
-            return self.move_to(self.home_pose)
+            # First move to home position
+            if not self.move_to(self.home_pose):
+                return False
+                
+            # Then release gripper
+            return self.release_gripper()
 
         except Exception as e:
             self.logger.error(f"Failed to go home: {e}", exc_info=True)
@@ -153,15 +158,23 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def release_gripper(self) -> bool:
-        """Open the gripper."""
+        """Open the gripper gradually."""
         try:
-            if self.env.use_eef_control:
-                action = np.array([0.0, 0.0, 0.0, -1.0])  # Open gripper
-            else:
-                action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])  # Open gripper
+            max_steps = 50  # Number of steps for smooth gripper opening
+            target_gripper_value = -1.0  # Fully open
+            
+            for step in range(max_steps):
+                # Gradually move gripper to open position
+                progress = (step + 1) / max_steps
+                current_gripper_value = target_gripper_value * progress
+                
+                if self.env.use_eef_control:
+                    action = np.array([0.0, 0.0, 0.0, current_gripper_value])
+                else:
+                    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, current_gripper_value])
 
-            # Execute action to open gripper
-            _, _, _, _, _ = self.env.step(action)
+                _, _, _, _, _ = self.env.step(action)
+                
             self.logger.info("Gripper released")
             return True
 
@@ -186,14 +199,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self.move_to(pose):
                 return False
 
-            # Close gripper
-            gripper_action = (gripper_pos + 1.0) / 2.0  # Convert to [0,1] range
-            if self.env.use_eef_control:
-                action = np.array([0.0, 0.0, 0.0, gripper_action])
-            else:
-                action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, gripper_action])
+            # Close gripper gradually
+            target_gripper_value = gripper_pos  # Target gripper position
+            max_gripper_steps = 50  # Number of steps for smooth gripper closing
+            
+            for step in range(max_gripper_steps):
+                # Gradually move gripper to target position
+                progress = (step + 1) / max_gripper_steps
+                current_gripper_value = target_gripper_value * progress
+                
+                if self.env.use_eef_control:
+                    action = np.array([0.0, 0.0, 0.0, current_gripper_value])
+                else:
+                    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, current_gripper_value])
 
-            _, _, _, _, _ = self.env.step(action)
+                _, _, _, _, _ = self.env.step(action)
 
             # Lift object
             lift_pose = Pose()

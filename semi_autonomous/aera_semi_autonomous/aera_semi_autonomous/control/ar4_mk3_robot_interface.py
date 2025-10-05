@@ -94,7 +94,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to go home: {e}")
+            self.logger.error(f"Failed to go home: {e}", exc_info=True)
             return False
 
     def move_to(self, pose: Pose) -> bool:

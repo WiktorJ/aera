@@ -144,11 +144,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 body_id = self.env._model_names.body_name2id["robot0:mocap"]
                 mocap_id = self.env.model.body_mocapid[body_id]
 
+                # Calculate offset between gripper base (mocap) and gripper tip (grip site)
+                initial_mocap_pos = self.env.data.mocap_pos[mocap_id].copy()
+                initial_grip_pos = self.env._utils.get_site_xpos(
+                    self.env.model, self.env.data, "grip"
+                )
+                grip_offset = initial_grip_pos - initial_mocap_pos
+                
+                # Adjust target to account for the offset
+                target_mocap_pos = target_pos - grip_offset
+
                 step_count = 0
                 while step_count < max_steps:
-                    # Use mocap position instead of gripper site position for consistency
+                    # Use mocap position for control consistency
                     current_mocap_pos = self.env.data.mocap_pos[mocap_id].copy()
-                    pos_diff = target_pos - current_mocap_pos
+                    pos_diff = target_mocap_pos - current_mocap_pos
 
                     # Check if we've reached the target
                     if np.linalg.norm(pos_diff) < position_tolerance:
@@ -159,16 +169,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     action = np.concatenate(
                         [pos_diff_clipped, [0.0]]
                     )  # Keep gripper state unchanged
-                    print(f"step: {step_count}, pos_diff_clipped: {pos_diff_clipped}")
-                    print(f"current_pos: {current_mocap_pos}")
 
                     # Apply the action
                     _, _, _, _, _ = self.env.step(action)
-                    time.sleep(1)
 
                     step_count += 1
 
-                # Final check using actual gripper position
+                # Final check using actual gripper tip position
                 final_grip_pos = self.env._utils.get_site_xpos(
                     self.env.model, self.env.data, "grip"
                 )

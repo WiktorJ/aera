@@ -168,6 +168,7 @@ def main():
     finally:
         print("Closing environment...")
         env.close()
+        os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

@@ -134,6 +134,7 @@ def main():
         print(f"\n❌ Error during demonstration: {e}")
     finally:
         env.close()
+        os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to move to pose: {e}")
+            self.logger.error(f"Failed to move to pose: {e}", exc_info=True)
             return False
 
     def release_gripper(self) -> bool:
@@ -159,7 +159,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to release gripper: {e}")
+            self.logger.error(f"Failed to release gripper: {e}", exc_info=True)
             return False
 
     def grasp_at(self, pose: Pose, gripper_pos: float) -> bool:
@@ -202,7 +202,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to grasp at pose: {e}")
+            self.logger.error(f"Failed to grasp at pose: {e}", exc_info=True)
             return False
 
     def release_at(self, pose: Pose) -> bool:
@@ -213,7 +213,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return self.release_gripper()
 
         except Exception as e:
-            self.logger.error(f"Failed to release at pose: {e}")
+            self.logger.error(f"Failed to release at pose: {e}", exc_info=True)
             return False
 
     def get_end_effector_pose(self) -> Optional[Pose]:
@@ -244,7 +244,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return pose
 
         except Exception as e:
-            self.logger.error(f"Failed to get end-effector pose: {e}")
+            self.logger.error(f"Failed to get end-effector pose: {e}", exc_info=True)
             return None
 
     def get_latest_rgb_image(self) -> Optional[np.ndarray]:
@@ -258,7 +258,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return self._latest_rgb_image  # type: ignore
 
         except Exception as e:
-            self.logger.error(f"Failed to get RGB image: {e}")
+            self.logger.error(f"Failed to get RGB image: {e}", exc_info=True)
             return None
 
     def get_latest_depth_image(self) -> Optional[np.ndarray]:
@@ -273,7 +273,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return self._latest_depth_image
 
         except Exception as e:
-            self.logger.error(f"Failed to get depth image: {e}")
+            self.logger.error(f"Failed to get depth image: {e}", exc_info=True)
             return None
 
     def get_camera_intrinsics(self) -> Optional[o3d.camera.PinholeCameraIntrinsic]:

@@ -68,7 +68,27 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if self.home_pose is None:
                 self._initialize_home_pose()
 
-            # First move to home position
+            # Get current position to check if we're already at home
+            current_pose = self.get_end_effector_pose()
+            if current_pose is not None:
+                current_pos = np.array([
+                    current_pose.position.x,
+                    current_pose.position.y,
+                    current_pose.position.z
+                ])
+                home_pos = np.array([
+                    self.home_pose.position.x,
+                    self.home_pose.position.y,
+                    self.home_pose.position.z
+                ])
+                
+                # If we're already close to home position, just release gripper
+                position_tolerance = 0.01  # 1cm tolerance
+                if np.linalg.norm(current_pos - home_pos) < position_tolerance:
+                    self.logger.info("Already at home position, just releasing gripper")
+                    return self.release_gripper()
+
+            # Move to home position if not already there
             if not self.move_to(self.home_pose):
                 return False
 
@@ -80,27 +100,28 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def _initialize_home_pose(self):
-        """Initialize the home pose to a safe, predefined position."""
-        # Define a safe, fixed home position instead of using dynamic initial position
-        # This should be a position that's safe and reachable for the robot
-        # Adjust these values based on your robot's workspace and safe positions
-        safe_home_pos = np.array([0.0, -0.2, 0.5])  # Safe position in front of robot
+        """Initialize the home pose to the robot's actual initial position."""
+        # Use the actual initial gripper position from the environment
+        # This preserves the "right angle position" that the robot starts in
+        home_pos = self.env.initial_gripper_xpos
 
-        print(f"Setting home to safe position: {safe_home_pos}")
-        print(
-            f"Environment initial gripper position was: {self.env.initial_gripper_xpos}"
+        print(f"Setting home to initial gripper position: {home_pos}")
+
+        # Get the actual initial gripper orientation to preserve the starting pose
+        grip_rot = self.env._utils.get_site_xmat(
+            self.env.model, self.env.data, "grip"
         )
+        rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
+        quat = rotation.as_quat()  # [x, y, z, w]
 
-        # Use a standard downward-pointing orientation (gripper pointing down)
-        # Quaternion for identity rotation (no rotation)
         self.home_pose = Pose()
-        self.home_pose.position.x = float(safe_home_pos[0])
-        self.home_pose.position.y = float(safe_home_pos[1])
-        self.home_pose.position.z = float(safe_home_pos[2])
-        self.home_pose.orientation.x = 0.0
-        self.home_pose.orientation.y = 0.0
-        self.home_pose.orientation.z = 0.0
-        self.home_pose.orientation.w = 1.0
+        self.home_pose.position.x = float(home_pos[0])
+        self.home_pose.position.y = float(home_pos[1])
+        self.home_pose.position.z = float(home_pos[2])
+        self.home_pose.orientation.x = float(quat[0])
+        self.home_pose.orientation.y = float(quat[1])
+        self.home_pose.orientation.z = float(quat[2])
+        self.home_pose.orientation.w = float(quat[3])
 
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose."""
@@ -163,14 +184,29 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_gripper(self) -> bool:
         """Open the gripper gradually."""
         try:
-            max_steps = 50  # Number of steps for smooth gripper opening
+            # Get current gripper state to start from current position
+            current_gripper_state = self.env.data.qpos[-2:]  # Last 2 joints are gripper
+            current_gripper_value = np.mean(current_gripper_state)  # Average of both gripper joints
+            
+            # Convert from joint position to action space (-1 to 1)
+            # Gripper joint range is approximately -0.014 to 0.0
+            current_action_value = (current_gripper_value / -0.014) * 2.0 - 1.0
+            current_action_value = np.clip(current_action_value, -1.0, 1.0)
+            
+            max_steps = 30  # Reduced steps for smoother motion
             target_gripper_value = -1.0  # Fully open
 
-            for step in range(max_steps):
-                # Gradually move gripper to open position
-                progress = (step + 1) / max_steps
-                current_gripper_value = target_gripper_value * progress
+            # Only move if we're not already open
+            if abs(current_action_value - target_gripper_value) < 0.1:
+                self.logger.info("Gripper already open")
+                return True
 
+            for step in range(max_steps):
+                # Gradually move gripper from current position to open position
+                progress = (step + 1) / max_steps
+                current_gripper_value = current_action_value + (target_gripper_value - current_action_value) * progress
+
+                # Keep position unchanged, only modify gripper
                 if self.env.use_eef_control:
                     action = np.array([0.0, 0.0, 0.0, current_gripper_value])
                 else:

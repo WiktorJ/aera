@@ -53,20 +53,14 @@ def main():
     
     print(f"Using model file: {model_path}")
     
-    # Change to the model directory so relative includes work
-    model_dir = os.path.dirname(model_path)
-    original_cwd = os.getcwd()
-    os.chdir(model_dir)
-    
     try:
         env = Ar4Mk3PickAndPlaceEnv(
-            model_path=os.path.basename(model_path),
+            model_path=model_path,
             use_eef_control=True,
             render_mode="human",
             reward_type="sparse"
         )
     except Exception as e:
-        os.chdir(original_cwd)
         print(f"Error creating environment: {e}")
         return
     
@@ -206,8 +200,6 @@ def main():
     finally:
         print("Closing environment...")
         env.close()
-        os.chdir(original_cwd)
-        os.chdir(original_cwd)
 
 
 if __name__ == "__main__":

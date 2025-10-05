@@ -81,17 +81,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _initialize_home_pose(self):
         """Initialize the home pose to a safe, predefined position."""
-        # Use the initial gripper position from environment setup
-        home_pos = self.env.initial_gripper_xpos
-        print(f"home: {home_pos}")
+        # Define a safe, fixed home position instead of using dynamic initial position
+        # This should be a position that's safe and reachable for the robot
+        # Adjust these values based on your robot's workspace and safe positions
+        safe_home_pos = np.array([0.0, -0.2, 0.5])  # Safe position in front of robot
+        
+        print(f"Setting home to safe position: {safe_home_pos}")
+        print(f"Environment initial gripper position was: {self.env.initial_gripper_xpos}")
 
         # Use a standard downward-pointing orientation (gripper pointing down)
-        # This corresponds to no rotation from the default orientation
         # Quaternion for identity rotation (no rotation)
         self.home_pose = Pose()
-        self.home_pose.position.x = float(home_pos[0])
-        self.home_pose.position.y = float(home_pos[1])
-        self.home_pose.position.z = float(home_pos[2])
+        self.home_pose.position.x = float(safe_home_pos[0])
+        self.home_pose.position.y = float(safe_home_pos[1])
+        self.home_pose.position.z = float(safe_home_pos[2])
         self.home_pose.orientation.x = 0.0
         self.home_pose.orientation.y = 0.0
         self.home_pose.orientation.z = 0.0

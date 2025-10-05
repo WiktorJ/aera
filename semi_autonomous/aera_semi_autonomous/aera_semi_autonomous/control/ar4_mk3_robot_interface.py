@@ -134,12 +134,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
             max_step_size = 0.02  # Smaller step size for smoother motion
+            print(f"target_pos: {target_pos}")
+            print("----------------------------------")
 
             if self.env.use_eef_control:
                 # Get mocap body info
                 body_id = self.env._model_names.body_name2id["robot0:mocap"]
                 mocap_id = self.env.model.body_mocapid[body_id]
-                
+
                 step_count = 0
                 while step_count < max_steps:
                     # Use mocap position instead of gripper site position for consistency
@@ -155,12 +157,24 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     action = np.concatenate(
                         [pos_diff_clipped, [0.0]]
                     )  # Keep gripper state unchanged
+                    print(f"step: {step_count}, pos_diff_clipped: {pos_diff_clipped}")
+                    print(f"current_pos: {current_mocap_pos}")
+
+                    # Get mocap position before and after step to debug
+                    body_id = self.env._model_names.body_name2id["robot0:mocap"]
+                    mocap_id = self.env.model.body_mocapid[body_id]
+                    mocap_pos_before = self.env.data.mocap_pos[mocap_id].copy()
+
+                    _, _, _, _, _ = self.env.step(action)
+                    time.sleep(1)
+                    new_mocap_pos = self.env.data.mocap_pos[mocap_id].copy()
+                    print(f"new_mocap_pos: {new_mocap_pos}")
+                    print(
+                        f"mocap_pos_diff: {new_mocap_pos - mocap_pos_before}, distance: {np.linalg.norm(new_mocap_pos - mocap_pos_before)}"
+                    )
 
                     # Apply the action
                     _, _, _, _, _ = self.env.step(action)
-                    
-                    # Add a small delay to allow physics to settle
-                    time.sleep(0.01)
 
                     step_count += 1
 
@@ -169,14 +183,16 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     self.env.model, self.env.data, "grip"
                 )
                 final_error = np.linalg.norm(target_pos - final_grip_pos)
-                
+
                 if step_count >= max_steps:
                     self.logger.warning(
                         f"Move to pose reached maximum steps ({max_steps}) without full convergence"
                     )
                     self.logger.warning(f"Final position error: {final_error:.6f}m")
                 else:
-                    self.logger.info(f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m")
+                    self.logger.info(
+                        f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m"
+                    )
 
             else:
                 # For joint control, this is more complex - would need inverse kinematics

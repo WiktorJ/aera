@@ -133,7 +133,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
-            max_step_size = 0.5  # Larger step size to account for environment scaling (0.05x)
+            max_step_size = (
+                5  # Larger step size to account for environment scaling (0.05x)
+            )
             print(f"target_pos: {target_pos}")
             print("----------------------------------")
 
@@ -162,6 +164,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                     # Apply the action
                     _, _, _, _, _ = self.env.step(action)
+                    time.sleep(1)
 
                     step_count += 1
 
@@ -177,7 +180,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     )
                     self.logger.warning(f"Final position error: {final_error:.6f}m")
                 else:
-                    self.logger.info(f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m")
+                    self.logger.info(
+                        f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m"
+                    )
 
             else:
                 # For joint control, this is more complex - would need inverse kinematics

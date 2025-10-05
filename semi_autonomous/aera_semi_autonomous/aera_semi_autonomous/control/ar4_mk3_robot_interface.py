@@ -65,21 +65,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position using move_to."""
         try:
-            # Initialize home pose if not set
             if self.home_pose is None:
                 self._initialize_home_pose()
-            
-            # Use move_to to go to home position
-            success = self.move_to(self.home_pose)
-            
-            if success:
-                # Also open the gripper when going home
-                self.release_gripper()
-                self.logger.info("Robot moved to home position")
-            else:
-                self.logger.error("Failed to move to home position")
-            
-            return success
+
+            return self.move_to(self.home_pose)
 
         except Exception as e:
             self.logger.error(f"Failed to go home: {e}", exc_info=True)
@@ -87,34 +76,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _initialize_home_pose(self):
         """Initialize the home pose based on the initial gripper position."""
-        try:
-            # Use the initial gripper position as home position
-            home_pos = self.env.initial_gripper_xpos
-            
-            # Get initial gripper orientation
-            grip_rot = self.env._utils.get_site_xmat(
-                self.env.model, self.env.data, "grip"
-            )
-            rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
-            quat = rotation.as_quat()  # [x, y, z, w]
-            
-            self.home_pose = Pose()
-            self.home_pose.position.x = float(home_pos[0])
-            self.home_pose.position.y = float(home_pos[1])
-            self.home_pose.position.z = float(home_pos[2])
-            self.home_pose.orientation.x = float(quat[0])
-            self.home_pose.orientation.y = float(quat[1])
-            self.home_pose.orientation.z = float(quat[2])
-            self.home_pose.orientation.w = float(quat[3])
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize home pose: {e}", exc_info=True)
-            # Fallback to a default pose
-            self.home_pose = Pose()
-            self.home_pose.position.x = 0.0
-            self.home_pose.position.y = 0.0
-            self.home_pose.position.z = 0.5
-            self.home_pose.orientation.w = 1.0
+        home_pos = self.env.initial_gripper_xpos
+
+        # Get initial gripper orientation
+        grip_rot = self.env._utils.get_site_xmat(self.env.model, self.env.data, "grip")
+        rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
+        quat = rotation.as_quat()  # [x, y, z, w]
+
+        self.home_pose = Pose()
+        self.home_pose.position.x = float(home_pos[0])
+        self.home_pose.position.y = float(home_pos[1])
+        self.home_pose.position.z = float(home_pos[2])
+        self.home_pose.orientation.x = float(quat[0])
+        self.home_pose.orientation.y = float(quat[1])
+        self.home_pose.orientation.z = float(quat[2])
+        self.home_pose.orientation.w = float(quat[3])
 
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose."""
@@ -133,7 +109,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
             max_step_size = 0.03  # Maximum position movement per step
-            
+
             if self.env.use_eef_control:
                 # For end-effector control
                 step_count = 0
@@ -142,18 +118,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
                         self.env.model, self.env.data, "grip"
                     )
                     pos_diff = target_pos - current_pos
-                    
+
                     # Check if we've reached the target
                     if np.linalg.norm(pos_diff) < position_tolerance:
                         break
-                    
+
                     # Limit movement per step for smooth motion
                     pos_diff = np.clip(pos_diff, -max_step_size, max_step_size)
                     action = np.concatenate([pos_diff, [0.0]])  # Keep gripper state
-                    
+
                     _, _, _, _, _ = self.env.step(action)
                     step_count += 1
-                    
+
             else:
                 # For joint control, this is more complex - would need inverse kinematics
                 # For now, implement a simplified version
@@ -161,11 +137,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 return False
 
             if step_count >= max_steps:
-                self.logger.warning(f"Move to pose reached maximum steps ({max_steps}) without full convergence")
-                self.logger.warning(f"Final position error: {np.linalg.norm(target_pos - current_pos):.6f}m")
+                self.logger.warning(
+                    f"Move to pose reached maximum steps ({max_steps}) without full convergence"
+                )
+                self.logger.warning(
+                    f"Final position error: {np.linalg.norm(target_pos - current_pos):.6f}m"
+                )
             else:
                 self.logger.info(f"Robot moved to pose in {step_count} steps")
-            
+
             return True
 
         except Exception as e:

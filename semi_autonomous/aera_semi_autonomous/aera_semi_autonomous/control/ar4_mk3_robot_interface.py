@@ -76,7 +76,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     self.env.model, self.env.data, "grip"
                 )
                 # Define home position (adjust as needed for your setup)
-                home_pos = self.initial_gripper_xpos if hasattr(self.env, 'initial_gripper_xpos') else np.array([0.0, 0.0, 0.4])
+                home_pos = self.env.initial_gripper_xpos if hasattr(self.env, 'initial_gripper_xpos') else np.array([0.0, 0.0, 0.4])
                 
                 step_count = 0
                 while step_count < max_steps:

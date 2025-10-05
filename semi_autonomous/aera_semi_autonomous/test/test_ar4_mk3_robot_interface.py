@@ -52,33 +52,45 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertEqual(robot_interface.camera_config["height"], 720)
         self.assertEqual(robot_interface.camera_config["fx"], 600.0)
 
-    def test_go_home_eef_control_success(self):
-        """Test go_home with end-effector control mode."""
-        self.mock_env.use_eef_control = True
-        self.mock_env.step.return_value = (None, None, None, None, None)
+    def test_go_home_success(self):
+        """Test go_home successful execution."""
+        with patch.object(
+            self.robot_interface, "move_to", return_value=True
+        ) as mock_move_to, patch.object(
+            self.robot_interface, "release_gripper", return_value=True
+        ) as mock_release_gripper:
+            # Mock the initial gripper position for home pose initialization
+            self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
+            self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
-        result = self.robot_interface.go_home()
+            result = self.robot_interface.go_home()
 
-        self.assertTrue(result)
-        self.mock_env.step.assert_called()
+            self.assertTrue(result)
+            mock_move_to.assert_called_once()
+            mock_release_gripper.assert_called_once()
 
-    def test_go_home_joint_control_success(self):
-        """Test go_home with joint control mode."""
-        self.mock_env.use_eef_control = False
-        self.mock_env.step.return_value = (None, None, None, None, None)
+    def test_go_home_move_to_failure(self):
+        """Test go_home when move_to fails."""
+        with patch.object(
+            self.robot_interface, "move_to", return_value=False
+        ) as mock_move_to:
+            # Mock the initial gripper position for home pose initialization
+            self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
+            self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
-        result = self.robot_interface.go_home()
+            result = self.robot_interface.go_home()
 
-        self.assertTrue(result)
-        self.mock_env.step.assert_called()
+            self.assertFalse(result)
+            mock_move_to.assert_called_once()
 
     def test_go_home_exception(self):
         """Test go_home when an exception occurs."""
-        self.mock_env.step.side_effect = Exception("Test exception")
+        with patch.object(
+            self.robot_interface, "move_to", side_effect=Exception("Test exception")
+        ):
+            result = self.robot_interface.go_home()
 
-        result = self.robot_interface.go_home()
-
-        self.assertFalse(result)
+            self.assertFalse(result)
 
     def test_move_to_eef_control_success(self):
         """Test move_to with end-effector control mode."""
@@ -335,12 +347,19 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         msg = self.robot_interface.get_last_rgb_msg()
         self.assertIsNone(msg)
 
-    def test_home_joint_positions(self):
-        """Test that home joint positions are correctly initialized."""
-        expected_home = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-        np.testing.assert_array_equal(
-            self.robot_interface.home_joint_positions, expected_home
-        )
+    def test_home_pose_initialization(self):
+        """Test that home pose is correctly initialized."""
+        # Mock the initial gripper position and orientation
+        self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
+        self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
+        
+        # Initialize home pose
+        self.robot_interface._initialize_home_pose()
+        
+        self.assertIsNotNone(self.robot_interface.home_pose)
+        self.assertAlmostEqual(self.robot_interface.home_pose.position.x, 0.1)
+        self.assertAlmostEqual(self.robot_interface.home_pose.position.y, 0.2)
+        self.assertAlmostEqual(self.robot_interface.home_pose.position.z, 0.3)
 
 
 if __name__ == "__main__":

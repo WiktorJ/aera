@@ -250,8 +250,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def get_latest_rgb_image(self) -> Optional[np.ndarray]:
         """Get latest RGB image from simulation."""
         try:
-            # Render RGB image from MuJoCo
+            # Temporarily set render mode to rgb_array to get image
+            original_render_mode = self.env.render_mode
+            self.env.render_mode = "rgb_array"
             rgb_image = self.env.render()
+            self.env.render_mode = original_render_mode
+            
             if rgb_image is not None:
                 self._latest_rgb_image = rgb_image
                 return rgb_image  # type: ignore
@@ -264,9 +268,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def get_latest_depth_image(self) -> Optional[np.ndarray]:
         """Get latest depth image from simulation."""
         try:
-            # MuJoCo depth rendering (this is a simplified implementation)
-            # You may need to configure MuJoCo rendering for depth
-            depth_image = self.env.render(mode="depth_array")
+            # Temporarily set render mode to depth_array to get depth image
+            original_render_mode = self.env.render_mode
+            self.env.render_mode = "depth_array"
+            depth_image = self.env.render()
+            self.env.render_mode = original_render_mode
+            
             if depth_image is not None:
                 self._latest_depth_image = depth_image
                 return depth_image

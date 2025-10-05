@@ -2,6 +2,7 @@ import numpy as np
 
 from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
+from scipy.spatial.transform import Rotation
 
 DEFAULT_CAMERA_CONFIG = {
     "distance": 0.98,
@@ -133,8 +134,70 @@ class BaseEnv(MujocoRobotEnv):
 
 
 class Ar4Mk3Env(BaseEnv):
-    def __init__(self, default_camera_config: dict = DEFAULT_CAMERA_CONFIG, **kwargs):
+    def __init__(
+        self,
+        translation: np.ndarray | None = None,
+        quaterion: np.ndarray | None = None,
+        z_offset: float = 0.0,
+        distance_multiplier: float = 1.0,
+        default_camera_config: dict = DEFAULT_CAMERA_CONFIG,
+        **kwargs,
+    ):
+        if translation is not None and quaterion is not None:
+            default_camera_config = self._calculate_camera_config_from_transform(
+                translation, quaterion, z_offset, distance_multiplier
+            )
         super().__init__(default_camera_config=default_camera_config, **kwargs)
+
+    def _calculate_camera_config_from_transform(
+        self, translation, quatertion, z_offset=0.0, distance_multiplier=1.0
+    ):
+        R_cam_to_base = Rotation.from_quat(quatertion).as_matrix()
+
+        # --- Step 1: Find the Camera's Pose (Position and Orientation) in the Base Frame ---
+        # The camera's position in the base frame is the translation part of the inverse transform.
+        cam_pos_in_base = -R_cam_to_base.T @ translation
+
+        # --- Step 2: Calculate the 'look_at' point by casting a ray from the camera ---
+        # The camera's viewing direction is its local -Z axis.
+        # We transform this direction vector from the camera's frame to the base frame.
+        local_cam_view_dir = np.array([0, 0, -1])
+        look_dir_in_base = R_cam_to_base @ local_cam_view_dir
+
+        # Intersect this viewing ray with a horizontal plane (e.g., the tabletop at z=0).
+        # Ray: P(t) = cam_pos_in_base + t * look_dir_in_base
+        # Plane: P.z = intersection_plane_z
+
+        # P_origin.z + t * LookDir.z = plane_z  =>  t = (plane_z - P_origin.z) / LookDir.z
+        lookat_x = translation[0] + (z_offset - translation[2]) * (
+            look_dir_in_base[0] / look_dir_in_base[2]
+        )
+        lookat_y = translation[1] + (z_offset - translation[2]) * (
+            look_dir_in_base[1] / look_dir_in_base[2]
+        )
+        lookat = np.array([lookat_x, lookat_y, z_offset])
+
+        # --- Step 3: Calculate the final simulation parameters relative to the look_at point ---
+        # Vector from the new look_at point TO the camera
+        vec_from_lookat_to_cam = cam_pos_in_base - lookat
+        # vec_from_lookat_to_cam = cam_pos_in_base
+        dx, dy, dz = vec_from_lookat_to_cam
+
+        # Distance is the length of this vector
+        # distance = np.linalg.norm(cam_pos_in_base - lookat)
+        distance = np.linalg.norm(vec_from_lookat_to_cam)
+
+        # Azimuth is the angle in the XY-plane from the X-axis
+        azimuth = np.degrees(np.arctan2(dy, dx)) + 90
+        # Elevation is the angle from the XY-plane
+        elevation = np.degrees(np.arcsin(dz / distance)) - 90
+
+        return {
+            "distance": distance_multiplier * distance,
+            "azimuth": azimuth,
+            "elevation": elevation,
+            "lookat": lookat,
+        }
 
     def _step_callback(self):
         if self.block_gripper:
@@ -167,9 +230,8 @@ class Ar4Mk3Env(BaseEnv):
             if self.block_gripper:
                 gripper_action = np.zeros_like(gripper_action)
 
-            print(f"Gripper action: {gripper_action}")
             # Apply action to simulation
-            self.data.ctrl[:] = gripper_action
+            self.data.ctrl[-2:] = gripper_action
         else:
             assert action.shape == (7,)
             action = action.copy()

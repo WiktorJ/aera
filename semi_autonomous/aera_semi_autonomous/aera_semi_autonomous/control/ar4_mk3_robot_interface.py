@@ -85,9 +85,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # This should be a position that's safe and reachable for the robot
         # Adjust these values based on your robot's workspace and safe positions
         safe_home_pos = np.array([0.0, -0.2, 0.5])  # Safe position in front of robot
-        
+
         print(f"Setting home to safe position: {safe_home_pos}")
-        print(f"Environment initial gripper position was: {self.env.initial_gripper_xpos}")
+        print(
+            f"Environment initial gripper position was: {self.env.initial_gripper_xpos}"
+        )
 
         # Use a standard downward-pointing orientation (gripper pointing down)
         # Quaternion for identity rotation (no rotation)

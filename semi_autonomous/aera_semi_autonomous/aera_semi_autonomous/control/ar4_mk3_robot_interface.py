@@ -160,19 +160,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     print(f"step: {step_count}, pos_diff_clipped: {pos_diff_clipped}")
                     print(f"current_pos: {current_mocap_pos}")
 
-                    # Get mocap position before and after step to debug
-                    body_id = self.env._model_names.body_name2id["robot0:mocap"]
-                    mocap_id = self.env.model.body_mocapid[body_id]
-                    mocap_pos_before = self.env.data.mocap_pos[mocap_id].copy()
-
-                    _, _, _, _, _ = self.env.step(action)
-                    time.sleep(1)
-                    new_mocap_pos = self.env.data.mocap_pos[mocap_id].copy()
-                    print(f"new_mocap_pos: {new_mocap_pos}")
-                    print(
-                        f"mocap_pos_diff: {new_mocap_pos - mocap_pos_before}, distance: {np.linalg.norm(new_mocap_pos - mocap_pos_before)}"
-                    )
-
                     # Apply the action
                     _, _, _, _, _ = self.env.step(action)
 
@@ -190,9 +177,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     )
                     self.logger.warning(f"Final position error: {final_error:.6f}m")
                 else:
-                    self.logger.info(
-                        f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m"
-                    )
+                    self.logger.info(f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m")
 
             else:
                 # For joint control, this is more complex - would need inverse kinematics

@@ -25,12 +25,50 @@ def main():
     
     # Create the MuJoCo environment
     # Using pick and place environment with end-effector control
-    env = Ar4Mk3PickAndPlaceEnv(
-        model_path="path/to/your/model.xml",  # Update this path
-        use_eef_control=True,
-        render_mode="human",
-        reward_type="sparse"
-    )
+    import os
+    
+    # Get the absolute path to the model file
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
+    
+    possible_model_paths = [
+        os.path.join(project_root, "aera", "autonomous", "simulation", "mujoco", "ar4_mk3", "scene.xml"),
+        "aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
+        "../aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
+        "../../aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
+    ]
+    
+    model_path = None
+    for path in possible_model_paths:
+        if os.path.exists(path):
+            model_path = os.path.abspath(path)
+            break
+    
+    if model_path is None:
+        print("Error: Could not find AR4 MK3 model file. Please ensure the MuJoCo model exists.")
+        print("Tried the following paths:")
+        for path in possible_model_paths:
+            print(f"  - {path}")
+        return
+    
+    print(f"Using model file: {model_path}")
+    
+    # Change to the model directory so relative includes work
+    model_dir = os.path.dirname(model_path)
+    original_cwd = os.getcwd()
+    os.chdir(model_dir)
+    
+    try:
+        env = Ar4Mk3PickAndPlaceEnv(
+            model_path=os.path.basename(model_path),
+            use_eef_control=True,
+            render_mode="human",
+            reward_type="sparse"
+        )
+    except Exception as e:
+        os.chdir(original_cwd)
+        print(f"Error creating environment: {e}")
+        return
     
     # Reset the environment
     observation, info = env.reset()
@@ -168,6 +206,7 @@ def main():
     finally:
         print("Closing environment...")
         env.close()
+        os.chdir(original_cwd)
         os.chdir(original_cwd)
 
 

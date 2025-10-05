@@ -71,17 +71,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Get current position to check if we're already at home
             current_pose = self.get_end_effector_pose()
             if current_pose is not None:
-                current_pos = np.array([
-                    current_pose.position.x,
-                    current_pose.position.y,
-                    current_pose.position.z
-                ])
-                home_pos = np.array([
-                    self.home_pose.position.x,
-                    self.home_pose.position.y,
-                    self.home_pose.position.z
-                ])
-                
+                current_pos = np.array(
+                    [
+                        current_pose.position.x,
+                        current_pose.position.y,
+                        current_pose.position.z,
+                    ]
+                )
+                home_pos = np.array(
+                    [
+                        self.home_pose.position.x,
+                        self.home_pose.position.y,
+                        self.home_pose.position.z,
+                    ]
+                )
+
                 # If we're already close to home position, just release gripper
                 position_tolerance = 0.01  # 1cm tolerance
                 if np.linalg.norm(current_pos - home_pos) < position_tolerance:
@@ -108,9 +112,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         print(f"Setting home to initial gripper position: {home_pos}")
 
         # Get the actual initial gripper orientation to preserve the starting pose
-        grip_rot = self.env._utils.get_site_xmat(
-            self.env.model, self.env.data, "grip"
-        )
+        grip_rot = self.env._utils.get_site_xmat(self.env.model, self.env.data, "grip")
         rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
         quat = rotation.as_quat()  # [x, y, z, w]
 
@@ -142,9 +144,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
                         self.env.model, self.env.data, "grip"
                     )
                     pos_diff = target_pos - current_pos
-                    # print(
-                    #     f"step: {step_count}, pos_diff: {pos_diff}, current_pos: {current_pos}, target_pos: {target_pos}"
-                    # )
+                    print(
+                        f"step: {step_count}, pos_diff: {pos_diff}, current_pos: {current_pos}, target_pos: {target_pos}"
+                    )
 
                     # Check if we've reached the target
                     if np.linalg.norm(pos_diff) < position_tolerance:
@@ -186,13 +188,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             # Get current gripper state to start from current position
             current_gripper_state = self.env.data.qpos[-2:]  # Last 2 joints are gripper
-            current_gripper_value = np.mean(current_gripper_state)  # Average of both gripper joints
-            
+            current_gripper_value = np.mean(
+                current_gripper_state
+            )  # Average of both gripper joints
+
             # Convert from joint position to action space (-1 to 1)
             # Gripper joint range is approximately -0.014 to 0.0
             current_action_value = (current_gripper_value / -0.014) * 2.0 - 1.0
             current_action_value = np.clip(current_action_value, -1.0, 1.0)
-            
+
             max_steps = 30  # Reduced steps for smoother motion
             target_gripper_value = -1.0  # Fully open
 
@@ -204,7 +208,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             for step in range(max_steps):
                 # Gradually move gripper from current position to open position
                 progress = (step + 1) / max_steps
-                current_gripper_value = current_action_value + (target_gripper_value - current_action_value) * progress
+                current_gripper_value = (
+                    current_action_value
+                    + (target_gripper_value - current_action_value) * progress
+                )
 
                 # Keep position unchanged, only modify gripper
                 if self.env.use_eef_control:

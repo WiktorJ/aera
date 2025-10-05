@@ -133,7 +133,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
-            max_step_size = 0.03  # Maximum position movement per step
+            max_step_size = 0.01  # Reduced maximum position movement per step for smoother motion
 
             if self.env.use_eef_control:
                 # For end-effector control - only handle position, ignore orientation for now
@@ -144,19 +144,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
                         self.env.model, self.env.data, "grip"
                     )
                     pos_diff = target_pos - current_pos
-                    print(
-                        f"step: {step_count}, pos_diff: {pos_diff}, current_pos: {current_pos}, target_pos: {target_pos}"
-                    )
 
                     # Check if we've reached the target
                     if np.linalg.norm(pos_diff) < position_tolerance:
                         break
 
                     # Limit movement per step for smooth motion
-                    pos_diff = np.clip(pos_diff, -max_step_size, max_step_size)
+                    pos_diff_clipped = np.clip(pos_diff, -max_step_size, max_step_size)
                     action = np.concatenate(
-                        [pos_diff, [0.0]]
+                        [pos_diff_clipped, [0.0]]
                     )  # Keep gripper state unchanged
+
+                    print(
+                        f"step: {step_count}, pos_diff: {pos_diff}, pos_diff_clipped: {pos_diff_clipped}, current_pos: {current_pos}, target_pos: {target_pos}"
+                    )
 
                     _, _, _, _, _ = self.env.step(action)
                     step_count += 1

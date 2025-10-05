@@ -80,43 +80,35 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def _initialize_home_pose(self):
-        """Initialize the home pose based on the initial gripper position."""
+        """Initialize the home pose to a safe, predefined position."""
+        # Use the initial gripper position from environment setup
         home_pos = self.env.initial_gripper_xpos
 
-        # Get initial gripper orientation
-        grip_rot = self.env._utils.get_site_xmat(self.env.model, self.env.data, "grip")
-        rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
-        quat = rotation.as_quat()  # [x, y, z, w]
-
+        # Use a standard downward-pointing orientation (gripper pointing down)
+        # This corresponds to no rotation from the default orientation
+        # Quaternion for identity rotation (no rotation)
         self.home_pose = Pose()
         self.home_pose.position.x = float(home_pos[0])
         self.home_pose.position.y = float(home_pos[1])
         self.home_pose.position.z = float(home_pos[2])
-        self.home_pose.orientation.x = float(quat[0])
-        self.home_pose.orientation.y = float(quat[1])
-        self.home_pose.orientation.z = float(quat[2])
-        self.home_pose.orientation.w = float(quat[3])
+        self.home_pose.orientation.x = 0.0
+        self.home_pose.orientation.y = 0.0
+        self.home_pose.orientation.z = 0.0
+        self.home_pose.orientation.w = 1.0
 
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose."""
         try:
-            # Convert ROS Pose to target position and orientation
+            # Convert ROS Pose to target position
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
-            _ = np.array(
-                [
-                    pose.orientation.x,
-                    pose.orientation.y,
-                    pose.orientation.z,
-                    pose.orientation.w,
-                ]
-            )
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
             max_step_size = 0.03  # Maximum position movement per step
 
             if self.env.use_eef_control:
-                # For end-effector control
+                # For end-effector control - only handle position, ignore orientation for now
+                # The mocap body will maintain its orientation automatically
                 step_count = 0
                 while step_count < max_steps:
                     current_pos = self.env._utils.get_site_xpos(
@@ -130,7 +122,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                     # Limit movement per step for smooth motion
                     pos_diff = np.clip(pos_diff, -max_step_size, max_step_size)
-                    action = np.concatenate([pos_diff, [0.0]])  # Keep gripper state
+                    action = np.concatenate([pos_diff, [0.0]])  # Keep gripper state unchanged
 
                     _, _, _, _, _ = self.env.step(action)
                     step_count += 1

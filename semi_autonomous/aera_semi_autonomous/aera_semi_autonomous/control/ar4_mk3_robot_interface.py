@@ -65,29 +65,60 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position using joint control."""
         try:
-            # Create action for joint control (assuming joint control mode)
+            max_steps = 1000  # Safety limit to prevent infinite loops
+            tolerance = 0.01  # Joint position tolerance in radians
+            max_step_size = 0.05  # Maximum joint movement per step
+            
             if self.env.use_eef_control:
-                # For end-effector control, we need to compute the home pose
-                # This is a simplified approach - you may need to adjust
-                home_action = np.array(
-                    [0.0, 0.0, 0.0, -1.0]
-                )  # [dx, dy, dz, gripper_open]
+                # For end-effector control, move to a known home pose
+                # Get current gripper position
+                current_pos = self.env._utils.get_site_xpos(
+                    self.env.model, self.env.data, "grip"
+                )
+                # Define home position (adjust as needed for your setup)
+                home_pos = self.initial_gripper_xpos if hasattr(self.env, 'initial_gripper_xpos') else np.array([0.0, 0.0, 0.4])
+                
+                step_count = 0
+                while step_count < max_steps:
+                    current_pos = self.env._utils.get_site_xpos(
+                        self.env.model, self.env.data, "grip"
+                    )
+                    pos_diff = home_pos - current_pos
+                    
+                    # Check if we've reached the target
+                    if np.linalg.norm(pos_diff) < 0.01:
+                        break
+                    
+                    # Limit movement per step for smooth motion
+                    pos_diff = np.clip(pos_diff, -max_step_size, max_step_size)
+                    home_action = np.concatenate([pos_diff, [-1.0]])  # Open gripper
+                    
+                    _, _, _, _, _ = self.env.step(home_action)
+                    step_count += 1
+                    
             else:
                 # For joint control, move towards home position
-                current_qpos = self.env.data.qpos[:6]  # First 6 joints are arm joints
-                joint_diff = self.home_joint_positions - current_qpos
-                # Limit the movement per step
-                joint_diff = np.clip(joint_diff, -0.1, 0.1)
-                home_action = np.concatenate([joint_diff, [-1.0]])  # Open gripper
+                step_count = 0
+                while step_count < max_steps:
+                    current_qpos = self.env.data.qpos[:6]  # First 6 joints are arm joints
+                    joint_diff = self.home_joint_positions - current_qpos
+                    
+                    # Check if we've reached the target
+                    if np.allclose(current_qpos, self.home_joint_positions, atol=tolerance):
+                        break
+                    
+                    # Limit the movement per step for smooth motion
+                    joint_diff = np.clip(joint_diff, -max_step_size, max_step_size)
+                    home_action = np.concatenate([joint_diff, [-1.0]])  # Open gripper
+                    
+                    _, _, _, _, _ = self.env.step(home_action)
+                    step_count += 1
 
-            # Execute multiple steps to reach home
-            for _ in range(50):  # Adjust number of steps as needed
-                _, _, _, _, _ = self.env.step(home_action)
-                current_qpos = self.env.data.qpos[:6]
-                if np.allclose(current_qpos, self.home_joint_positions, atol=0.05):
-                    break
-
-            self.logger.info("Robot moved to home position")
+            if step_count >= max_steps:
+                self.logger.warning(f"Go home reached maximum steps ({max_steps}) without full convergence")
+            else:
+                self.logger.info(f"Robot moved to home position in {step_count} steps")
+            
             return True
 
         except Exception as e:
@@ -108,34 +139,42 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 ]
             )
 
+            max_steps = 1000  # Safety limit to prevent infinite loops
+            position_tolerance = 0.005  # Position tolerance in meters
+            max_step_size = 0.03  # Maximum position movement per step
+            
             if self.env.use_eef_control:
                 # For end-effector control
-                current_pos = self.env._utils.get_site_xpos(
-                    self.env.model, self.env.data, "grip"
-                )
-                pos_diff = target_pos - current_pos
-                # Limit movement per step
-                pos_diff = np.clip(pos_diff, -0.05, 0.05)
-                action = np.concatenate([pos_diff, [0.0]])  # Keep gripper state
-
-                # Execute multiple steps to reach target
-                for _ in range(100):
-                    _, _, _, _, _ = self.env.step(action)
+                step_count = 0
+                while step_count < max_steps:
                     current_pos = self.env._utils.get_site_xpos(
                         self.env.model, self.env.data, "grip"
                     )
-                    if np.linalg.norm(current_pos - target_pos) < 0.01:
-                        break
                     pos_diff = target_pos - current_pos
-                    pos_diff = np.clip(pos_diff, -0.05, 0.05)
-                    action = np.concatenate([pos_diff, [0.0]])
+                    
+                    # Check if we've reached the target
+                    if np.linalg.norm(pos_diff) < position_tolerance:
+                        break
+                    
+                    # Limit movement per step for smooth motion
+                    pos_diff = np.clip(pos_diff, -max_step_size, max_step_size)
+                    action = np.concatenate([pos_diff, [0.0]])  # Keep gripper state
+                    
+                    _, _, _, _, _ = self.env.step(action)
+                    step_count += 1
+                    
             else:
                 # For joint control, this is more complex - would need inverse kinematics
                 # For now, implement a simplified version
                 self.logger.warning("Joint control mode move_to not fully implemented")
                 return False
 
-            self.logger.info(f"Robot moved to pose: {pose}")
+            if step_count >= max_steps:
+                self.logger.warning(f"Move to pose reached maximum steps ({max_steps}) without full convergence")
+                self.logger.warning(f"Final position error: {np.linalg.norm(target_pos - current_pos):.6f}m")
+            else:
+                self.logger.info(f"Robot moved to pose in {step_count} steps")
+            
             return True
 
         except Exception as e:

@@ -167,6 +167,7 @@ class Ar4Mk3Env(BaseEnv):
             if self.block_gripper:
                 gripper_action = np.zeros_like(gripper_action)
 
+            print(f"Gripper action: {gripper_action}")
             # Apply action to simulation
             self.data.ctrl[:] = gripper_action
         else:

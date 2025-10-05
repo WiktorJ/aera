@@ -133,7 +133,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
-            max_step_size = 0.01  # Reduced maximum position movement per step for smoother motion
+            max_step_size = 0.005  # Further reduced maximum position movement per step for smoother motion
 
             if self.env.use_eef_control:
                 # For end-effector control - only handle position, ignore orientation for now
@@ -159,7 +159,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
                         f"step: {step_count}, pos_diff: {pos_diff}, pos_diff_clipped: {pos_diff_clipped}, current_pos: {current_pos}, target_pos: {target_pos}"
                     )
 
+                    # Get mocap position before and after step to debug
+                    if self.env.use_eef_control:
+                        body_id = self.env._model_names.body_name2id["robot0:mocap"]
+                        mocap_id = self.env.model.body_mocapid[body_id]
+                        mocap_pos_before = self.env.data.mocap_pos[mocap_id].copy()
+                        
                     _, _, _, _, _ = self.env.step(action)
+                    
+                    if self.env.use_eef_control:
+                        mocap_pos_after = self.env.data.mocap_pos[mocap_id].copy()
+                        print(f"  mocap_pos_before: {mocap_pos_before}, mocap_pos_after: {mocap_pos_after}")
+                        print(f"  mocap_pos_change: {mocap_pos_after - mocap_pos_before}")
+                    
                     step_count += 1
 
             else:

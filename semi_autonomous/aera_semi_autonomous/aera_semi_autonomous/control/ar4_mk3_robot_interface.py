@@ -133,7 +133,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
-            max_step_size = 0.02  # Smaller step size for smoother motion
+            max_step_size = 0.5  # Larger step size to account for environment scaling (0.05x)
             print(f"target_pos: {target_pos}")
             print("----------------------------------")
 

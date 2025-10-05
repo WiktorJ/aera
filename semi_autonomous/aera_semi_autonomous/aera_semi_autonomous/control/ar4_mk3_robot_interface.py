@@ -133,17 +133,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             max_steps = 1000  # Safety limit to prevent infinite loops
             position_tolerance = 0.005  # Position tolerance in meters
-            max_step_size = 0.05  # Further reduced maximum position movement per step for smoother motion
+            max_step_size = 0.02  # Smaller step size for smoother motion
 
             if self.env.use_eef_control:
-                # For end-effector control - only handle position, ignore orientation for now
-                # The mocap body will maintain its orientation automatically
+                # Get mocap body info
+                body_id = self.env._model_names.body_name2id["robot0:mocap"]
+                mocap_id = self.env.model.body_mocapid[body_id]
+                
                 step_count = 0
                 while step_count < max_steps:
-                    current_pos = self.env._utils.get_site_xpos(
-                        self.env.model, self.env.data, "grip"
-                    )
-                    pos_diff = target_pos - current_pos
+                    # Use mocap position instead of gripper site position for consistency
+                    current_mocap_pos = self.env.data.mocap_pos[mocap_id].copy()
+                    pos_diff = target_pos - current_mocap_pos
 
                     # Check if we've reached the target
                     if np.linalg.norm(pos_diff) < position_tolerance:
@@ -155,44 +156,33 @@ class Ar4Mk3RobotInterface(RobotInterface):
                         [pos_diff_clipped, [0.0]]
                     )  # Keep gripper state unchanged
 
-                    print(
-                        f"step: {step_count}, pos_diff: {pos_diff}, pos_diff_clipped: {pos_diff_clipped}, current_pos: {current_pos}, target_pos: {target_pos}"
-                    )
-
-                    # Get mocap position before and after step to debug
-                    if self.env.use_eef_control:
-                        body_id = self.env._model_names.body_name2id["robot0:mocap"]
-                        mocap_id = self.env.model.body_mocapid[body_id]
-                        mocap_pos_before = self.env.data.mocap_pos[mocap_id].copy()
-
+                    # Apply the action
                     _, _, _, _, _ = self.env.step(action)
-
-                    if self.env.use_eef_control:
-                        mocap_pos_after = self.env.data.mocap_pos[mocap_id].copy()
-                        print(
-                            f"  mocap_pos_before: {mocap_pos_before}, mocap_pos_after: {mocap_pos_after}"
-                        )
-                        print(
-                            f"  mocap_pos_change: {mocap_pos_after - mocap_pos_before}"
-                        )
+                    
+                    # Add a small delay to allow physics to settle
+                    time.sleep(0.01)
 
                     step_count += 1
+
+                # Final check using actual gripper position
+                final_grip_pos = self.env._utils.get_site_xpos(
+                    self.env.model, self.env.data, "grip"
+                )
+                final_error = np.linalg.norm(target_pos - final_grip_pos)
+                
+                if step_count >= max_steps:
+                    self.logger.warning(
+                        f"Move to pose reached maximum steps ({max_steps}) without full convergence"
+                    )
+                    self.logger.warning(f"Final position error: {final_error:.6f}m")
+                else:
+                    self.logger.info(f"Robot moved to pose in {step_count} steps, final error: {final_error:.6f}m")
 
             else:
                 # For joint control, this is more complex - would need inverse kinematics
                 # For now, implement a simplified version
                 self.logger.warning("Joint control mode move_to not fully implemented")
                 return False
-
-            if step_count >= max_steps:
-                self.logger.warning(
-                    f"Move to pose reached maximum steps ({max_steps}) without full convergence"
-                )
-                self.logger.warning(
-                    f"Final position error: {np.linalg.norm(target_pos - current_pos):.6f}m"
-                )
-            else:
-                self.logger.info(f"Robot moved to pose in {step_count} steps")
 
             return True
 

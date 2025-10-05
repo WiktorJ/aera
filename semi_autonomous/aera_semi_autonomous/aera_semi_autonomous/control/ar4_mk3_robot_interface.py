@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 import numpy as np
 import open3d as o3d
@@ -82,13 +83,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Execute multiple steps to reach home
             for _ in range(50):  # Adjust number of steps as needed
                 _, _, _, _, _ = self.env.step(home_action)
-                # Check if close enough to home
-                if self.env.use_eef_control:
-                    break  # For EEF control, single action might be enough
-                else:
-                    current_qpos = self.env.data.qpos[:6]
-                    if np.allclose(current_qpos, self.home_joint_positions, atol=0.05):
-                        break
+                current_qpos = self.env.data.qpos[:6]
+                if np.allclose(current_qpos, self.home_joint_positions, atol=0.05):
+                    break
 
             self.logger.info("Robot moved to home position")
             return True
@@ -255,7 +252,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.env.render_mode = "rgb_array"
             rgb_image = self.env.render()
             self.env.render_mode = original_render_mode
-            
+
             if rgb_image is not None:
                 self._latest_rgb_image = rgb_image
                 return rgb_image  # type: ignore
@@ -273,7 +270,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.env.render_mode = "depth_array"
             depth_image = self.env.render()
             self.env.render_mode = original_render_mode
-            
+
             if depth_image is not None:
                 self._latest_depth_image = depth_image
                 return depth_image

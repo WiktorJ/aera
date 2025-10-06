@@ -200,7 +200,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             current_action_value = (current_gripper_value / -0.014) * 2.0 - 1.0
             current_action_value = np.clip(current_action_value, -1.0, 1.0)
 
-            max_steps = 30  # Reduced steps for smoother motion
             target_gripper_value = -1.0  # Fully open
 
             # Only move if we're not already open
@@ -208,23 +207,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.info("Gripper already open")
                 return True
 
-            for step in range(max_steps):
-                # Gradually move gripper from current position to open position
-                progress = (step + 1) / max_steps
-                current_gripper_value = (
-                    current_action_value
-                    + (target_gripper_value - current_action_value) * progress
+            # Single step to open gripper
+            if self.env.use_eef_control:
+                action = np.array([0.0, 0.0, 0.0, target_gripper_value])
+            else:
+                action = np.array(
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, target_gripper_value]
                 )
 
-                # Keep position unchanged, only modify gripper
-                if self.env.use_eef_control:
-                    action = np.array([0.0, 0.0, 0.0, current_gripper_value])
-                else:
-                    action = np.array(
-                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, current_gripper_value]
-                    )
-
-                _, _, _, _, _ = self.env.step(action)
+            _, _, _, _, _ = self.env.step(action)
 
             self.logger.info("Gripper released")
             return True
@@ -351,7 +342,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Temporarily set render mode to depth_array to get depth image
             original_render_mode = self.env.render_mode
             self.env.render_mode = "depth_array"
-            depth_image = self.env.render()
+            depth_image = self.env.render(mode="depth_array")
             self.env.render_mode = original_render_mode
 
             if depth_image is not None:

@@ -167,6 +167,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test release_gripper with end-effector control mode."""
         self.mock_env.use_eef_control = True
         self.mock_env.step.return_value = (None, None, None, None, None)
+        # Mock gripper state to trigger movement
+        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
 
         result = self.robot_interface.release_gripper()
 
@@ -181,6 +183,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test release_gripper with joint control mode."""
         self.mock_env.use_eef_control = False
         self.mock_env.step.return_value = (None, None, None, None, None)
+        # Mock gripper state to trigger movement
+        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
 
         result = self.robot_interface.release_gripper()
 
@@ -194,6 +198,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_release_gripper_exception(self):
         """Test release_gripper when an exception occurs."""
         self.mock_env.step.side_effect = Exception("Test exception")
+        # Mock gripper state to trigger movement
+        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
 
         result = self.robot_interface.release_gripper()
 
@@ -215,7 +221,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertTrue(result)
             self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
-            self.mock_env.step.assert_called_once()  # For gripper action
+            # Check that step was called 50 times for gradual gripper closing
+            self.assertEqual(self.mock_env.step.call_count, 50)
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""

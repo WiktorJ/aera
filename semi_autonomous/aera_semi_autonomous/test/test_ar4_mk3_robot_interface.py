@@ -92,51 +92,76 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertFalse(result)
 
-    def test_move_to_eef_control_success(self):
-        """Test move_to with end-effector control mode."""
-        self.mock_env.use_eef_control = True
-        self.mock_env.step.return_value = (None, None, None, None, None)
-        # Mock the gripper position to be close to target after a few steps
-        positions = [
-            np.array([0.0, 0.0, 0.0]),  # Initial position
-            np.array([0.05, 0.05, 0.05]),  # After first step
-            np.array([0.1, 0.1, 0.1]),  # Final position (close to target)
-        ]
-        self.mock_env._utils.get_site_xpos.side_effect = positions
+    def test_move_to_ik_success(self):
+        """Test move_to with inverse kinematics."""
+        # Mock IK solver to return success
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose"
+        ) as mock_ik, patch.object(
+            self.robot_interface, "_apply_joint_positions"
+        ) as mock_apply:
+            
+            # Mock successful IK result
+            from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
+            mock_ik.return_value = IKResult(
+                qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
+                err_norm=1e-6,
+                steps=10,
+                success=True
+            )
+            
+            # Mock final position check
+            self.mock_env._utils.get_site_xpos.return_value = np.array([0.1, 0.1, 0.1])
 
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
-        result = self.robot_interface.move_to(pose)
+            result = self.robot_interface.move_to(pose)
 
-        self.assertTrue(result)
-        self.mock_env.step.assert_called()
+            self.assertTrue(result)
+            mock_ik.assert_called_once()
+            mock_apply.assert_called_once()
 
-    def test_move_to_joint_control_not_implemented(self):
-        """Test move_to with joint control mode (not fully implemented)."""
-        self.mock_env.use_eef_control = False
+    def test_move_to_ik_failure(self):
+        """Test move_to when IK fails to converge."""
+        # Mock IK solver to return failure
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose"
+        ) as mock_ik:
+            
+            # Mock failed IK result
+            from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
+            mock_ik.return_value = IKResult(
+                qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
+                err_norm=1.0,
+                steps=100,
+                success=False
+            )
 
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
-        result = self.robot_interface.move_to(pose)
+            result = self.robot_interface.move_to(pose)
 
-        self.assertFalse(result)
+            self.assertFalse(result)
+            mock_ik.assert_called_once()
 
     def test_move_to_exception(self):
         """Test move_to when an exception occurs."""
-        self.mock_env.use_eef_control = True
-        self.mock_env._utils.get_site_xpos.side_effect = Exception("Test exception")
+        # Mock IK solver to raise exception
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose",
+            side_effect=Exception("Test exception")
+        ):
+            pose = Pose()
+            pose.position = Point(x=0.1, y=0.1, z=0.1)
+            pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
-        pose = Pose()
-        pose.position = Point(x=0.1, y=0.1, z=0.1)
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+            result = self.robot_interface.move_to(pose)
 
-        result = self.robot_interface.move_to(pose)
-
-        self.assertFalse(result)
+            self.assertFalse(result)
 
     def test_release_gripper_eef_control_success(self):
         """Test release_gripper with end-effector control mode."""

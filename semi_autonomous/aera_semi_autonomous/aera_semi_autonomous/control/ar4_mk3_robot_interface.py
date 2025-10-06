@@ -467,7 +467,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         for steps in range(max_steps):
             # Forward kinematics to get current site pose
-            mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
+            mjlib.mj_fwdPosition(self.env.model, self.env.data)
 
             # Get current site position and orientation
             current_pos = self.env._utils.get_site_xpos(
@@ -479,7 +479,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 err_pos[:] = target_pos - current_pos
                 # Compute position Jacobian
                 mjlib.mj_jacSite(
-                    self.env.model.ptr, self.env.data.ptr, jac_pos, None, site_id
+                    self.env.model, self.env.data, jac_pos, None, site_id
                 )
 
             # Compute orientation error
@@ -488,7 +488,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 err_rot[:] = self._compute_quaternion_error(target_quat, current_quat)
                 # Compute rotation Jacobian
                 mjlib.mj_jacSite(
-                    self.env.model.ptr, self.env.data.ptr, None, jac_rot, site_id
+                    self.env.model, self.env.data, None, jac_rot, site_id
                 )
 
             # Compute weighted error norm
@@ -538,7 +538,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_nv[dof_indices] = update_joints
 
             # Update joint positions
-            mjlib.mj_integratePos(self.env.model.ptr, self.env.data.qpos, update_nv, 1)
+            mjlib.mj_integratePos(self.env.model, self.env.data.qpos, update_nv, 1)
 
             self.logger.debug(
                 f"Step {steps}: err_norm={err_norm:.3g} update_norm={update_norm:.3g}"
@@ -630,7 +630,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.env.data.qpos[:] = qpos
 
         # Forward kinematics to update all dependent quantities
-        mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
+        mjlib.mj_fwdPosition(self.env.model, self.env.data)
 
         # If using joint control, we need to step the environment to apply the positions
         if not self.env.use_eef_control:

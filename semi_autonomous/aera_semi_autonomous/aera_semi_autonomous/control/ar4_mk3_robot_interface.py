@@ -11,16 +11,12 @@ import collections
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
-try:
-    from dm_control.mujoco.wrapper import mjbindings
-    mjlib = mjbindings.mjlib
-except ImportError:
-    # Fallback for environments without dm_control
-    mjlib = None
+from dm_control.mujoco.wrapper import mjbindings
+
+mjlib = mjbindings.mjlib
 
 # IK Result namedtuple
-IKResult = collections.namedtuple(
-    'IKResult', ['qpos', 'err_norm', 'steps', 'success'])
+IKResult = collections.namedtuple("IKResult", ["qpos", "err_norm", "steps", "success"])
 
 
 class Ar4Mk3RobotInterface(RobotInterface):
@@ -142,10 +138,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             # Convert ROS Pose to target position and orientation
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
-            target_quat = np.array([
-                pose.orientation.x, pose.orientation.y, 
-                pose.orientation.z, pose.orientation.w
-            ])
+            target_quat = np.array(
+                [
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                    pose.orientation.w,
+                ]
+            )
 
             self.logger.info(f"Moving to target position: {target_pos}")
             self.logger.info(f"Target orientation (quat): {target_quat}")
@@ -156,7 +156,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 tol=1e-3,
-                max_steps=100
+                max_steps=100,
             )
 
             if not ik_result.success:
@@ -211,9 +211,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if self.env.use_eef_control:
                 action = np.array([0.0, 0.0, 0.0, target_gripper_value])
             else:
-                action = np.array(
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, target_gripper_value]
-                )
+                action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, target_gripper_value])
 
             _, _, _, _, _ = self.env.step(action)
 
@@ -375,26 +373,36 @@ class Ar4Mk3RobotInterface(RobotInterface):
         else:
             raise ValueError("Transform must be a 4x4 matrix")
 
-    def _solve_ik_for_site_pose(self, site_name: str, target_pos: Optional[np.ndarray] = None,
-                               target_quat: Optional[np.ndarray] = None, joint_names: Optional[list] = None,
-                               tol: float = 1e-14, rot_weight: float = 1.0,
-                               regularization_threshold: float = 0.1,
-                               regularization_strength: float = 3e-2,
-                               max_update_norm: float = 2.0,
-                               progress_thresh: float = 20.0,
-                               max_steps: int = 100) -> IKResult:
+    def _solve_ik_for_site_pose(
+        self,
+        site_name: str,
+        target_pos: Optional[np.ndarray] = None,
+        target_quat: Optional[np.ndarray] = None,
+        joint_names: Optional[list] = None,
+        tol: float = 1e-14,
+        rot_weight: float = 1.0,
+        regularization_threshold: float = 0.1,
+        regularization_strength: float = 3e-2,
+        max_update_norm: float = 2.0,
+        progress_thresh: float = 20.0,
+        max_steps: int = 100,
+    ) -> IKResult:
         """
         Find joint positions that satisfy a target site position and/or rotation.
         Based on dm_control's inverse kinematics implementation.
         """
         if mjlib is None:
-            raise RuntimeError("mjlib not available. Install dm_control for IK support.")
-        
+            raise RuntimeError(
+                "mjlib not available. Install dm_control for IK support."
+            )
+
         if target_pos is None and target_quat is None:
-            raise ValueError("At least one of target_pos or target_quat must be specified.")
+            raise ValueError(
+                "At least one of target_pos or target_quat must be specified."
+            )
 
         dtype = self.env.data.qpos.dtype
-        
+
         # Get site ID
         site_id = self.env._model_names.site_name2id.get(site_name)
         if site_id is None:
@@ -403,10 +411,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Determine which joints to use (default to arm joints, excluding gripper)
         if joint_names is None:
             # Get all joint names and exclude gripper joints
-            all_joint_names = [self.env.model.joint(i).name for i in range(self.env.model.njnt)]
-            joint_names = [name for name in all_joint_names 
-                          if not any(gripper_keyword in name.lower() 
-                                   for gripper_keyword in ['gripper', 'finger'])]
+            all_joint_names = [
+                self.env.model.joint(i).name for i in range(self.env.model.njnt)
+            ]
+            joint_names = [
+                name
+                for name in all_joint_names
+                if not any(
+                    gripper_keyword in name.lower()
+                    for gripper_keyword in ["gripper", "finger"]
+                )
+            ]
 
         # Get joint indices and DOF indices
         joint_indices = []
@@ -423,7 +438,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.warning(f"Joint '{name}' not found, skipping")
 
         dof_indices = np.array(dof_indices)
-        
+
         # Set up Jacobian and error arrays
         if target_pos is not None and target_quat is not None:
             jac = np.empty((6, self.env.model.nv), dtype=dtype)
@@ -441,7 +456,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 err_pos, err_rot = None, err
 
         update_nv = np.zeros(self.env.model.nv, dtype=dtype)
-        
+
         if target_quat is not None:
             # Normalize target quaternion
             target_quat = target_quat / np.linalg.norm(target_quat)
@@ -449,32 +464,38 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Main IK loop
         steps = 0
         success = False
-        
+
         for steps in range(max_steps):
             # Forward kinematics to get current site pose
             mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
-            
+
             # Get current site position and orientation
-            current_pos = self.env._utils.get_site_xpos(self.env.model, self.env.data, site_name)
-            
+            current_pos = self.env._utils.get_site_xpos(
+                self.env.model, self.env.data, site_name
+            )
+
             # Compute position error
             if target_pos is not None:
                 err_pos[:] = target_pos - current_pos
                 # Compute position Jacobian
-                mjlib.mj_jacSite(self.env.model.ptr, self.env.data.ptr, 
-                               jac_pos, None, site_id)
+                mjlib.mj_jacSite(
+                    self.env.model.ptr, self.env.data.ptr, jac_pos, None, site_id
+                )
 
             # Compute orientation error
             if target_quat is not None:
                 current_quat = self._get_site_quaternion(site_name)
                 err_rot[:] = self._compute_quaternion_error(target_quat, current_quat)
                 # Compute rotation Jacobian
-                mjlib.mj_jacSite(self.env.model.ptr, self.env.data.ptr, 
-                               None, jac_rot, site_id)
+                mjlib.mj_jacSite(
+                    self.env.model.ptr, self.env.data.ptr, None, jac_rot, site_id
+                )
 
             # Compute weighted error norm
             if target_pos is not None and target_quat is not None:
-                err_norm = np.linalg.norm(err_pos) + rot_weight * np.linalg.norm(err_rot)
+                err_norm = np.linalg.norm(err_pos) + rot_weight * np.linalg.norm(
+                    err_rot
+                )
             elif target_pos is not None:
                 err_norm = np.linalg.norm(err_pos)
             else:
@@ -489,12 +510,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             jac_joints = jac[:, dof_indices]
 
             # Determine regularization strength
-            reg_strength = (regularization_strength if err_norm > regularization_threshold 
-                          else 0.0)
+            reg_strength = (
+                regularization_strength if err_norm > regularization_threshold else 0.0
+            )
 
             # Compute joint update using nullspace method
             update_joints = self._nullspace_method(
-                jac_joints, err, regularization_strength=reg_strength)
+                jac_joints, err, regularization_strength=reg_strength
+            )
             update_norm = np.linalg.norm(update_joints)
 
             # Check progress
@@ -502,8 +525,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 progress_criterion = err_norm / update_norm
                 if progress_criterion > progress_thresh:
                     self.logger.debug(
-                        f'Step {steps}: err_norm / update_norm ({progress_criterion:.3g}) > '
-                        f'tolerance ({progress_thresh:.3g}). Halting due to insufficient progress'
+                        f"Step {steps}: err_norm / update_norm ({progress_criterion:.3g}) > "
+                        f"tolerance ({progress_thresh:.3g}). Halting due to insufficient progress"
                     )
                     break
 
@@ -517,63 +540,83 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Update joint positions
             mjlib.mj_integratePos(self.env.model.ptr, self.env.data.qpos, update_nv, 1)
 
-            self.logger.debug(f'Step {steps}: err_norm={err_norm:.3g} update_norm={update_norm:.3g}')
+            self.logger.debug(
+                f"Step {steps}: err_norm={err_norm:.3g} update_norm={update_norm:.3g}"
+            )
 
         if not success and steps == max_steps - 1:
-            self.logger.warning(f'IK failed to converge after {steps} steps: err_norm={err_norm:.3g}')
+            self.logger.warning(
+                f"IK failed to converge after {steps} steps: err_norm={err_norm:.3g}"
+            )
 
-        return IKResult(qpos=self.env.data.qpos.copy(), err_norm=err_norm, 
-                       steps=steps, success=success)
+        return IKResult(
+            qpos=self.env.data.qpos.copy(),
+            err_norm=err_norm,
+            steps=steps,
+            success=success,
+        )
 
     def _get_site_quaternion(self, site_name: str) -> np.ndarray:
         """Get the quaternion orientation of a site."""
         # Get rotation matrix
-        rot_matrix = self.env._utils.get_site_xmat(self.env.model, self.env.data, site_name)
+        rot_matrix = self.env._utils.get_site_xmat(
+            self.env.model, self.env.data, site_name
+        )
         rot_matrix = rot_matrix.reshape(3, 3)
-        
+
         # Convert to quaternion [x, y, z, w]
         rotation = Rotation.from_matrix(rot_matrix)
         return rotation.as_quat()
 
-    def _compute_quaternion_error(self, target_quat: np.ndarray, current_quat: np.ndarray) -> np.ndarray:
+    def _compute_quaternion_error(
+        self, target_quat: np.ndarray, current_quat: np.ndarray
+    ) -> np.ndarray:
         """Compute the quaternion error for IK."""
         # Ensure quaternions are normalized
         target_quat = target_quat / np.linalg.norm(target_quat)
         current_quat = current_quat / np.linalg.norm(current_quat)
-        
+
         # Compute quaternion difference
         # q_error = q_target * q_current^(-1)
-        current_quat_inv = np.array([-current_quat[0], -current_quat[1], -current_quat[2], current_quat[3]])
-        
+        current_quat_inv = np.array(
+            [-current_quat[0], -current_quat[1], -current_quat[2], current_quat[3]]
+        )
+
         # Quaternion multiplication: q1 * q2
         def quat_mult(q1, q2):
             w1, x1, y1, z1 = q1[3], q1[0], q1[1], q1[2]
             w2, x2, y2, z2 = q2[3], q2[0], q2[1], q2[2]
-            return np.array([
-                w1*x2 + x1*w2 + y1*z2 - z1*y2,  # x
-                w1*y2 - x1*z2 + y1*w2 + z1*x2,  # y
-                w1*z2 + x1*y2 - y1*x2 + z1*w2,  # z
-                w1*w2 - x1*x2 - y1*y2 - z1*z2   # w
-            ])
-        
+            return np.array(
+                [
+                    w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,  # x
+                    w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,  # y
+                    w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,  # z
+                    w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,  # w
+                ]
+            )
+
         q_error = quat_mult(target_quat, current_quat_inv)
-        
+
         # Convert to axis-angle representation (scaled by angle)
         if q_error[3] < 0:
             q_error = -q_error
-        
+
         # Return the vector part scaled by 2 * angle
         return 2.0 * q_error[:3]
 
-    def _nullspace_method(self, jac_joints: np.ndarray, delta: np.ndarray, 
-                         regularization_strength: float = 0.0) -> np.ndarray:
+    def _nullspace_method(
+        self,
+        jac_joints: np.ndarray,
+        delta: np.ndarray,
+        regularization_strength: float = 0.0,
+    ) -> np.ndarray:
         """
         Calculate joint velocities to achieve specified end effector delta.
         Based on dm_control's nullspace method.
         """
         hess_approx = jac_joints.T.dot(jac_joints)
         joint_delta = jac_joints.T.dot(delta)
-        
+
         if regularization_strength > 0:
             # L2 regularization
             hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
@@ -585,10 +628,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Apply joint positions to the environment."""
         # Copy the joint positions to the environment
         self.env.data.qpos[:] = qpos
-        
+
         # Forward kinematics to update all dependent quantities
         mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
-        
+
         # If using joint control, we need to step the environment to apply the positions
         if not self.env.use_eef_control:
             # For joint control, create action from joint positions
@@ -596,14 +639,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # position control or compute joint velocities
             current_qpos = self.env.data.qpos[:-2]  # Exclude gripper joints
             target_qpos = qpos[:-2]  # Exclude gripper joints
-            
+
             # Simple proportional control
             action = (target_qpos - current_qpos) * 10.0  # Scale factor
             action = np.clip(action, -1.0, 1.0)  # Clip to action space
-            
+
             # Add gripper action (keep current state)
             gripper_action = 0.0
             action = np.append(action, gripper_action)
-            
+
             # Step the environment
             self.env.step(action)

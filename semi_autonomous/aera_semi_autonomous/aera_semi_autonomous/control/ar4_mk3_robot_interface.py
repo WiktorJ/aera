@@ -150,7 +150,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     self.env.model, self.env.data, "grip"
                 )
                 grip_offset = initial_grip_pos - initial_mocap_pos
-                
+
                 # Adjust target to account for the offset
                 target_mocap_pos = target_pos - grip_offset
 

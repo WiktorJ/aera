@@ -168,8 +168,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Verify the IK solution before applying it
             # Temporarily set the joint positions to check the result
-            original_qpos = self.env.data.qpos.copy()
-            self.env.data.qpos[:] = ik_result.qpos
+            verification_qpos = self.env.data.qpos.copy()
+            verification_qpos[:] = ik_result.qpos
+            
+            # Save current state
+            current_qpos = self.env.data.qpos.copy()
+            current_qvel = self.env.data.qvel.copy()
+            
+            # Temporarily apply IK solution for verification
+            self.env.data.qpos[:] = verification_qpos
             mjlib.mj_fwdPosition(self.env.model, self.env.data)
             
             # Check the actual position achieved by the IK solution
@@ -178,8 +185,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
             position_error = np.linalg.norm(target_pos - achieved_pos)
             
-            # Restore original position
-            self.env.data.qpos[:] = original_qpos
+            # Restore current state
+            self.env.data.qpos[:] = current_qpos
+            self.env.data.qvel[:] = current_qvel
             mjlib.mj_fwdPosition(self.env.model, self.env.data)
 
             # Check if the IK solution is actually good enough
@@ -194,6 +202,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 f"IK converged in {ik_result.steps} steps. "
                 f"Position error: {position_error:.6f}m"
             )
+
+            # Debug: Check current state before applying IK solution
+            current_before_apply = self.env.data.qpos[:6].copy()
+            self.logger.debug(f"Current joint positions before apply: {current_before_apply}")
+            self.logger.debug(f"IK solution to apply: {ik_result.qpos[:6]}")
 
             # Apply the computed joint positions
             self._apply_joint_positions(ik_result.qpos)
@@ -583,11 +596,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         finally:
             # Always restore original joint positions after IK solving
-            self.logger.debug(f"Restoring original qpos: {original_qpos}")
+            self.logger.debug(f"Restoring original qpos: {original_qpos[:6]}")
             self.env.data.qpos[:] = original_qpos
             self.env.data.qvel[:] = original_qvel
             mjlib.mj_fwdPosition(self.env.model, self.env.data)
-            self.logger.debug(f"Restored qpos: {self.env.data.qpos}")
+            self.logger.debug(f"Restored qpos: {self.env.data.qpos[:6]}")
 
     def _get_site_quaternion(self, site_name: str) -> np.ndarray:
         """Get the quaternion orientation of a site."""

@@ -80,10 +80,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.error("Failed to move to home pose.")
                 return False
 
-            if not self.release_gripper():
-                self.logger.warning("Failed to release gripper after moving home.")
-                return False
-
             return True
         except Exception as e:
             self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
@@ -166,7 +162,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             jac_pos, jac_rot = None, jac
             err_pos, err_rot = None, err
         else:
-            raise ValueError("At least one of `target_pos` or `target_quat` must be specified.")
+            raise ValueError(
+                "At least one of `target_pos` or `target_quat` must be specified."
+            )
 
         site_id = mjlib.mj_name2id(model.ptr, enums.mjtObj.mjOBJ_SITE, site_name)
         dof_indices = self._get_dof_indices(model, joint_names)
@@ -199,7 +197,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             mjlib.mj_jacSite(model.ptr, data.ptr, jac_pos, jac_rot, site_id)
 
-            reg_strength = regularization_strength if err_norm > regularization_threshold else 0.0
+            reg_strength = (
+                regularization_strength if err_norm > regularization_threshold else 0.0
+            )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             update_norm = np.linalg.norm(update_joints)
 
@@ -258,7 +258,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
             # Convert from ROS quaternion (x, y, z, w) to MuJoCo quaternion (w, x, y, z)
             target_quat = np.array(
-                [pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z]
+                [
+                    pose.orientation.w,
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                ]
             )
 
             # Assuming standard AR4 joint names
@@ -273,7 +278,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
 
             if not ik_result.success:
-                self.logger.warning(f"IK failed to converge. Error: {ik_result.err_norm:.4f}")
+                self.logger.warning(
+                    f"IK failed to converge. Error: {ik_result.err_norm:.4f}"
+                )
                 return False
 
             self._apply_joint_positions(ik_result.qpos)

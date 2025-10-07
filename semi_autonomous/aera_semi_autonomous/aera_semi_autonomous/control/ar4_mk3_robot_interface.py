@@ -129,13 +129,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
         target_pos=None,
         target_quat=None,
         joint_names=None,
-        tol=1e-14,
+        tol=1e-6,
         rot_weight=1.0,
         regularization_threshold=0.1,
         regularization_strength=3e-2,
         max_update_norm=2.0,
         progress_thresh=20.0,
-        max_steps=100,
+        max_steps=1000,
         inplace=False,
     ):
         """Find joint positions that satisfy a target site position and/or rotation."""
@@ -144,7 +144,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = self.env.data
         else:
             data = mujoco.MjData(model)
-            data = copy.copy(self.env.data)
+            data = copy.deepcopy(self.env.data)
 
         dtype = data.qpos.dtype
         err_norm = 0.0

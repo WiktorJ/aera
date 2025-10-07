@@ -19,6 +19,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.use_eef_control = True
         self.mock_env.data = Mock()
         self.mock_env.model = Mock()
+        self.mock_env.action_space = Mock()
+        self.mock_env.action_space.shape = (7,)
         self.mock_env._utils = Mock()
 
         # Mock data attributes

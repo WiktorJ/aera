@@ -81,6 +81,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.error("Failed to move to home pose.")
                 return False
 
+            if not self.release_gripper():
+                self.logger.error("Failed to release gripper.")
+                return False
+
             return True
         except Exception as e:
             self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
@@ -140,7 +144,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = self.env.data
         else:
             data = mujoco.MjData(model)
-            mujoco.mj_copyData(model, data, self.env.data)
+            mjlib.mj_copyData(data.ptr, model.ptr, self.env.data.ptr)
 
         dtype = data.qpos.dtype
         err_norm = 0.0
@@ -310,13 +314,83 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def release_gripper(self) -> bool:
-        return False
+        """Release the gripper."""
+        try:
+            # Gripper is considered "released" or "open" when qpos values are positive
+            # We check if either of the gripper joints is not fully open
+            if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
+                if self.env.use_eef_control:
+                    # Action: [dx, dy, dz, gripper]
+                    action = np.array([0.0, 0.0, 0.0, -1.0])
+                else:
+                    # Action: [j1, j2, j3, j4, j5, j6, gripper]
+                    action = np.zeros(self.env.action_space.shape[0])
+                    action[-1] = -1.0
+
+                self.env.step(action)
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to release gripper: {e}", exc_info=True)
+            return False
 
     def grasp_at(self, pose: Pose, gripper_pos: float) -> bool:
-        return False
+        """Move to a pose and grasp."""
+        try:
+            # 1. Move to a position slightly above the target
+            above_pose = Pose()
+            above_pose.position.x = pose.position.x
+            above_pose.position.y = pose.position.y
+            above_pose.position.z = pose.position.z + 0.05  # 5cm above
+            above_pose.orientation = pose.orientation
+            if not self.move_to(above_pose):
+                self.logger.error("Grasp failed: could not move above target.")
+                return False
+
+            # 2. Move to the grasp pose
+            if not self.move_to(pose):
+                self.logger.error("Grasp failed: could not move to target.")
+                return False
+
+            # 3. Gradually close the gripper
+            close_action_val = 1.0  # Fully close
+            if self.env.use_eef_control:
+                action = np.array([0.0, 0.0, 0.0, close_action_val])
+            else:
+                action = np.zeros(self.env.action_space.shape[0])
+                action[-1] = close_action_val
+
+            for _ in range(50):
+                self.env.step(action)
+
+            # 4. Lift the object
+            lift_pose = Pose()
+            lift_pose.position.x = pose.position.x
+            lift_pose.position.y = pose.position.y
+            lift_pose.position.z = pose.position.z + 0.05  # 5cm lift
+            lift_pose.orientation = pose.orientation
+            if not self.move_to(lift_pose):
+                self.logger.warning("Grasp succeeded, but failed to lift.")
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to grasp at pose: {e}", exc_info=True)
+            return False
 
     def release_at(self, pose: Pose) -> bool:
-        return False
+        """Move to a pose and release the gripper."""
+        try:
+            if not self.move_to(pose):
+                self.logger.error("Release at failed: could not move to target.")
+                return False
+
+            if not self.release_gripper():
+                self.logger.error("Release at failed: could not release gripper.")
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to release at pose: {e}", exc_info=True)
+            return False
 
     def get_end_effector_pose(self) -> Optional[Pose]:
         """Get current end-effector pose."""

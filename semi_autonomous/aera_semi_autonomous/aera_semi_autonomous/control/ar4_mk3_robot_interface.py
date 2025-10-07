@@ -181,7 +181,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         dof_indices = self._get_dof_indices(model, joint_names)
-        jac_joints = jac[:, dof_indices]
 
         for steps in range(max_steps):
             mujoco.mj_fwdPosition(model, data)
@@ -210,6 +209,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 break
 
             mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
+            jac_joints = jac[:, dof_indices]
 
             reg_strength = (
                 regularization_strength if err_norm > regularization_threshold else 0.0

@@ -271,7 +271,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
 
             # Assuming standard AR4 joint names
-            joint_names = [f"joint{i}" for i in range(1, 7)]
+            joint_names = [f"joint_{i}" for i in range(1, 7)]
 
             ik_result = self._solve_ik_for_site_pose(
                 site_name="grip",

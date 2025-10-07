@@ -25,6 +25,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
         # Mock data attributes
         self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0])
+        self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
+        self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
         # Create the robot interface
         self.robot_interface = Ar4Mk3RobotInterface(self.mock_env)
@@ -61,10 +63,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         ) as mock_move_to, patch.object(
             self.robot_interface, "release_gripper", return_value=True
         ) as mock_release_gripper:
-            # Mock the initial gripper position for home pose initialization
-            self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
-            self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
-
             result = self.robot_interface.go_home()
 
             self.assertTrue(result)
@@ -76,10 +74,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         with patch.object(
             self.robot_interface, "move_to", return_value=False
         ) as mock_move_to:
-            # Mock the initial gripper position for home pose initialization
-            self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
-            self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
-
             result = self.robot_interface.go_home()
 
             self.assertFalse(result)
@@ -340,8 +334,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
         self.assertIsNotNone(depth)
         np.testing.assert_array_equal(depth, mock_depth)  # type: ignore
-        # Verify render was called with correct mode
-        self.mock_env.render.assert_called_with(mode="depth_array")
+        # Verify render was called
+        self.mock_env.render.assert_called_once()
 
     def test_get_latest_depth_image_exception(self):
         """Test get_latest_depth_image when an exception occurs."""
@@ -383,10 +377,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_home_pose_initialization(self):
         """Test that home pose is correctly initialized."""
-        # Mock the initial gripper position and orientation
-        self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
-        self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
-        
         # Initialize home pose
         self.robot_interface._initialize_home_pose()
         

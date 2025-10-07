@@ -103,7 +103,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
                 qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
                 err_norm=1e-6,
                 steps=10,
-                success=True
+                success=True,
+                failure_reason="",
             )
             
             # Mock final position check
@@ -132,7 +133,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
                 qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
                 err_norm=1.0,
                 steps=100,
-                success=False
+                success=False,
+                failure_reason="Max steps reached",
             )
 
             pose = Pose()

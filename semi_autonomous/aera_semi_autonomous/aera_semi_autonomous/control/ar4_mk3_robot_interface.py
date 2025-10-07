@@ -15,7 +15,9 @@ from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
 # IK Result namedtuple
-IKResult = collections.namedtuple("IKResult", ["qpos", "err_norm", "steps", "success"])
+IKResult = collections.namedtuple(
+    "IKResult", ["qpos", "err_norm", "steps", "success", "failure_reason"]
+)
 
 
 class Ar4Mk3RobotInterface(RobotInterface):
@@ -150,6 +152,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_norm = 0.0
         success = False
         steps = 0
+        failure_reason = "Unknown"
 
         if target_pos is not None and target_quat is not None:
             jac = np.empty((6, model.nv), dtype=dtype)
@@ -198,6 +201,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             if err_norm < tol:
                 success = True
+                failure_reason = ""
                 break
 
             mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
@@ -209,10 +213,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:
+                failure_reason = f"Update norm too small ({update_norm:.2e})"
                 break
 
             progress_criterion = err_norm / update_norm
             if progress_criterion > progress_thresh:
+                failure_reason = (
+                    f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
+                )
                 break
 
             if update_norm > max_update_norm:
@@ -223,13 +231,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_integratePos(model, data.qpos, update_nv, 1.0)
         else:
             success = False
+            failure_reason = f"Max steps ({max_steps}) reached"
 
         qpos = data.qpos.copy()
         if not inplace:
             # mj_deleteData is not needed for MjData objects created in Python
             pass
 
-        return IKResult(qpos=qpos, err_norm=err_norm, steps=steps + 1, success=success)
+        return IKResult(
+            qpos=qpos,
+            err_norm=err_norm,
+            steps=steps + 1,
+            success=success,
+            failure_reason=failure_reason,
+        )
 
     def _apply_joint_positions(self, qpos: np.ndarray):
         """Teleports the robot to the given joint positions."""
@@ -285,7 +300,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             if not ik_result.success:
                 self.logger.warning(
-                    f"IK failed to converge. Error: {ik_result.err_norm:.4f}"
+                    f"IK failed to converge. Error: {ik_result.err_norm:.4f}. "
+                    f"Reason: {ik_result.failure_reason}. "
+                    f"Target Pos: {target_pos}, Target Quat: {target_quat}. "
+                    f"Steps: {ik_result.steps}."
                 )
                 return False
 

@@ -9,7 +9,6 @@ from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
 import collections
 import mujoco
-from mujoco import _enums as enums
 
 
 from aera_semi_autonomous.control.robot_interface import RobotInterface
@@ -105,16 +104,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return np.arange(model.nv)
         dof_indices = []
         for name in joint_names:
-            joint_id = mujoco.mj_name2id(model, enums.mjtObj.mjOBJ_JOINT, name)
+            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
             if joint_id == -1:
                 raise ValueError(f'No joint named "{name}" found.')
             dof_addr = model.jnt_dofadr[joint_id]
             joint_type = model.jnt_type[joint_id]
-            if joint_type == enums.mjtJnt.mjJNT_FREE:
+            if joint_type == mujoco.mjtJoint.mjJNT_FREE:
                 ndof = 6
-            elif joint_type == enums.mjtJnt.mjJNT_BALL:
+            elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
                 ndof = 3
-            elif joint_type in (enums.mjtJnt.mjJNT_SLIDE, enums.mjtJnt.mjJNT_HINGE):
+            elif joint_type in (
+                mujoco.mjtJoint.mjJNT_SLIDE,
+                mujoco.mjtJoint.mjJNT_HINGE,
+            ):
                 ndof = 1
             else:
                 ndof = 0
@@ -169,7 +171,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 "At least one of `target_pos` or `target_quat` must be specified."
             )
 
-        site_id = mujoco.mj_name2id(model, enums.mjtObj.mjOBJ_SITE, site_name)
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         dof_indices = self._get_dof_indices(model, joint_names)
         jac_joints = jac[:, dof_indices]
 

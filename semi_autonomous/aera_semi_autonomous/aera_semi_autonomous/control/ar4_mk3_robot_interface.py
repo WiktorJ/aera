@@ -395,154 +395,168 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         dtype = self.env.data.qpos.dtype
 
-        # Get site ID
-        site_id = self.env._model_names.site_name2id.get(site_name)
-        if site_id is None:
-            raise ValueError(f"Site '{site_name}' not found in model")
+        # Store original joint positions to restore later
+        original_qpos = self.env.data.qpos.copy()
+        original_qvel = self.env.data.qvel.copy()
 
-        # Determine which joints to use (default to arm joints, excluding gripper)
-        if joint_names is None:
-            # Get all joint names and exclude gripper joints
-            all_joint_names = [
-                self.env.model.joint(i).name for i in range(self.env.model.njnt)
-            ]
-            joint_names = [
-                name
-                for name in all_joint_names
-                if not any(
-                    gripper_keyword in name.lower()
-                    for gripper_keyword in ["gripper", "finger"]
-                )
-            ]
+        try:
+            # Get site ID
+            site_id = self.env._model_names.site_name2id.get(site_name)
+            if site_id is None:
+                raise ValueError(f"Site '{site_name}' not found in model")
 
-        # Get joint indices and DOF indices
-        joint_indices = []
-        dof_indices = []
-        for name in joint_names:
-            try:
-                joint_id = self.env._model_names.joint_name2id[name]
-                joint_indices.append(joint_id)
-                # Get DOF index for this joint
-                dof_start = self.env.model.jnt_dofadr[joint_id]
-                dof_count = 1  # Assuming single DOF joints
-                dof_indices.extend(range(dof_start, dof_start + dof_count))
-            except KeyError:
-                self.logger.warning(f"Joint '{name}' not found, skipping")
-
-        dof_indices = np.array(dof_indices)
-
-        # Set up Jacobian and error arrays
-        if target_pos is not None and target_quat is not None:
-            jac = np.empty((6, self.env.model.nv), dtype=dtype)
-            err = np.empty(6, dtype=dtype)
-            jac_pos, jac_rot = jac[:3], jac[3:]
-            err_pos, err_rot = err[:3], err[3:]
-        else:
-            jac = np.empty((3, self.env.model.nv), dtype=dtype)
-            err = np.empty(3, dtype=dtype)
-            if target_pos is not None:
-                jac_pos, jac_rot = jac, None
-                err_pos, err_rot = err, None
-            else:  # target_quat is not None
-                jac_pos, jac_rot = None, jac
-                err_pos, err_rot = None, err
-
-        update_nv = np.zeros(self.env.model.nv, dtype=dtype)
-
-        if target_quat is not None:
-            # Normalize target quaternion
-            target_quat = target_quat / np.linalg.norm(target_quat)
-
-        # Main IK loop
-        steps = 0
-        success = False
-
-        for steps in range(max_steps):
-            # Forward kinematics to get current site pose
-            mjlib.mj_fwdPosition(self.env.model, self.env.data)
-
-            # Get current site position and orientation
-            current_pos = self.env._utils.get_site_xpos(
-                self.env.model, self.env.data, site_name
-            )
-
-            # Compute position error
-            if target_pos is not None:
-                err_pos[:] = target_pos - current_pos
-                # Compute position Jacobian
-                mjlib.mj_jacSite(self.env.model, self.env.data, jac_pos, None, site_id)
-
-            # Compute orientation error
-            if target_quat is not None:
-                current_quat = self._get_site_quaternion(site_name)
-                err_rot[:] = self._compute_quaternion_error(target_quat, current_quat)
-                # Compute rotation Jacobian
-                mjlib.mj_jacSite(self.env.model, self.env.data, None, jac_rot, site_id)
-
-            # Compute weighted error norm
-            if target_pos is not None and target_quat is not None:
-                err_norm = np.linalg.norm(err_pos) + rot_weight * np.linalg.norm(
-                    err_rot
-                )
-            elif target_pos is not None:
-                err_norm = np.linalg.norm(err_pos)
-            else:
-                err_norm = rot_weight * np.linalg.norm(err_rot)
-
-            # Check convergence
-            if err_norm < tol:
-                success = True
-                break
-
-            # Extract Jacobian for the specified joints
-            jac_joints = jac[:, dof_indices]
-
-            # Determine regularization strength
-            reg_strength = (
-                regularization_strength if err_norm > regularization_threshold else 0.0
-            )
-
-            # Compute joint update using nullspace method
-            update_joints = self._nullspace_method(
-                jac_joints, err, regularization_strength=reg_strength
-            )
-            update_norm = np.linalg.norm(update_joints)
-
-            # Check progress
-            if update_norm > 0:
-                progress_criterion = err_norm / update_norm
-                if progress_criterion > progress_thresh:
-                    self.logger.debug(
-                        f"Step {steps}: err_norm / update_norm ({progress_criterion:.3g}) > "
-                        f"tolerance ({progress_thresh:.3g}). Halting due to insufficient progress"
+            # Determine which joints to use (default to arm joints, excluding gripper)
+            if joint_names is None:
+                # Get all joint names and exclude gripper joints
+                all_joint_names = [
+                    self.env.model.joint(i).name for i in range(self.env.model.njnt)
+                ]
+                joint_names = [
+                    name
+                    for name in all_joint_names
+                    if not any(
+                        gripper_keyword in name.lower()
+                        for gripper_keyword in ["gripper", "finger"]
                     )
+                ]
+
+            # Get joint indices and DOF indices
+            joint_indices = []
+            dof_indices = []
+            for name in joint_names:
+                try:
+                    joint_id = self.env._model_names.joint_name2id[name]
+                    joint_indices.append(joint_id)
+                    # Get DOF index for this joint
+                    dof_start = self.env.model.jnt_dofadr[joint_id]
+                    dof_count = 1  # Assuming single DOF joints
+                    dof_indices.extend(range(dof_start, dof_start + dof_count))
+                except KeyError:
+                    self.logger.warning(f"Joint '{name}' not found, skipping")
+
+            dof_indices = np.array(dof_indices)
+
+            # Set up Jacobian and error arrays
+            if target_pos is not None and target_quat is not None:
+                jac = np.empty((6, self.env.model.nv), dtype=dtype)
+                err = np.empty(6, dtype=dtype)
+                jac_pos, jac_rot = jac[:3], jac[3:]
+                err_pos, err_rot = err[:3], err[3:]
+            else:
+                jac = np.empty((3, self.env.model.nv), dtype=dtype)
+                err = np.empty(3, dtype=dtype)
+                if target_pos is not None:
+                    jac_pos, jac_rot = jac, None
+                    err_pos, err_rot = err, None
+                else:  # target_quat is not None
+                    jac_pos, jac_rot = None, jac
+                    err_pos, err_rot = None, err
+
+            update_nv = np.zeros(self.env.model.nv, dtype=dtype)
+
+            if target_quat is not None:
+                # Normalize target quaternion
+                target_quat = target_quat / np.linalg.norm(target_quat)
+
+            # Main IK loop
+            steps = 0
+            success = False
+
+            for steps in range(max_steps):
+                # Forward kinematics to get current site pose
+                mjlib.mj_fwdPosition(self.env.model, self.env.data)
+
+                # Get current site position and orientation
+                current_pos = self.env._utils.get_site_xpos(
+                    self.env.model, self.env.data, site_name
+                )
+
+                # Compute position error
+                if target_pos is not None:
+                    err_pos[:] = target_pos - current_pos
+                    # Compute position Jacobian
+                    mjlib.mj_jacSite(self.env.model, self.env.data, jac_pos, None, site_id)
+
+                # Compute orientation error
+                if target_quat is not None:
+                    current_quat = self._get_site_quaternion(site_name)
+                    err_rot[:] = self._compute_quaternion_error(target_quat, current_quat)
+                    # Compute rotation Jacobian
+                    mjlib.mj_jacSite(self.env.model, self.env.data, None, jac_rot, site_id)
+
+                # Compute weighted error norm
+                if target_pos is not None and target_quat is not None:
+                    err_norm = np.linalg.norm(err_pos) + rot_weight * np.linalg.norm(
+                        err_rot
+                    )
+                elif target_pos is not None:
+                    err_norm = np.linalg.norm(err_pos)
+                else:
+                    err_norm = rot_weight * np.linalg.norm(err_rot)
+
+                # Check convergence
+                if err_norm < tol:
+                    success = True
                     break
 
-            # Limit update norm
-            if update_norm > max_update_norm:
-                update_joints *= max_update_norm / update_norm
+                # Extract Jacobian for the specified joints
+                jac_joints = jac[:, dof_indices]
 
-            # Apply update to full DOF vector
-            update_nv[dof_indices] = update_joints
+                # Determine regularization strength
+                reg_strength = (
+                    regularization_strength if err_norm > regularization_threshold else 0.0
+                )
 
-            # Update joint positions
-            mjlib.mj_integratePos(self.env.model, self.env.data.qpos, update_nv, 1)
+                # Compute joint update using nullspace method
+                update_joints = self._nullspace_method(
+                    jac_joints, err, regularization_strength=reg_strength
+                )
+                update_norm = np.linalg.norm(update_joints)
 
-            self.logger.debug(
-                f"Step {steps}: err_norm={err_norm:.3g} update_norm={update_norm:.3g}"
+                # Check progress
+                if update_norm > 0:
+                    progress_criterion = err_norm / update_norm
+                    if progress_criterion > progress_thresh:
+                        self.logger.debug(
+                            f"Step {steps}: err_norm / update_norm ({progress_criterion:.3g}) > "
+                            f"tolerance ({progress_thresh:.3g}). Halting due to insufficient progress"
+                        )
+                        break
+
+                # Limit update norm
+                if update_norm > max_update_norm:
+                    update_joints *= max_update_norm / update_norm
+
+                # Apply update to full DOF vector
+                update_nv[dof_indices] = update_joints
+
+                # Update joint positions
+                mjlib.mj_integratePos(self.env.model, self.env.data.qpos, update_nv, 1)
+
+                self.logger.debug(
+                    f"Step {steps}: err_norm={err_norm:.3g} update_norm={update_norm:.3g}"
+                )
+
+            if not success and steps == max_steps - 1:
+                self.logger.warning(
+                    f"IK failed to converge after {steps} steps: err_norm={err_norm:.3g}"
+                )
+
+            # Store the final IK solution
+            final_qpos = self.env.data.qpos.copy()
+
+            return IKResult(
+                qpos=final_qpos,
+                err_norm=err_norm,
+                steps=steps,
+                success=success,
             )
 
-        if not success and steps == max_steps - 1:
-            self.logger.warning(
-                f"IK failed to converge after {steps} steps: err_norm={err_norm:.3g}"
-            )
-
-        return IKResult(
-            qpos=self.env.data.qpos.copy(),
-            err_norm=err_norm,
-            steps=steps,
-            success=success,
-        )
+        finally:
+            # Always restore original joint positions after IK solving
+            self.env.data.qpos[:] = original_qpos
+            self.env.data.qvel[:] = original_qvel
+            mjlib.mj_fwdPosition(self.env.model, self.env.data)
 
     def _get_site_quaternion(self, site_name: str) -> np.ndarray:
         """Get the quaternion orientation of a site."""

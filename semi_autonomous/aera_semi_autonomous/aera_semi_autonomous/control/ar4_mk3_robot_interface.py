@@ -14,6 +14,7 @@ from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 from dm_control.mujoco.wrapper import mjbindings
 
 mjlib = mjbindings.mjlib
+enums = mjbindings.enums
 
 # IK Result namedtuple
 IKResult = collections.namedtuple("IKResult", ["qpos", "err_norm", "steps", "success"])
@@ -74,6 +75,147 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Move robot to home position and release gripper."""
         return False
 
+    def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
+        """Calculates the joint velocities to achieve a specified end effector delta."""
+        hess_approx = jac_joints.T.dot(jac_joints)
+        joint_delta = jac_joints.T.dot(delta)
+        if regularization_strength > 0:
+            # L2 regularization
+            hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
+            return np.linalg.solve(hess_approx, joint_delta)
+        else:
+            return np.linalg.lstsq(hess_approx, joint_delta, rcond=-1)[0]
+
+    def _get_dof_indices(self, model, joint_names):
+        """Get the list of DoF indices for a given list of joint names."""
+        if joint_names is None:
+            return np.arange(model.nv)
+        dof_indices = []
+        for name in joint_names:
+            joint_id = mjlib.mj_name2id(model.ptr, enums.mjtObj.mjOBJ_JOINT, name)
+            if joint_id == -1:
+                raise ValueError(f'No joint named "{name}" found.')
+            dof_addr = model.jnt_dofadr[joint_id]
+            joint_type = model.jnt_type[joint_id]
+            if joint_type == enums.mjtJnt.mjJNT_FREE:
+                ndof = 6
+            elif joint_type == enums.mjtJnt.mjJNT_BALL:
+                ndof = 3
+            elif joint_type in (enums.mjtJnt.mjJNT_SLIDE, enums.mjtJnt.mjJNT_HINGE):
+                ndof = 1
+            else:
+                ndof = 0
+            dof_indices.extend(range(dof_addr, dof_addr + ndof))
+        return np.array(dof_indices)
+
+    def _solve_ik_for_site_pose(
+        self,
+        site_name,
+        target_pos=None,
+        target_quat=None,
+        joint_names=None,
+        tol=1e-14,
+        rot_weight=1.0,
+        regularization_threshold=0.1,
+        regularization_strength=3e-2,
+        max_update_norm=2.0,
+        progress_thresh=20.0,
+        max_steps=100,
+        inplace=False,
+    ):
+        """Find joint positions that satisfy a target site position and/or rotation."""
+        model = self.env.model
+        if inplace:
+            data = self.env.data
+        else:
+            data = mjlib.mj_makeData(model.ptr)
+            mjlib.mj_copyData(data, model.ptr, self.env.data.ptr)
+
+        dtype = data.qpos.dtype
+        err_norm = 0.0
+        success = False
+        steps = 0
+
+        if target_pos is not None and target_quat is not None:
+            jac = np.empty((6, model.nv), dtype=dtype)
+            err = np.empty(6, dtype=dtype)
+            jac_pos, jac_rot = jac[:3], jac[3:]
+            err_pos, err_rot = err[:3], err[3:]
+        elif target_pos is not None:
+            jac = np.empty((3, model.nv), dtype=dtype)
+            err = np.empty(3, dtype=dtype)
+            jac_pos, jac_rot = jac, None
+            err_pos, err_rot = err, None
+        elif target_quat is not None:
+            jac = np.empty((3, model.nv), dtype=dtype)
+            err = np.empty(3, dtype=dtype)
+            jac_pos, jac_rot = None, jac
+            err_pos, err_rot = None, err
+        else:
+            raise ValueError("At least one of `target_pos` or `target_quat` must be specified.")
+
+        site_id = mjlib.mj_name2id(model.ptr, enums.mjtObj.mjOBJ_SITE, site_name)
+        dof_indices = self._get_dof_indices(model, joint_names)
+        jac_joints = jac[:, dof_indices]
+
+        for steps in range(max_steps):
+            mjlib.mj_fwdPosition(model.ptr, data.ptr)
+
+            site_xpos = data.site_xpos[site_id]
+            site_xmat = data.site_xmat[site_id].reshape(3, 3)
+            site_quat = np.empty(4, dtype=dtype)
+            mjlib.mju_mat2Quat(site_quat, site_xmat.flatten())
+
+            err_norm = 0
+            if target_pos is not None:
+                err_pos[:] = target_pos - site_xpos
+                err_norm += np.linalg.norm(err_pos)
+
+            if target_quat is not None:
+                neg_site_quat = np.empty(4, dtype=dtype)
+                mjlib.mju_negQuat(neg_site_quat, site_quat)
+                err_rot_quat = np.empty(4, dtype=dtype)
+                mjlib.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
+                mjlib.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
+                err_norm += np.linalg.norm(err_rot) * rot_weight
+
+            if err_norm < tol:
+                success = True
+                break
+
+            mjlib.mj_jacSite(model.ptr, data.ptr, jac_pos, jac_rot, site_id)
+
+            reg_strength = regularization_strength if err_norm > regularization_threshold else 0.0
+            update_joints = self._nullspace_method(jac_joints, err, reg_strength)
+            update_norm = np.linalg.norm(update_joints)
+
+            if update_norm < 1e-6:
+                break
+
+            progress_criterion = err_norm / update_norm
+            if progress_criterion > progress_thresh:
+                break
+
+            if update_norm > max_update_norm:
+                update_joints *= max_update_norm / update_norm
+
+            update_nv = np.zeros(model.nv, dtype=dtype)
+            update_nv[dof_indices] = update_joints
+            mjlib.mj_integratePos(model.ptr, data.qpos, update_nv, 1.0)
+        else:
+            success = False
+
+        qpos = data.qpos.copy()
+        if not inplace:
+            mjlib.mj_deleteData(data)
+
+        return IKResult(qpos=qpos, err_norm=err_norm, steps=steps + 1, success=success)
+
+    def _apply_joint_positions(self, qpos: np.ndarray):
+        """Teleports the robot to the given joint positions."""
+        self.env.data.qpos[:] = qpos
+        mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
+
     def _initialize_home_pose(self):
         """Initialize the home pose to the robot's actual initial position."""
         # Use the actual initial gripper position from the environment
@@ -98,7 +240,51 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose using inverse kinematics."""
-        return False
+        try:
+            target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
+            # Convert from ROS quaternion (x, y, z, w) to MuJoCo quaternion (w, x, y, z)
+            target_quat = np.array(
+                [pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z]
+            )
+
+            # Assuming standard AR4 joint names
+            joint_names = [f"joint{i}" for i in range(1, 7)]
+
+            ik_result = self._solve_ik_for_site_pose(
+                site_name="grip",
+                target_pos=target_pos,
+                target_quat=target_quat,
+                joint_names=joint_names,
+                inplace=False,  # We want the target qpos, not to modify the state yet
+            )
+
+            if not ik_result.success:
+                self.logger.warning(f"IK failed to converge. Error: {ik_result.err_norm:.4f}")
+                return False
+
+            self._apply_joint_positions(ik_result.qpos)
+
+            # Verify final position
+            final_pose = self.get_end_effector_pose()
+            if final_pose is None:
+                return False
+
+            final_pos = np.array(
+                [final_pose.position.x, final_pose.position.y, final_pose.position.z]
+            )
+            pos_error = np.linalg.norm(target_pos - final_pos)
+
+            # Check if we are close enough to the target
+            if pos_error > 0.01:  # 1cm tolerance
+                self.logger.warning(
+                    f"Move to failed. Final position error: {pos_error:.4f}m"
+                )
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to move to pose: {e}", exc_info=True)
+            return False
 
     def release_gripper(self) -> bool:
         return False

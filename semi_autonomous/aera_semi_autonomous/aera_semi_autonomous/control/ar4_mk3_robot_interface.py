@@ -1,4 +1,5 @@
 import logging
+import copy
 import time
 from typing import Optional
 import numpy as np
@@ -8,7 +9,8 @@ from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
 import collections
 import mujoco
-from mujoco import enums
+from mujoco import _enums as enums
+
 
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
@@ -140,7 +142,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = self.env.data
         else:
             data = mujoco.MjData(model)
-            mujoco.copy_data(data, self.env.data)
+            data = copy.copy(self.env.data)
 
         dtype = data.qpos.dtype
         err_norm = 0.0

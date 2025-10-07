@@ -91,13 +91,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
         """Calculates the joint velocities to achieve a specified end effector delta."""
+        self.logger.info(f"Null space jac_joints shape: {jac_joints}")
+        self.logger.info(f"Null space delta shape: {delta}")
         hess_approx = jac_joints.T.dot(jac_joints)
         joint_delta = jac_joints.T.dot(delta)
         if regularization_strength > 0:
-            # L2 regularization
+            self.logger.info(
+                f"Using linear solver for inverse kinematics with regularization strength {regularization_strength}"
+            )
             hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
             return np.linalg.solve(hess_approx, joint_delta)
         else:
+            self.logger.info("Using least squares for nullspace projection.")
             return np.linalg.lstsq(hess_approx, joint_delta, rcond=-1)[0]
 
     def _get_dof_indices(self, model, joint_names):
@@ -218,9 +223,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             progress_criterion = err_norm / update_norm
             if progress_criterion > progress_thresh:
-                failure_reason = (
-                    f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
-                )
+                failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
                 break
 
             if update_norm > max_update_norm:

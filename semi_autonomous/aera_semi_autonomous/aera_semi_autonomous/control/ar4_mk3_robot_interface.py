@@ -615,46 +615,46 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _apply_joint_positions(self, qpos: np.ndarray):
         """Apply joint positions to the environment using gradual movement."""
         target_arm_qpos = qpos[:6]  # First 6 joints from IK result
-        
+
         # Move gradually to the target position
         max_steps = 100
         tolerance = 1e-3
-        
+
         for step in range(max_steps):
             current_arm_qpos = self.env.data.qpos[:6]
-            
+
             # Calculate position error
             position_error = target_arm_qpos - current_arm_qpos
             error_norm = np.linalg.norm(position_error)
-            
+
             # Check if we've reached the target
             if error_norm < tolerance:
-                self.logger.debug(f"Reached target position in {step} steps")
+                self.logger.info(f"Reached target position in {step} steps")
                 break
-            
+
             # Calculate action as proportional control with smaller gains
             # Use smaller gains to prevent large jumps
             action_gain = 0.1  # Much smaller gain for smoother movement
             arm_action = position_error * action_gain
-            
+
             # Clip to action space bounds
             arm_action = np.clip(arm_action, -1.0, 1.0)
-            
+
             # Keep gripper in current state
             gripper_action = 0.0
             action = np.append(arm_action, gripper_action)
-            
+
             # Step the environment
             try:
                 self.env.step(action)
             except Exception as e:
                 self.logger.error(f"Failed to step environment: {e}")
                 break
-                
+
         # Final check
         final_arm_qpos = self.env.data.qpos[:6]
         final_error = np.linalg.norm(target_arm_qpos - final_arm_qpos)
-        
+
         if final_error > tolerance:
             self.logger.warning(
                 f"Failed to reach target position. Final error: {final_error:.6f}"

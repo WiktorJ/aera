@@ -8,14 +8,10 @@ from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
 import collections
 import mujoco
+from mujoco import enums
 
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
-
-from dm_control.mujoco.wrapper import mjbindings
-
-mjlib = mjbindings.mjlib
-enums = mjbindings.enums
 
 # IK Result namedtuple
 IKResult = collections.namedtuple("IKResult", ["qpos", "err_norm", "steps", "success"])
@@ -107,7 +103,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return np.arange(model.nv)
         dof_indices = []
         for name in joint_names:
-            joint_id = mjlib.mj_name2id(model.ptr, enums.mjtObj.mjOBJ_JOINT, name)
+            joint_id = mujoco.mj_name2id(model, enums.mjtObj.mjOBJ_JOINT, name)
             if joint_id == -1:
                 raise ValueError(f'No joint named "{name}" found.')
             dof_addr = model.jnt_dofadr[joint_id]
@@ -144,7 +140,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = self.env.data
         else:
             data = mujoco.MjData(model)
-            mjlib.mj_copyData(data.ptr, model.ptr, self.env.data.ptr)
+            mujoco.copy_data(data, self.env.data)
 
         dtype = data.qpos.dtype
         err_norm = 0.0
@@ -171,17 +167,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 "At least one of `target_pos` or `target_quat` must be specified."
             )
 
-        site_id = mjlib.mj_name2id(model.ptr, enums.mjtObj.mjOBJ_SITE, site_name)
+        site_id = mujoco.mj_name2id(model, enums.mjtObj.mjOBJ_SITE, site_name)
         dof_indices = self._get_dof_indices(model, joint_names)
         jac_joints = jac[:, dof_indices]
 
         for steps in range(max_steps):
-            mjlib.mj_fwdPosition(model.ptr, data.ptr)
+            mujoco.mj_fwdPosition(model, data)
 
             site_xpos = data.site_xpos[site_id]
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
-            mjlib.mju_mat2Quat(site_quat, site_xmat.flatten())
+            mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())
 
             err_norm = 0
             if target_pos is not None:
@@ -190,17 +186,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             if target_quat is not None:
                 neg_site_quat = np.empty(4, dtype=dtype)
-                mjlib.mju_negQuat(neg_site_quat, site_quat)
+                mujoco.mju_negQuat(neg_site_quat, site_quat)
                 err_rot_quat = np.empty(4, dtype=dtype)
-                mjlib.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
-                mjlib.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
+                mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
+                mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
                 err_norm += np.linalg.norm(err_rot) * rot_weight
 
             if err_norm < tol:
                 success = True
                 break
 
-            mjlib.mj_jacSite(model.ptr, data.ptr, jac_pos, jac_rot, site_id)
+            mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
 
             reg_strength = (
                 regularization_strength if err_norm > regularization_threshold else 0.0
@@ -220,7 +216,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
-            mjlib.mj_integratePos(model.ptr, data.qpos, update_nv, 1.0)
+            mujoco.mj_integratePos(model, data.qpos, update_nv, 1.0)
         else:
             success = False
 
@@ -234,7 +230,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _apply_joint_positions(self, qpos: np.ndarray):
         """Teleports the robot to the given joint positions."""
         self.env.data.qpos[:] = qpos
-        mjlib.mj_fwdPosition(self.env.model.ptr, self.env.data.ptr)
+        mujoco.mj_fwdPosition(self.env.model, self.env.data)
 
     def _initialize_home_pose(self):
         """Initialize the home pose to the robot's actual initial position."""

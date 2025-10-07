@@ -321,7 +321,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     # Action: [dx, dy, dz, gripper]
                     action = np.array([0.0, 0.0, 0.0, -1.0])
                 else:
-                    # Action: [j1, j2, j3, j4, j5, j6, gripper]
                     action = np.zeros(self.env.action_space.shape[0])
                     action[-1] = -1.0
 

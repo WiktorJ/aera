@@ -155,7 +155,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 site_name="grip",
                 target_pos=target_pos,
                 target_quat=target_quat,
-                tol=1e-3,
+                tol=1e-8,
                 max_steps=100,
             )
 
@@ -624,11 +624,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # For joint control, create action from joint positions
         # This is a simplified approach - in practice you might want to use
         # position control or compute joint velocities
-        
+
         # Get the number of controllable joints (should be 6 arm joints + 1 gripper)
         # The environment expects a 7-dimensional action
         expected_action_dim = 7
-        
+
         # Extract only the first 6 joint positions (arm joints)
         current_arm_qpos = self.env.data.qpos[:6]  # First 6 joints are arm joints
         target_arm_qpos = qpos[:6]  # First 6 joints from IK result
@@ -643,7 +643,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         # Ensure action has correct dimensions
         if len(action) != expected_action_dim:
-            self.logger.error(f"Action dimension mismatch: got {len(action)}, expected {expected_action_dim}")
+            self.logger.error(
+                f"Action dimension mismatch: got {len(action)}, expected {expected_action_dim}"
+            )
             return
 
         # Step the environment

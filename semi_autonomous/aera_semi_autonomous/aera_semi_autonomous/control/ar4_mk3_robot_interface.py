@@ -155,7 +155,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 site_name="grip",
                 target_pos=target_pos,
                 target_quat=target_quat,
-                tol=1e-8,
+                tol=1e-6,  # More reasonable tolerance
                 max_steps=100,
             )
 
@@ -166,19 +166,37 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 )
                 return False
 
-            # Apply the computed joint positions
-            self._apply_joint_positions(ik_result.qpos)
-
-            # Verify the final position
-            final_pos = self.env._utils.get_site_xpos(
+            # Verify the IK solution before applying it
+            # Temporarily set the joint positions to check the result
+            original_qpos = self.env.data.qpos.copy()
+            self.env.data.qpos[:] = ik_result.qpos
+            mjlib.mj_fwdPosition(self.env.model, self.env.data)
+            
+            # Check the actual position achieved by the IK solution
+            achieved_pos = self.env._utils.get_site_xpos(
                 self.env.model, self.env.data, "grip"
             )
-            final_error = np.linalg.norm(target_pos - final_pos)
+            position_error = np.linalg.norm(target_pos - achieved_pos)
+            
+            # Restore original position
+            self.env.data.qpos[:] = original_qpos
+            mjlib.mj_fwdPosition(self.env.model, self.env.data)
+
+            # Check if the IK solution is actually good enough
+            position_tolerance = 0.01  # 1cm tolerance
+            if position_error > position_tolerance:
+                self.logger.warning(
+                    f"IK solution has large position error: {position_error:.6f}m > {position_tolerance}m"
+                )
+                return False
 
             self.logger.info(
                 f"IK converged in {ik_result.steps} steps. "
-                f"Final position error: {final_error:.6f}m"
+                f"Position error: {position_error:.6f}m"
             )
+
+            # Apply the computed joint positions
+            self._apply_joint_positions(ik_result.qpos)
 
             return True
 
@@ -494,10 +512,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 else:
                     err_norm = rot_weight * np.linalg.norm(err_rot)
 
-                # Check convergence
+                # Check convergence - be more strict about what counts as converged
                 if err_norm < tol:
-                    success = True
-                    break
+                    # Double-check by verifying actual position error
+                    if target_pos is not None:
+                        actual_pos_error = np.linalg.norm(err_pos)
+                        if actual_pos_error < 1e-3:  # 1mm tolerance for position
+                            success = True
+                            break
+                    else:
+                        success = True
+                        break
 
                 # Extract Jacobian for the specified joints
                 jac_joints = jac[:, dof_indices]
@@ -540,6 +565,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not success and steps == max_steps - 1:
                 self.logger.warning(
                     f"IK failed to converge after {steps} steps: err_norm={err_norm:.3g}"
+                )
+            elif success:
+                self.logger.debug(
+                    f"IK converged after {steps} steps: err_norm={err_norm:.3g}"
                 )
 
             # Store the final IK solution

@@ -583,9 +583,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         finally:
             # Always restore original joint positions after IK solving
+            self.logger.debug(f"Restoring original qpos: {original_qpos}")
             self.env.data.qpos[:] = original_qpos
             self.env.data.qvel[:] = original_qvel
             mjlib.mj_fwdPosition(self.env.model, self.env.data)
+            self.logger.debug(f"Restored qpos: {self.env.data.qpos}")
 
     def _get_site_quaternion(self, site_name: str) -> np.ndarray:
         """Get the quaternion orientation of a site."""
@@ -658,6 +660,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _apply_joint_positions(self, qpos: np.ndarray):
         """Apply joint positions to the environment using gradual movement."""
         target_arm_qpos = qpos[:6]  # First 6 joints from IK result
+        current_arm_qpos = self.env.data.qpos[:6]
+
+        # Debug logging
+        self.logger.info(f"Target joint positions: {target_arm_qpos}")
+        self.logger.info(f"Current joint positions: {current_arm_qpos}")
+        
+        initial_error = np.linalg.norm(target_arm_qpos - current_arm_qpos)
+        self.logger.info(f"Initial joint position error: {initial_error:.6f}")
 
         # Move gradually to the target position
         max_steps = 100
@@ -669,6 +679,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Calculate position error
             position_error = target_arm_qpos - current_arm_qpos
             error_norm = np.linalg.norm(position_error)
+
+            # Debug logging for first few steps
+            if step < 5:
+                self.logger.debug(f"Step {step}: error_norm={error_norm:.6f}, position_error={position_error}")
 
             # Check if we've reached the target
             if error_norm < tolerance:
@@ -686,6 +700,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Keep gripper in current state
             gripper_action = 0.0
             action = np.append(arm_action, gripper_action)
+
+            # Debug logging for action
+            if step < 5:
+                self.logger.debug(f"Step {step}: action={action}")
 
             # Step the environment
             try:

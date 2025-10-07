@@ -208,10 +208,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 return True
 
             # Single step to open gripper
-            if self.env.use_eef_control:
-                action = np.array([0.0, 0.0, 0.0, target_gripper_value])
-            else:
-                action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, target_gripper_value])
+            action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, target_gripper_value])
 
             _, _, _, _, _ = self.env.step(action)
 
@@ -248,12 +245,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 progress = (step + 1) / max_gripper_steps
                 current_gripper_value = target_gripper_value * progress
 
-                if self.env.use_eef_control:
-                    action = np.array([0.0, 0.0, 0.0, current_gripper_value])
-                else:
-                    action = np.array(
-                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, current_gripper_value]
-                    )
+                action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, current_gripper_value])
 
                 _, _, _, _, _ = self.env.step(action)
 
@@ -478,18 +470,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if target_pos is not None:
                 err_pos[:] = target_pos - current_pos
                 # Compute position Jacobian
-                mjlib.mj_jacSite(
-                    self.env.model, self.env.data, jac_pos, None, site_id
-                )
+                mjlib.mj_jacSite(self.env.model, self.env.data, jac_pos, None, site_id)
 
             # Compute orientation error
             if target_quat is not None:
                 current_quat = self._get_site_quaternion(site_name)
                 err_rot[:] = self._compute_quaternion_error(target_quat, current_quat)
                 # Compute rotation Jacobian
-                mjlib.mj_jacSite(
-                    self.env.model, self.env.data, None, jac_rot, site_id
-                )
+                mjlib.mj_jacSite(self.env.model, self.env.data, None, jac_rot, site_id)
 
             # Compute weighted error norm
             if target_pos is not None and target_quat is not None:
@@ -633,20 +621,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
         mjlib.mj_fwdPosition(self.env.model, self.env.data)
 
         # If using joint control, we need to step the environment to apply the positions
-        if not self.env.use_eef_control:
-            # For joint control, create action from joint positions
-            # This is a simplified approach - in practice you might want to use
-            # position control or compute joint velocities
-            current_qpos = self.env.data.qpos[:-2]  # Exclude gripper joints
-            target_qpos = qpos[:-2]  # Exclude gripper joints
+        # For joint control, create action from joint positions
+        # This is a simplified approach - in practice you might want to use
+        # position control or compute joint velocities
+        current_qpos = self.env.data.qpos[:-2]  # Exclude gripper joints
+        target_qpos = qpos[:-2]  # Exclude gripper joints
 
-            # Simple proportional control
-            action = (target_qpos - current_qpos) * 10.0  # Scale factor
-            action = np.clip(action, -1.0, 1.0)  # Clip to action space
+        # Simple proportional control
+        action = (target_qpos - current_qpos) * 10.0  # Scale factor
+        action = np.clip(action, -1.0, 1.0)  # Clip to action space
 
-            # Add gripper action (keep current state)
-            gripper_action = 0.0
-            action = np.append(action, gripper_action)
+        # Add gripper action (keep current state)
+        gripper_action = 0.0
+        action = np.append(action, gripper_action)
 
-            # Step the environment
-            self.env.step(action)
+        # Step the environment
+        self.env.step(action)

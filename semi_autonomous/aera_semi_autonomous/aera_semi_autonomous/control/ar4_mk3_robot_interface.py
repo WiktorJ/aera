@@ -73,7 +73,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def go_home(self) -> bool:
         """Move robot to home position and release gripper."""
-        return False
+        try:
+            self._initialize_home_pose()
+
+            if not self.move_to(self.home_pose):
+                self.logger.error("Failed to move to home pose.")
+                return False
+
+            if not self.release_gripper():
+                self.logger.warning("Failed to release gripper after moving home.")
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
+            return False
 
     def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
         """Calculates the joint velocities to achieve a specified end effector delta."""

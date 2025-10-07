@@ -7,6 +7,7 @@ from geometry_msgs.msg import Pose
 from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
 import collections
+import mujoco
 
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
@@ -138,8 +139,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         if inplace:
             data = self.env.data
         else:
-            data = mjlib.mj_makeData(model.ptr)
-            mjlib.mj_copyData(data, model.ptr, self.env.data.ptr)
+            data = mujoco.MjData(model)
+            mujoco.mj_copyData(model, data, self.env.data)
 
         dtype = data.qpos.dtype
         err_norm = 0.0
@@ -221,7 +222,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         qpos = data.qpos.copy()
         if not inplace:
-            mjlib.mj_deleteData(data)
+            # mj_deleteData is not needed for MjData objects created in Python
+            pass
 
         return IKResult(qpos=qpos, err_norm=err_norm, steps=steps + 1, success=success)
 

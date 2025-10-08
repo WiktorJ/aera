@@ -68,27 +68,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
 
-    def get_logger(self) -> logging.Logger:
-        return self.logger
-
-    def go_home(self) -> bool:
-        """Move robot to home position and release gripper."""
-        try:
-            self._initialize_home_pose()
-
-            if not self.move_to(self.home_pose):
-                self.logger.error("Failed to move to home pose.")
-                return False
-
-            if not self.release_gripper():
-                self.logger.error("Failed to release gripper.")
-                return False
-
-            return True
-        except Exception as e:
-            self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
-            return False
-
     def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
         """Calculates the joint velocities to achieve a specified end effector delta."""
         hess_approx = jac_joints.T.dot(jac_joints)
@@ -270,6 +249,27 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.home_pose.orientation.z = float(quat[2])
         self.home_pose.orientation.w = float(quat[3])
 
+    def get_logger(self) -> logging.Logger:
+        return self.logger
+
+    def go_home(self) -> bool:
+        """Move robot to home position and release gripper."""
+        try:
+            self._initialize_home_pose()
+
+            if not self.move_to(self.home_pose):
+                self.logger.error("Failed to move to home pose.")
+                return False
+
+            if not self.release_gripper():
+                self.logger.error("Failed to release gripper.")
+                return False
+
+            return True
+        except Exception as e:
+            self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
+            return False
+
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose using inverse kinematics."""
         try:
@@ -334,12 +334,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Gripper is considered "released" or "open" when qpos values are positive
             # We check if either of the gripper joints is not fully open
             if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
-                if self.env.use_eef_control:
-                    # Action: [dx, dy, dz, gripper]
-                    action = np.array([0.0, 0.0, 0.0, -1.0])
-                else:
-                    action = np.zeros(self.env.action_space.shape[0])
-                    action[-1] = -1.0
+                action = np.zeros(self.env.action_space.shape[0])
+                action[-1] = -1.0
 
                 self.env.step(action)
             return True
@@ -367,22 +363,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # 3. Gradually close the gripper
             close_action_val = 1.0  # Fully close
-            if self.env.use_eef_control:
-                action = np.array([0.0, 0.0, 0.0, close_action_val])
-            else:
-                action = np.zeros(self.env.action_space.shape[0])
-                action[-1] = close_action_val
+            action = np.zeros(self.env.action_space.shape[0])
+            action[-1] = close_action_val
 
             for _ in range(50):
                 self.env.step(action)
 
             # 4. Lift the object
-            lift_pose = Pose()
-            lift_pose.position.x = pose.position.x
-            lift_pose.position.y = pose.position.y
-            lift_pose.position.z = pose.position.z + 0.05  # 5cm lift
-            lift_pose.orientation = pose.orientation
-            if not self.move_to(lift_pose):
+            if not self.move_to(above_pose):
                 self.logger.warning("Grasp succeeded, but failed to lift.")
 
             return True

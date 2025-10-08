@@ -59,7 +59,7 @@ class ManipulationHandler:
         object_index: int,
         detections: sv.Detections,  # type: ignore
         depth_image: np.ndarray,
-        last_rgb_msg: Optional[Image] = None,
+        last_rgb_img: Optional[np.ndarray] = None,
     ) -> bool:
         """Perform a top-down grasp on the object."""
         if (
@@ -73,7 +73,7 @@ class ManipulationHandler:
             return False
 
         self.debug_utils.debug_visualize_selected_mask(
-            detections, object_index, "Pick", last_rgb_msg
+            detections, object_index, "Pick", last_rgb_img
         )
 
         masked_depth_image_mm = np.zeros_like(depth_image, dtype=np.float32)
@@ -155,7 +155,7 @@ class ManipulationHandler:
         object_index: int,
         detections: sv.Detections,  # type: ignore
         depth_image: np.ndarray,
-        last_rgb_msg: Optional[Image] = None,
+        last_rgb_img: Optional[np.ndarray] = None,
     ) -> bool:
         """Move the robot arm above the object and release the gripper."""
         if (
@@ -169,7 +169,7 @@ class ManipulationHandler:
             return False
 
         self.debug_utils.debug_visualize_selected_mask(
-            detections, object_index, "Release", last_rgb_msg
+            detections, object_index, "Release", last_rgb_img
         )
 
         masked_depth_image = np.zeros_like(depth_image, dtype=np.float32)

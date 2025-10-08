@@ -47,11 +47,11 @@ def main():
             "simulation",
             "mujoco",
             "ar4_mk3",
-            "scene_eef.xml",
+            "scene.xml",
         ),
-        "aera/autonomous/simulation/mujoco/ar4_mk3/scene_eef.xml",
-        "../aera/autonomous/simulation/mujoco/ar4_mk3/scene_eef.xml",
-        "../../aera/autonomous/simulation/mujoco/ar4_mk3/scene_eef.xml",
+        "aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
+        "../aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
+        "../../aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
     ]
 
     model_path = None
@@ -73,7 +73,6 @@ def main():
 
     env = Ar4Mk3PickAndPlaceEnv(
         model_path=model_path,
-        use_eef_control=True,
         render_mode="human",
         reward_type="sparse",
         translation=T,
@@ -92,14 +91,13 @@ def main():
 
     try:
         env.render()
-        time.sleep(3)
         # Step 1: Go to home position
         print("\n1. Moving to home position...")
         if robot.go_home():
             print("✓ Successfully moved to home position")
         else:
             print("✗ Failed to move to home position")
-        time.sleep(3)
+        # time.sleep(0.5)
 
         # Step 2: Get current end-effector pose
         print("\n2. Getting current end-effector pose...")
@@ -116,8 +114,8 @@ def main():
         # Step 3: Move to a target position
         print("\n3. Moving to target position...")
         target_pose = create_pose(
-            x=current_pose.position.x + 0.1,
-            y=current_pose.position.y + 0.1,
+            x=current_pose.position.x + 0.3,
+            y=current_pose.position.y + 0.2,
             z=current_pose.position.z,
         )
 
@@ -126,70 +124,73 @@ def main():
         else:
             print("✗ Failed to move to target position")
         time.sleep(3)
-
-        # Step 4: Test gripper control
-        print("\n4. Testing gripper control...")
-        print("   Closing gripper...")
-        grasp_pose = create_pose(
-            x=target_pose.position.x,
-            y=target_pose.position.y,
-            z=target_pose.position.z - 0.05,
-        )
-
-        if robot.grasp_at(grasp_pose, gripper_pos=0.8):
-            print("✓ Successfully performed grasp motion")
-        else:
-            print("✗ Failed to perform grasp motion")
-
+        print("Moving home")
+        robot.go_home()
         time.sleep(3)
-
-        # Step 5: Release gripper
-        print("\n5. Opening gripper...")
-        if robot.release_gripper():
-            print("✓ Successfully opened gripper")
-        else:
-            print("✗ Failed to open gripper")
-        time.sleep(3)
-
-        # Step 6: Test camera functionality
-        print("\n6. Testing camera functionality...")
-        # rgb_image = robot.get_latest_rgb_image()
-        # depth_image = robot.get_latest_depth_image()
-
-        # if rgb_image is not None:
-        #     print(f"✓ RGB image captured: shape {rgb_image.shape}")
-        # else:
-        #     print("✗ Failed to capture RGB image")
         #
-        # if depth_image is not None:
-        #     print(f"✓ Depth image captured: shape {depth_image.shape}")
+        # # Step 4: Test gripper control
+        # print("\n4. Testing gripper control...")
+        # print("   Closing gripper...")
+        # grasp_pose = create_pose(
+        #     x=target_pose.position.x,
+        #     y=target_pose.position.y,
+        #     z=target_pose.position.z - 0.05,
+        # )
+        #
+        # if robot.grasp_at(grasp_pose, gripper_pos=0.8):
+        #     print("✓ Successfully performed grasp motion")
         # else:
-        #     print("✗ Failed to capture depth image")
-
-        # Step 7: Get camera intrinsics and transform
-        print("\n7. Testing camera parameters...")
-        intrinsics = robot.get_camera_intrinsics()
-        transform = robot.get_cam_to_base_transform()
-
-        if intrinsics:
-            print(f"✓ Camera intrinsics: {intrinsics.width}x{intrinsics.height}")
-        else:
-            print("✗ Failed to get camera intrinsics")
-
-        if transform is not None:
-            print(f"✓ Camera transform: shape {transform.shape}")
-        else:
-            print("✗ Failed to get camera transform")
-
-        # Step 8: Return to home
-        print("\n8. Returning to home position...")
-        if robot.go_home():
-            print("✓ Successfully returned to home position")
-        else:
-            print("✗ Failed to return to home position")
-        time.sleep(3)
-
-        print("\n🎉 Demonstration completed successfully!")
+        #     print("✗ Failed to perform grasp motion")
+        #
+        # time.sleep(3)
+        #
+        # # Step 5: Release gripper
+        # print("\n5. Opening gripper...")
+        # if robot.release_gripper():
+        #     print("✓ Successfully opened gripper")
+        # else:
+        #     print("✗ Failed to open gripper")
+        # time.sleep(3)
+        #
+        # # Step 6: Test camera functionality
+        # print("\n6. Testing camera functionality...")
+        # # rgb_image = robot.get_latest_rgb_image()
+        # # depth_image = robot.get_latest_depth_image()
+        #
+        # # if rgb_image is not None:
+        # #     print(f"✓ RGB image captured: shape {rgb_image.shape}")
+        # # else:
+        # #     print("✗ Failed to capture RGB image")
+        # #
+        # # if depth_image is not None:
+        # #     print(f"✓ Depth image captured: shape {depth_image.shape}")
+        # # else:
+        # #     print("✗ Failed to capture depth image")
+        #
+        # # Step 7: Get camera intrinsics and transform
+        # print("\n7. Testing camera parameters...")
+        # intrinsics = robot.get_camera_intrinsics()
+        # transform = robot.get_cam_to_base_transform()
+        #
+        # if intrinsics:
+        #     print(f"✓ Camera intrinsics: {intrinsics.width}x{intrinsics.height}")
+        # else:
+        #     print("✗ Failed to get camera intrinsics")
+        #
+        # if transform is not None:
+        #     print(f"✓ Camera transform: shape {transform.shape}")
+        # else:
+        #     print("✗ Failed to get camera transform")
+        #
+        # # Step 8: Return to home
+        # print("\n8. Returning to home position...")
+        # if robot.go_home():
+        #     print("✓ Successfully returned to home position")
+        # else:
+        #     print("✗ Failed to return to home position")
+        # time.sleep(3)
+        #
+        # print("\n🎉 Demonstration completed successfully!")
 
     except KeyboardInterrupt:
         print("\n⚠️  Demonstration interrupted by user")
@@ -201,4 +202,7 @@ def main():
 
 
 if __name__ == "__main__":
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
     main()

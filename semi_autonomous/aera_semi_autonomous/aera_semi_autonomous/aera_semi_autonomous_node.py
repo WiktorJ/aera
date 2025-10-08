@@ -275,7 +275,7 @@ class AeraSemiAutonomous(Node):
                 rgb_image,
                 depth_image,
                 self._object_in_gripper,
-                self.robot_interface.get_last_rgb_msg(),
+                self.robot_interface.get_latest_rgb_image(),
             )
 
         self.robot_interface.go_home()

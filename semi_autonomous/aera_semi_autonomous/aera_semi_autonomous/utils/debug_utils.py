@@ -1,10 +1,11 @@
 import os
 import time
+from typing import List, Optional
+
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import supervision as sv
-import matplotlib.pyplot as plt
-from typing import List
 from cv_bridge import CvBridge
 
 
@@ -48,17 +49,16 @@ class DebugUtils:
         detections: sv.Detections,
         object_index: int,
         operation_name: str,
-        last_rgb_msg,
+        rgb_image_for_viz: Optional[np.ndarray],
     ):
         """Debug visualization for the selected mask."""
         if (
             not (self.debug_visualizations or self.save_debug_images)
-            or not last_rgb_msg
+            or not rgb_image_for_viz
         ):
             return
 
         try:
-            rgb_image_for_viz = self.cv_bridge.imgmsg_to_cv2(last_rgb_msg, "bgr8")
             single_mask_viz = rgb_image_for_viz.copy()
             # Create a colored overlay for the mask
             color_mask = np.zeros_like(single_mask_viz)

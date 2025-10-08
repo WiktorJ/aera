@@ -174,6 +174,3 @@ class RosRobotInterface(RobotInterface):
 
     def get_cam_to_base_transform(self) -> Optional[np.ndarray]:
         return self._cam_to_base_affine
-
-    def get_last_rgb_msg(self) -> Optional[Image]:
-        return self._last_rgb_msg

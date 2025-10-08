@@ -480,9 +480,3 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def get_cam_to_base_transform(self) -> Optional[np.ndarray]:
         """Get camera to base frame transformation."""
         return self.cam_to_base_transform
-
-    def get_last_rgb_msg(self) -> Optional[Image]:
-        """Get last RGB image message (simulation doesn't use ROS messages)."""
-        # For simulation, we don't have ROS messages
-        # Return None or create a mock message if needed
-        return self._latest_rgb_msg

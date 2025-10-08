@@ -21,7 +21,9 @@ class CommandProcessor:
     def __init__(self, logger):
         self.logger = logger
 
-    def parse_prompt_message(self, msg_data: str) -> Optional[Tuple[List[Tuple[str, str]], dict]]:
+    def parse_prompt_message(
+        self, msg_data: str
+    ) -> Optional[Tuple[List[Tuple[str, str]], dict]]:
         """Parse YAML/JSON prompt message into list of (action, object) tuples and offsets."""
         try:
             data = yaml.safe_load(msg_data)
@@ -39,7 +41,9 @@ class CommandProcessor:
                     object_to_detect = command_data.get("object", "")
 
                     if not action:
-                        self.logger.error(f"No 'action' found in command: {command_data}")
+                        self.logger.error(
+                            f"No 'action' found in command: {command_data}"
+                        )
                         return None
 
                     if action not in AVAILABLE_ACTIONS:
@@ -52,7 +56,9 @@ class CommandProcessor:
 
             # Handle new format: dictionary with commands and optional offsets
             if not isinstance(data, dict):
-                self.logger.error(f"The top level is not a dictionary or list: {msg_data}")
+                self.logger.error(
+                    f"The top level is not a dictionary or list: {msg_data}"
+                )
                 return None
 
             # Extract commands
@@ -106,7 +112,7 @@ class CommandProcessor:
         rgb_image: np.ndarray,
         depth_image: np.ndarray,
         object_in_gripper: bool,
-        last_rgb_msg: Optional[Image] = None,
+        last_rgb_img: Optional[np.ndarray] = None,
     ) -> bool:
         """Handle a single tool call and return updated object_in_gripper status."""
         if tool_call == _PICK_OBJECT:
@@ -121,7 +127,7 @@ class CommandProcessor:
                 return object_in_gripper
 
             success = manipulation_handler.pick_object(
-                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg
+                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_img
             )
             return True if success else object_in_gripper
 
@@ -133,7 +139,7 @@ class CommandProcessor:
                 )
                 return object_in_gripper
             success = manipulation_handler.release_above(
-                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_msg
+                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_img
             )
             return False if success else object_in_gripper
 

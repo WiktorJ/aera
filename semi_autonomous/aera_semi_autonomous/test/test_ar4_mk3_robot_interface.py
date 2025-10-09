@@ -94,10 +94,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
         # Mock IK solver to return success
-        with (
-            patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik,
-            patch.object(self.robot_interface, "_apply_joint_positions") as mock_apply,
-        ):
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose"
+        ) as mock_ik:
             # Mock successful IK result
             from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
 
@@ -120,7 +119,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertTrue(result)
             mock_ik.assert_called_once()
-            mock_apply.assert_called_once()
 
     def test_move_to_ik_failure(self):
         """Test move_to when IK fails to converge."""

@@ -176,9 +176,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 regularization_strength if err_norm > regularization_threshold else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
-            update_joints += (np.eye(model.nv) - np.linalg.pinv(jac) @ jac) @ (
-                Kn * (home_joint_configuration - data.qpos[dof_indices])
-            )
+            update_joints += (
+                np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
+            ) @ (Kn * (home_joint_configuration - data.qpos[dof_indices]))
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:

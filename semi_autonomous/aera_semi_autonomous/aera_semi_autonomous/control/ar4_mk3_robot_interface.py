@@ -242,9 +242,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Set joint positions to initial configuration by teleporting
             self.env.data.qpos[:] = self.env.initial_qpos
             mujoco.mj_forward(self.env.model, self.env.data)
+            return True
 
-            # The initial qpos should have the gripper open, but we can ensure it
-            return self.release_gripper()
         except Exception as e:
             self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
             return False

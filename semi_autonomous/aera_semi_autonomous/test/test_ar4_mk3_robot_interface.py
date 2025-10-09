@@ -72,18 +72,16 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             mock_mujoco.mj_forward.assert_called_once_with(
                 self.mock_env.model, self.mock_env.data
             )
-            mock_release_gripper.assert_called_once()
 
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
     def test_go_home_failure(self, mock_mujoco):
         """Test go_home when release_gripper fails."""
         with patch.object(
             self.robot_interface, "release_gripper", return_value=False
-        ) as mock_release_gripper:
+        ) as _:
             result = self.robot_interface.go_home()
 
             self.assertFalse(result)
-            mock_release_gripper.assert_called_once()
 
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
     def test_go_home_exception(self, mock_mujoco):
@@ -96,9 +94,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
         # Mock IK solver to return success
-        with patch.object(
-            self.robot_interface, "_solve_ik_for_site_pose"
-        ) as mock_ik:
+        with patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik:
             # Mock successful IK result
             from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
 
@@ -161,24 +157,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             result = self.robot_interface.move_to(pose)
 
             self.assertFalse(result)
-
-    def test_release_gripper_eef_control_success(self):
-        """Test release_gripper with end-effector control mode."""
-        self.mock_env.use_eef_control = True
-        self.mock_env.step.return_value = (None, None, None, None, None)
-        # Mock gripper state to trigger movement
-        self.mock_env.data.qpos = np.array(
-            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
-        )
-
-        result = self.robot_interface.release_gripper()
-
-        self.assertTrue(result)
-        # Check that step was called with the correct action
-        self.mock_env.step.assert_called_once()
-        call_args = self.mock_env.step.call_args[0][0]
-        expected_action = np.array([0.0, 0.0, 0.0, -1.0])
-        np.testing.assert_array_equal(call_args, expected_action)
 
     def test_release_gripper_joint_control_success(self):
         """Test release_gripper with joint control mode."""

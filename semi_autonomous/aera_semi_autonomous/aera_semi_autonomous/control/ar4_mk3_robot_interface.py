@@ -135,6 +135,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         steps = 0
         failure_reason = "Unknown"
         Kn = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
+        # Calculate the joint configuration that corresponds to the home position. AI!
+        home_joint_configuration = np.ones(6)
 
         jac = np.empty((6, model.nv), dtype=dtype)
         err = np.empty(6, dtype=dtype)
@@ -174,13 +176,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 regularization_strength if err_norm > regularization_threshold else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
-            # update_joints += (np.eye(model.nv) - np.linalg.pinv(jac) @ jac) @ (
-            #     Kn
-            #     * (
-            #         np.array([-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0])
-            #         - data.qpos[dof_indices]
-            #     )
-            # )
+            update_joints += (np.eye(model.nv) - np.linalg.pinv(jac) @ jac) @ (
+                Kn * (home_joint_configuration - data.qpos[dof_indices])
+            )
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:

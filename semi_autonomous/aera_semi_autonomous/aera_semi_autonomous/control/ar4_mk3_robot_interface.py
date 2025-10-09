@@ -134,8 +134,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         success = False
         steps = 0
         failure_reason = "Unknown"
-        Kn = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
-        # The initial joint configuration is the 'home' configuration
+        nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
         home_joint_configuration = self.env.initial_qpos[:6]
 
         jac = np.empty((6, model.nv), dtype=dtype)
@@ -178,7 +177,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             update_joints += (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
-            ) @ (Kn * (home_joint_configuration - data.qpos[dof_indices]))
+            ) @ (nullspace_gain * (home_joint_configuration - data.qpos[dof_indices]))
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:
@@ -218,21 +217,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # This preserves the "right angle position" that the robot starts in
         home_pos = self.env.initial_gripper_xpos
 
-        print(f"Setting home to initial gripper position: {home_pos}")
-
         # Get the actual initial gripper orientation to preserve the starting pose
         grip_rot = self.env._utils.get_site_xmat(self.env.model, self.env.data, "grip")
+
         rotation = Rotation.from_matrix(grip_rot.reshape(3, 3))
         quat = rotation.as_quat()  # [x, y, z, w]
 
-        self.home_pose = Pose()
-        self.home_pose.position.x = float(home_pos[0])
-        self.home_pose.position.y = float(home_pos[1])
-        self.home_pose.position.z = float(home_pos[2])
-        self.home_pose.orientation.x = float(quat[0])
-        self.home_pose.orientation.y = float(quat[1])
-        self.home_pose.orientation.z = float(quat[2])
-        self.home_pose.orientation.w = float(quat[3])
+        home_pose = Pose()
+        home_pose.position.x = float(home_pos[0])
+        home_pose.position.y = float(home_pos[1])
+        home_pose.position.z = float(home_pos[2])
+        home_pose.orientation.x = float(quat[0])
+        home_pose.orientation.y = float(quat[1])
+        home_pose.orientation.z = float(quat[2])
+        home_pose.orientation.w = float(quat[3])
+        return home_pose
 
     def get_logger(self) -> logging.Logger:
         return self.logger
@@ -240,14 +239,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position and release gripper."""
         try:
-            self._initialize_home_pose()
-
             if not self.move_to(self.home_pose):
                 self.logger.error("Failed to move to home pose.")
-                return False
-
-            if not self.release_gripper():
-                self.logger.error("Failed to release gripper.")
                 return False
 
             return True

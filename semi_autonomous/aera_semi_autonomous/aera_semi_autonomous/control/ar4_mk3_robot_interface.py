@@ -239,10 +239,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position and release gripper."""
         try:
-            # Set joint positions to initial configuration by teleporting
-            self.env.data.qpos[:] = self.env.initial_qpos
-            mujoco.mj_forward(self.env.model, self.env.data)
-            return True
+            if not self.move_to(self.home_pose):
+                self.logger.error("Failed to move to home pose.")
+                return False
 
         except Exception as e:
             self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)

@@ -135,8 +135,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         steps = 0
         failure_reason = "Unknown"
         Kn = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
-        # Calculate the joint configuration that corresponds to the home position. AI!
-        home_joint_configuration = np.ones(6)
+        # The initial joint configuration is the 'home' configuration
+        home_joint_configuration = self.env.initial_qpos[:6]
 
         jac = np.empty((6, model.nv), dtype=dtype)
         err = np.empty(6, dtype=dtype)

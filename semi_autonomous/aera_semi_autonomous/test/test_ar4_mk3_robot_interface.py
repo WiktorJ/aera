@@ -58,11 +58,14 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_go_home_success(self):
         """Test go_home successful execution."""
-        with patch.object(
-            self.robot_interface, "move_to", return_value=True
-        ) as mock_move_to, patch.object(
-            self.robot_interface, "release_gripper", return_value=True
-        ) as mock_release_gripper:
+        with (
+            patch.object(
+                self.robot_interface, "move_to", return_value=True
+            ) as mock_move_to,
+            patch.object(
+                self.robot_interface, "release_gripper", return_value=True
+            ) as mock_release_gripper,
+        ):
             result = self.robot_interface.go_home()
 
             self.assertTrue(result)
@@ -91,14 +94,13 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
         # Mock IK solver to return success
-        with patch.object(
-            self.robot_interface, "_solve_ik_for_site_pose"
-        ) as mock_ik, patch.object(
-            self.robot_interface, "_apply_joint_positions"
-        ) as mock_apply:
-            
+        with (
+            patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik,
+            patch.object(self.robot_interface, "_apply_joint_positions") as mock_apply,
+        ):
             # Mock successful IK result
             from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
+
             mock_ik.return_value = IKResult(
                 qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
                 err_norm=1e-6,
@@ -106,7 +108,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
                 success=True,
                 failure_reason="",
             )
-            
+
             # Mock final position check
             self.mock_env._utils.get_site_xpos.return_value = np.array([0.1, 0.1, 0.1])
 
@@ -123,12 +125,10 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_failure(self):
         """Test move_to when IK fails to converge."""
         # Mock IK solver to return failure
-        with patch.object(
-            self.robot_interface, "_solve_ik_for_site_pose"
-        ) as mock_ik:
-            
+        with patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik:
             # Mock failed IK result
             from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
+
             mock_ik.return_value = IKResult(
                 qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
                 err_norm=1.0,
@@ -150,8 +150,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test move_to when an exception occurs."""
         # Mock IK solver to raise exception
         with patch.object(
-            self.robot_interface, "_solve_ik_for_site_pose",
-            side_effect=Exception("Test exception")
+            self.robot_interface,
+            "_solve_ik_for_site_pose",
+            side_effect=Exception("Test exception"),
         ):
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
@@ -166,7 +167,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.use_eef_control = True
         self.mock_env.step.return_value = (None, None, None, None, None)
         # Mock gripper state to trigger movement
-        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
+        self.mock_env.data.qpos = np.array(
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
+        )
 
         result = self.robot_interface.release_gripper()
 
@@ -182,7 +185,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.use_eef_control = False
         self.mock_env.step.return_value = (None, None, None, None, None)
         # Mock gripper state to trigger movement
-        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
+        self.mock_env.data.qpos = np.array(
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
+        )
 
         result = self.robot_interface.release_gripper()
 
@@ -197,7 +202,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test release_gripper when an exception occurs."""
         self.mock_env.step.side_effect = Exception("Test exception")
         # Mock gripper state to trigger movement
-        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007])
+        self.mock_env.data.qpos = np.array(
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
+        )
 
         result = self.robot_interface.release_gripper()
 
@@ -372,16 +379,11 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         )
         np.testing.assert_array_equal(transform, expected_transform)  # type: ignore
 
-    def test_get_last_rgb_msg(self):
-        """Test get_last_rgb_msg returns None (simulation doesn't use ROS messages)."""
-        msg = self.robot_interface.get_last_rgb_msg()
-        self.assertIsNone(msg)
-
     def test_home_pose_initialization(self):
         """Test that home pose is correctly initialized."""
         # Initialize home pose
         self.robot_interface._initialize_home_pose()
-        
+
         self.assertIsNotNone(self.robot_interface.home_pose)
         self.assertAlmostEqual(self.robot_interface.home_pose.position.x, 0.1)
         self.assertAlmostEqual(self.robot_interface.home_pose.position.y, 0.2)

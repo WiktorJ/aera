@@ -114,9 +114,13 @@ def main():
         # Step 3: Move to a target position
         print("\n3. Moving to target position...")
         target_pose = create_pose(
-            x=current_pose.position.x + 0.3,
-            y=current_pose.position.y + 0.2,
-            z=current_pose.position.z,
+            x=current_pose.position.x - 0.2,
+            y=current_pose.position.y,
+            z=current_pose.position.z - 0.1,
+            qx=current_pose.orientation.x,
+            qy=current_pose.orientation.y,
+            qz=current_pose.orientation.z,
+            qw=current_pose.orientation.w,
         )
 
         if robot.move_to(target_pose):

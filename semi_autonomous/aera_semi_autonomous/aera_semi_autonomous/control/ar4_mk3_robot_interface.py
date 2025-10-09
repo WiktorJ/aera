@@ -50,7 +50,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             cy=self.camera_config["cy"],
         )
 
-        # Camera to base transform (example values - adjust based on your setup)
+        # Camera to base transform. example values -
+        # not needed for sim as we can always work in arm frame.
         self.cam_to_base_transform = np.array(
             [
                 [0.0, -1.0, 0.0, 0.3],
@@ -106,15 +107,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _solve_ik_for_site_pose(
         self,
         site_name,
-        target_pos=None,
-        target_quat=None,
+        target_pos,
+        target_quat,
         joint_names=None,
         tol=1e-6,
-        rot_weight=1.0,
-        regularization_threshold=0.1,
+        regularization_threshold=0.01,
         regularization_strength=3e-2,
-        max_update_norm=2.0,
+        max_update_norm=1,
         progress_thresh=20.0,
+        integration_dt=0.1,
+        pos_gain=0.95,
+        orientation_gain=0.95,
         max_steps=1000,
         inplace=False,
     ):
@@ -131,26 +134,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
         success = False
         steps = 0
         failure_reason = "Unknown"
+        Kn = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
 
-        if target_pos is not None and target_quat is not None:
-            jac = np.empty((6, model.nv), dtype=dtype)
-            err = np.empty(6, dtype=dtype)
-            jac_pos, jac_rot = jac[:3], jac[3:]
-            err_pos, err_rot = err[:3], err[3:]
-        elif target_pos is not None:
-            jac = np.empty((3, model.nv), dtype=dtype)
-            err = np.empty(3, dtype=dtype)
-            jac_pos, jac_rot = jac, None
-            err_pos, err_rot = err, None
-        elif target_quat is not None:
-            jac = np.empty((3, model.nv), dtype=dtype)
-            err = np.empty(3, dtype=dtype)
-            jac_pos, jac_rot = None, jac
-            err_pos, err_rot = None, err
-        else:
-            raise ValueError(
-                "At least one of `target_pos` or `target_quat` must be specified."
-            )
+        jac = np.empty((6, model.nv), dtype=dtype)
+        err = np.empty(6, dtype=dtype)
+        jac_pos, jac_rot = jac[:3], jac[3:]
+        err_pos, err_rot = err[:3], err[3:]
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
         dof_indices = self._get_dof_indices(model, joint_names)
@@ -159,22 +148,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_fwdPosition(model, data)
 
             site_xpos = data.site_xpos[site_id]
+            err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
+
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
             mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())
+            neg_site_quat = np.empty(4, dtype=dtype)
+            mujoco.mju_negQuat(neg_site_quat, site_quat)
+            err_rot_quat = np.empty(4, dtype=dtype)
+            mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
+            mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
+            err_rot *= orientation_gain / integration_dt
 
-            err_norm = 0
-            if target_pos is not None:
-                err_pos[:] = target_pos - site_xpos
-                err_norm += np.linalg.norm(err_pos)
-
-            if target_quat is not None:
-                neg_site_quat = np.empty(4, dtype=dtype)
-                mujoco.mju_negQuat(neg_site_quat, site_quat)
-                err_rot_quat = np.empty(4, dtype=dtype)
-                mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
-                mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
-                err_norm += np.linalg.norm(err_rot) * rot_weight
+            err_norm = np.linalg.norm(err_pos) + np.linalg.norm(err_rot)
 
             if err_norm < tol:
                 success = True
@@ -188,6 +174,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 regularization_strength if err_norm > regularization_threshold else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
+            # update_joints += (np.eye(model.nv) - np.linalg.pinv(jac) @ jac) @ (
+            #     Kn
+            #     * (
+            #         np.array([-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0])
+            #         - data.qpos[dof_indices]
+            #     )
+            # )
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:
@@ -204,15 +197,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
-            mujoco.mj_integratePos(model, data.qpos, update_nv, 1.0)
+            mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)
+            self.env.render()
+            time.sleep(0.01)
         else:
             success = False
             failure_reason = f"Max steps ({max_steps}) reached"
 
         qpos = data.qpos.copy()
-        if not inplace:
-            # mj_deleteData is not needed for MjData objects created in Python
-            pass
 
         return IKResult(
             qpos=qpos,
@@ -221,11 +213,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             success=success,
             failure_reason=failure_reason,
         )
-
-    def _apply_joint_positions(self, qpos: np.ndarray):
-        """Teleports the robot to the given joint positions."""
-        self.env.data.qpos[:] = qpos
-        mujoco.mj_fwdPosition(self.env.model, self.env.data)
 
     def _initialize_home_pose(self):
         """Initialize the home pose to the robot's actual initial position."""
@@ -292,7 +279,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 joint_names=joint_names,
-                inplace=False,  # We want the target qpos, not to modify the state yet
+                inplace=True,
             )
 
             if not ik_result.success:
@@ -303,8 +290,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     f"Steps: {ik_result.steps}."
                 )
                 return False
-
-            self._apply_joint_positions(ik_result.qpos)
 
             # Verify final position
             final_pose = self.get_end_effector_pose()

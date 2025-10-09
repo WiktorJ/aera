@@ -71,8 +71,3 @@ class RobotInterface(ABC):
         Returns the 4x4 affine transformation from camera frame to base frame.
         """
         pass
-
-    @abstractmethod
-    def get_last_rgb_msg(self) -> Optional[Image]:
-        """Returns the last raw RGB image message."""
-        pass

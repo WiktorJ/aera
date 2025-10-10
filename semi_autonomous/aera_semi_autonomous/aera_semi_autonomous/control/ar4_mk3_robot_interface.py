@@ -266,11 +266,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position by interpolating joint positions."""
         try:
-            home_joint_names = self.joint_names + [
-                "gripper_jaw1_joint",
-                "gripper_jaw2_joint",
-            ]
-            qpos_indices = self._get_qpos_indices(self.env.model, home_joint_names)
+            qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
             target_qpos = self.env.initial_qpos[qpos_indices]
             current_qpos = self.env.data.qpos[qpos_indices].copy()
 

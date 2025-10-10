@@ -145,6 +145,32 @@ class Ar4Mk3RobotInterface(RobotInterface):
             model, joint_names, model.nq, "jnt_qposadr", 7, 4
         )
 
+    def _interpolate_gripper(self, target_gripper_qpos: np.ndarray) -> bool:
+        """Helper to interpolate gripper to a target qpos."""
+        try:
+            gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
+            current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
+
+            if np.linalg.norm(target_gripper_qpos - current_gripper_qpos) < 1e-3:
+                return True
+
+            num_steps = GRIPPER_ACTION_STEPS
+
+            for i in range(num_steps + 1):
+                alpha = i / num_steps
+                interpolated_gripper_qpos = (
+                    1 - alpha
+                ) * current_gripper_qpos + alpha * target_gripper_qpos
+                self.env.data.qpos[gripper_qpos_indices] = interpolated_gripper_qpos
+                mujoco.mj_forward(self.env.model, self.env.data)
+                self.env.render()
+                time.sleep(0.01)
+
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to interpolate gripper: {e}", exc_info=True)
+            return False
+
     def _solve_ik_for_site_pose(
         self,
         site_name: str,
@@ -363,20 +389,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def release_gripper(self) -> bool:
-        """Release the gripper by applying an open action for several steps."""
+        """Release the gripper by interpolating to an open state."""
         try:
             # Gripper is considered "released" or "open" when qpos values are positive.
-            # We apply the open action for a fixed number of steps to ensure it opens.
-            action = np.zeros(self.env.action_space.shape[0])
-            action[-1] = -1.0  # Action to open gripper
+            # We assume initial_qpos has the gripper in an open state.
+            gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
+            target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices]
 
-            for _ in range(GRIPPER_ACTION_STEPS):
-                self.env.step(action)
-                self.env.render()
-                time.sleep(0.01)
+            if not self._interpolate_gripper(target_gripper_qpos):
+                return False
 
             # Check if gripper is open
-            if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
+            final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
+            if final_gripper_qpos[0] < 0.0 or final_gripper_qpos[1] < 0.0:
                 self.logger.warning(
                     "Gripper may not be fully open after release action."
                 )
@@ -402,13 +427,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 return False
 
             # 3. Gradually close the gripper
-            action = np.zeros(self.env.action_space.shape[0])
-            action[-1] = 1.0  # Action to close gripper
-
-            for _ in range(GRIPPER_ACTION_STEPS):
-                self.env.step(action)
-                self.env.render()
-                time.sleep(0.01)
+            # Assuming closed gripper corresponds to qpos near 0.
+            target_gripper_qpos = np.zeros(2)
+            if not self._interpolate_gripper(target_gripper_qpos):
+                self.logger.error("Grasp failed: could not close gripper.")
+                return False
 
             # 4. Lift the object
             if not self.move_to(above_pose):

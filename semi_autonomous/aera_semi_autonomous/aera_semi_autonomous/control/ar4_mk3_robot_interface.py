@@ -192,7 +192,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         if inplace:
             data = self.env.data
         else:
-            data = mujoco.MjData(model)
+            data = mujoco.MjData(model)  # type: ignore
             data = copy.deepcopy(self.env.data)
 
         dtype = data.qpos.dtype

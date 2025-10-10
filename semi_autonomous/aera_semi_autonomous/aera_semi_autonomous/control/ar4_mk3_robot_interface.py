@@ -497,12 +497,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Temporarily set render mode to rgb_array to get image
             original_render_mode = self.env.render_mode
             self.env.render_mode = "rgb_array"
-            rgb_image = self.env.render()
+            render_result = self.env.render()
             self.env.render_mode = original_render_mode
 
-            if rgb_image is not None:
-                self._latest_rgb_image = rgb_image
-                return rgb_image
+            # Handle different return types from render()
+            if render_result is not None and isinstance(render_result, np.ndarray):
+                self._latest_rgb_image = render_result
+                return render_result
             return self._latest_rgb_image
 
         except Exception as e:
@@ -515,12 +516,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Temporarily set render mode to depth_array to get depth image
             original_render_mode = self.env.render_mode
             self.env.render_mode = "depth_array"
-            depth_image = self.env.render()
+            render_result = self.env.render()
             self.env.render_mode = original_render_mode
 
-            if depth_image is not None:
-                self._latest_depth_image = depth_image
-                return depth_image
+            # Handle different return types from render()
+            if render_result is not None and isinstance(render_result, np.ndarray):
+                self._latest_depth_image = render_result
+                return render_result
             return self._latest_depth_image
 
         except Exception as e:

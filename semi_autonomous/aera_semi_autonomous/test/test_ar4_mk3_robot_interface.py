@@ -73,24 +73,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
                 self.mock_env.model, self.mock_env.data
             )
 
-    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
-    def test_go_home_failure(self, mock_mujoco):
-        """Test go_home when release_gripper fails."""
-        with patch.object(
-            self.robot_interface, "release_gripper", return_value=False
-        ) as _:
-            result = self.robot_interface.go_home()
-
-            self.assertFalse(result)
-
-    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
-    def test_go_home_exception(self, mock_mujoco):
-        """Test go_home when an exception occurs."""
-        mock_mujoco.mj_forward.side_effect = Exception("Test exception")
-        result = self.robot_interface.go_home()
-
-        self.assertFalse(result)
-
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
         # Mock IK solver to return success

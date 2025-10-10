@@ -211,7 +211,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         jac_pos, jac_rot = jac[:3], jac[3:]
         err_pos, err_rot = err[:3], err[3:]
 
-        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
         for steps in range(max_steps):
             mujoco.mj_fwdPosition(model, data)

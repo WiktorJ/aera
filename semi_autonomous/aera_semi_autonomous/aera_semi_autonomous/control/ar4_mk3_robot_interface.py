@@ -1,23 +1,50 @@
-import logging
 import copy
+import logging
 import time
-from typing import Optional
+from typing import Any, Dict, NamedTuple, Optional
+
+import mujoco
 import numpy as np
 import open3d as o3d
 from geometry_msgs.msg import Pose
-from sensor_msgs.msg import Image
 from scipy.spatial.transform import Rotation
-import collections
-import mujoco
 
-
-from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
+from aera_semi_autonomous.control.robot_interface import RobotInterface
 
-# IK Result namedtuple
-IKResult = collections.namedtuple(
-    "IKResult", ["qpos", "err_norm", "steps", "success", "failure_reason"]
-)
+
+class IKResult(NamedTuple):
+    """Result of the inverse kinematics solver."""
+
+    qpos: np.ndarray
+    err_norm: float
+    steps: int
+    success: bool
+    failure_reason: str
+
+
+# Constants
+DEFAULT_CAMERA_CONFIG: Dict[str, Any] = {
+    "width": 640,
+    "height": 480,
+    "fx": 525.0,
+    "fy": 525.0,
+    "cx": 320.0,
+    "cy": 240.0,
+}
+"""Default camera configuration if none is provided."""
+
+MOVE_TO_POS_TOLERANCE = 0.01  # 1cm
+"""Position tolerance for move_to command."""
+
+ABOVE_TARGET_OFFSET = 0.05  # 5cm
+"""Offset to move above a target for grasping."""
+
+GRIPPER_ACTION_STEPS = 50
+"""Number of simulation steps to apply for gripper actions."""
+
+HOME_QPOS_ERROR_TOLERANCE = 1e-3
+"""Tolerance for joint position error when going home."""
 
 
 class Ar4Mk3RobotInterface(RobotInterface):
@@ -26,19 +53,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
     Provides a bridge between the semi-autonomous system and the RL environment.
     """
 
-    def __init__(self, env: Ar4Mk3Env, camera_config: Optional[dict] = None):
+    def __init__(
+        self, env: Ar4Mk3Env, camera_config: Optional[Dict[str, Any]] = None
+    ):
         self.env = env
         self.logger = logging.getLogger(__name__)
 
         # Camera configuration
-        self.camera_config = camera_config or {
-            "width": 640,
-            "height": 480,
-            "fx": 525.0,
-            "fy": 525.0,
-            "cx": 320.0,
-            "cy": 240.0,
-        }
+        self.camera_config = camera_config or DEFAULT_CAMERA_CONFIG
 
         # Create camera intrinsics
         self.camera_intrinsics = o3d.camera.PinholeCameraIntrinsic(
@@ -62,15 +84,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
         )
 
         # Store latest images
-        self._latest_rgb_image = None
-        self._latest_depth_image = None
-        self._latest_rgb_msg = None
+        self._latest_rgb_image: Optional[np.ndarray] = None
+        self._latest_depth_image: Optional[np.ndarray] = None
 
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
 
-    def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
+    def _nullspace_method(
+        self,
+        jac_joints: np.ndarray,
+        delta: np.ndarray,
+        regularization_strength: float = 0.0,
+    ) -> np.ndarray:
         """Calculates the joint velocities to achieve a specified end effector delta."""
         hess_approx = jac_joints.T.dot(jac_joints)
         joint_delta = jac_joints.T.dot(delta)
@@ -82,13 +108,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _get_joint_indices(
         self,
-        model,
-        joint_names,
-        total_dims,
-        addr_attr,
-        free_joint_dims,
-        ball_joint_dims,
-    ):
+        model: mujoco.MjModel,
+        joint_names: list[str],
+        total_dims: int,
+        addr_attr: str,
+        free_joint_dims: int,
+        ball_joint_dims: int,
+    ) -> np.ndarray:
         """Helper to get DoF or qpos indices for a given list of joint names."""
         if joint_names is None:
             return np.arange(total_dims)
@@ -117,13 +143,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
             indices.extend(range(addr, addr + num_dims))
         return np.array(indices)
 
-    def _get_dof_indices(self, model, joint_names):
+    def _get_dof_indices(
+        self, model: mujoco.MjModel, joint_names: list[str]
+    ) -> np.ndarray:
         """Get the list of DoF indices for a given list of joint names."""
         return self._get_joint_indices(
             model, joint_names, model.nv, "jnt_dofadr", 6, 3
         )
 
-    def _get_qpos_indices(self, model, joint_names):
+    def _get_qpos_indices(
+        self, model: mujoco.MjModel, joint_names: list[str]
+    ) -> np.ndarray:
         """Get the list of qpos indices for a given list of joint names."""
         return self._get_joint_indices(
             model, joint_names, model.nq, "jnt_qposadr", 7, 4
@@ -131,20 +161,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _solve_ik_for_site_pose(
         self,
-        site_name,
-        target_pos,
-        target_quat,
-        tol=1e-6,
-        regularization_threshold=0.01,
-        regularization_strength=3e-2,
-        max_update_norm=1,
-        progress_thresh=20.0,
-        integration_dt=0.1,
-        pos_gain=0.95,
-        orientation_gain=0.95,
-        max_steps=1000,
-        inplace=False,
-    ):
+        site_name: str,
+        target_pos: np.ndarray,
+        target_quat: np.ndarray,
+        tol: float = 1e-6,
+        regularization_threshold: float = 0.01,
+        regularization_strength: float = 3e-2,
+        max_update_norm: float = 1.0,
+        progress_thresh: float = 20.0,
+        integration_dt: float = 0.1,
+        pos_gain: float = 0.95,
+        orientation_gain: float = 0.95,
+        max_steps: int = 1000,
+        inplace: bool = False,
+    ) -> IKResult:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
         if inplace:
@@ -201,9 +231,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 regularization_strength if err_norm > regularization_threshold else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
-            update_joints += (
+
+            # Nullspace projection for redundancy resolution, pulling towards home config
+            nullspace_projector = (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
-            ) @ (nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices]))
+            )
+            nullspace_term = nullspace_projector @ (
+                nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
+            )
+            update_joints += nullspace_term
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:
@@ -237,7 +273,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             failure_reason=failure_reason,
         )
 
-    def _initialize_home_pose(self):
+    def _initialize_home_pose(self) -> Pose:
         """Initialize the home pose to the robot's actual initial position."""
         # Use the actual initial gripper position from the environment
         # This preserves the "right angle position" that the robot starts in
@@ -269,7 +305,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             target_qpos = self.env.initial_qpos[qpos_indices]
             current_qpos = self.env.data.qpos[qpos_indices].copy()
 
-            if np.linalg.norm(target_qpos - current_qpos) < 1e-3:
+            if np.linalg.norm(target_qpos - current_qpos) < HOME_QPOS_ERROR_TOLERANCE:
                 return True
 
             num_steps = 100  # for smooth movement
@@ -285,7 +321,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Verify final joint positions
             final_qpos = self.env.data.qpos[qpos_indices]
             qpos_error = np.linalg.norm(target_qpos - final_qpos)
-            if qpos_error > 1e-3:
+            if qpos_error > HOME_QPOS_ERROR_TOLERANCE:
                 self.logger.warning(
                     f"Go home may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
                 )
@@ -337,7 +373,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             pos_error = np.linalg.norm(target_pos - final_pos)
 
             # Check if we are close enough to the target
-            if pos_error > 0.01:  # 1cm tolerance
+            if pos_error > MOVE_TO_POS_TOLERANCE:
                 self.logger.warning(
                     f"Move to failed. Final position error: {pos_error:.4f}m"
                 )
@@ -349,15 +385,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def release_gripper(self) -> bool:
-        """Release the gripper."""
+        """Release the gripper by applying an open action for several steps."""
         try:
-            # Gripper is considered "released" or "open" when qpos values are positive
-            # We check if either of the gripper joints is not fully open
-            if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
-                action = np.zeros(self.env.action_space.shape[0])
-                action[-1] = -1.0
+            # Gripper is considered "released" or "open" when qpos values are positive.
+            # We apply the open action for a fixed number of steps to ensure it opens.
+            action = np.zeros(self.env.action_space.shape[0])
+            action[-1] = -1.0  # Action to open gripper
 
+            for _ in range(GRIPPER_ACTION_STEPS):
                 self.env.step(action)
+                self.env.render()
+                time.sleep(0.01)
+
+            # Check if gripper is open
+            if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
+                self.logger.warning("Gripper may not be fully open after release action.")
+
             return True
         except Exception as e:
             self.logger.error(f"Failed to release gripper: {e}", exc_info=True)
@@ -367,11 +410,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Move to a pose and grasp."""
         try:
             # 1. Move to a position slightly above the target
-            above_pose = Pose()
-            above_pose.position.x = pose.position.x
-            above_pose.position.y = pose.position.y
-            above_pose.position.z = pose.position.z + 0.05  # 5cm above
-            above_pose.orientation = pose.orientation
+            above_pose = copy.deepcopy(pose)
+            above_pose.position.z += ABOVE_TARGET_OFFSET
             if not self.move_to(above_pose):
                 self.logger.error("Grasp failed: could not move above target.")
                 return False
@@ -382,12 +422,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 return False
 
             # 3. Gradually close the gripper
-            close_action_val = 1.0  # Fully close
             action = np.zeros(self.env.action_space.shape[0])
-            action[-1] = close_action_val
+            action[-1] = 1.0  # Action to close gripper
 
-            for _ in range(50):
+            for _ in range(GRIPPER_ACTION_STEPS):
                 self.env.step(action)
+                self.env.render()
+                time.sleep(0.01)
 
             # 4. Lift the object
             if not self.move_to(above_pose):
@@ -456,8 +497,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             if rgb_image is not None:
                 self._latest_rgb_image = rgb_image
-                return rgb_image  # type: ignore
-            return self._latest_rgb_image  # type: ignore
+                return rgb_image
+            return self._latest_rgb_image
 
         except Exception as e:
             self.logger.error(f"Failed to get RGB image: {e}", exc_info=True)

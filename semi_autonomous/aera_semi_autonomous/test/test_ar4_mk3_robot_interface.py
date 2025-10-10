@@ -27,6 +27,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
         # Mock data attributes
         self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0])
+        self.mock_env.initial_qpos = np.array(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.04, 0.04]
+        )
         self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
         self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
@@ -127,23 +130,19 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertFalse(result)
 
-    def test_release_gripper_joint_control_success(self):
-        """Test release_gripper with joint control mode."""
-        self.mock_env.use_eef_control = False
-        self.mock_env.step.return_value = (None, None, None, None, None)
-        # Mock gripper state to trigger movement
-        self.mock_env.data.qpos = np.array(
-            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
-        )
+    def test_release_gripper_success(self):
+        """Test release_gripper successful execution."""
+        with patch.object(
+            self.robot_interface, "_interpolate_gripper", return_value=True
+        ) as mock_interpolate:
+            result = self.robot_interface.release_gripper()
 
-        result = self.robot_interface.release_gripper()
-
-        self.assertTrue(result)
-        # Check that step was called with the correct action
-        self.mock_env.step.assert_called_once()
-        call_args = self.mock_env.step.call_args[0][0]
-        expected_action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0])
-        np.testing.assert_array_equal(call_args, expected_action)
+            self.assertTrue(result)
+            mock_interpolate.assert_called_once()
+            # Check that it was called with the open gripper qpos from initial_qpos
+            expected_qpos = self.mock_env.initial_qpos[-2:]
+            called_qpos = mock_interpolate.call_args[0][0]
+            np.testing.assert_array_equal(called_qpos, expected_qpos)
 
     def test_release_gripper_exception(self):
         """Test release_gripper when an exception occurs."""
@@ -161,9 +160,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         """Test grasp_at successful execution."""
         with patch.object(
             self.robot_interface, "move_to", return_value=True
-        ) as mock_move_to:
-            self.mock_env.step.return_value = (None, None, None, None, None)
-
+        ) as mock_move_to, patch.object(
+            self.robot_interface, "_interpolate_gripper", return_value=True
+        ) as mock_interpolate_gripper:
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
@@ -173,8 +172,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertTrue(result)
             self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
-            # Check that step was called 50 times for gradual gripper closing
-            self.assertEqual(self.mock_env.step.call_count, 50)
+            mock_interpolate_gripper.assert_called_once_with(np.zeros(2))
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""

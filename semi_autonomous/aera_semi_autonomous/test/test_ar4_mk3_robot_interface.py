@@ -21,6 +21,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.model = Mock()
         self.mock_env.action_space = Mock()
         self.mock_env.action_space.shape = (7,)
+        self.mock_env.model.nq = 8
+        self.mock_env.model.nv = 7
         self.mock_env._utils = Mock()
 
         # Mock data attributes
@@ -61,7 +63,10 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_go_home_success(self, mock_mujoco, mock_time):
         """Test go_home successful execution."""
         self.mock_env.initial_qpos = np.array([0.0] * 8)
-        result = self.robot_interface.go_home()
+        with patch.object(
+            self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
+        ):
+            result = self.robot_interface.go_home()
 
         self.assertTrue(result)
         np.testing.assert_array_equal(
@@ -76,18 +81,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
         # Mock IK solver to return success
-        with patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik:
-            # Mock successful IK result
-            from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
-
-            mock_ik.return_value = IKResult(
-                qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
-                err_norm=1e-6,
-                steps=10,
-                success=True,
-                failure_reason="",
-            )
-
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose", return_value=True
+        ) as mock_ik:
             # Mock final position check
             self.mock_env._utils.get_site_xpos.return_value = np.array([0.1, 0.1, 0.1])
 
@@ -103,18 +99,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_move_to_ik_failure(self):
         """Test move_to when IK fails to converge."""
         # Mock IK solver to return failure
-        with patch.object(self.robot_interface, "_solve_ik_for_site_pose") as mock_ik:
-            # Mock failed IK result
-            from aera_semi_autonomous.control.ar4_mk3_robot_interface import IKResult
-
-            mock_ik.return_value = IKResult(
-                qpos=np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0]),
-                err_norm=1.0,
-                steps=100,
-                success=False,
-                failure_reason="Max steps reached",
-            )
-
+        with patch.object(
+            self.robot_interface, "_solve_ik_for_site_pose", return_value=False
+        ) as mock_ik:
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)

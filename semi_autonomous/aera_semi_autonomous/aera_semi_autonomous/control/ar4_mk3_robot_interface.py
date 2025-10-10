@@ -116,13 +116,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             addr = getattr(model, addr_attr)[joint_id]
             joint_type = model.jnt_type[joint_id]
 
-            if joint_type == mujoco.mjtJoint.mjJNT_FREE:
+            if joint_type == mujoco.mjtJoint.mjJNT_FREE:  # type: ignore
                 num_dims = free_joint_dims
-            elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
+            elif joint_type == mujoco.mjtJoint.mjJNT_BALL:  # type: ignore
                 num_dims = ball_joint_dims
             elif joint_type in (
-                mujoco.mjtJoint.mjJNT_SLIDE,
-                mujoco.mjtJoint.mjJNT_HINGE,
+                mujoco.mjtJoint.mjJNT_SLIDE,  # type: ignore
+                mujoco.mjtJoint.mjJNT_HINGE,  # type: ignore
             ):
                 num_dims = 1
             else:

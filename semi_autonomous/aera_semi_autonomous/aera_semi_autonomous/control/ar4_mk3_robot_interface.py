@@ -109,7 +109,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         indices = []
         for name in joint_names:
-            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)  # type: ignore
             if joint_id == -1:
                 raise ValueError(f'No joint named "{name}" found.')
 
@@ -162,7 +162,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     1 - alpha
                 ) * current_gripper_qpos + alpha * target_gripper_qpos
                 self.env.data.qpos[gripper_qpos_indices] = interpolated_gripper_qpos
-                mujoco.mj_forward(self.env.model, self.env.data)
+                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
                 time.sleep(0.01)
 
@@ -214,19 +214,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
         for steps in range(max_steps):
-            mujoco.mj_fwdPosition(model, data)
+            mujoco.mj_fwdPosition(model, data)  # type: ignore
 
             site_xpos = data.site_xpos[site_id]
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
 
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
-            mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())
+            mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())  # type: ignore
             neg_site_quat = np.empty(4, dtype=dtype)
-            mujoco.mju_negQuat(neg_site_quat, site_quat)
+            mujoco.mju_negQuat(neg_site_quat, site_quat)  # type: ignore
             err_rot_quat = np.empty(4, dtype=dtype)
-            mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)
-            mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)
+            mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)  # type: ignore
+            mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
             err_rot *= orientation_gain / integration_dt
 
             err_norm = np.linalg.norm(err_pos) + np.linalg.norm(err_rot)
@@ -236,7 +236,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 failure_reason = ""
                 break
 
-            mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)
+            mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)  # type: ignore
             jac_joints = jac[:, dof_indices]
 
             reg_strength = (
@@ -268,7 +268,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
-            mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)
+            mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
             self.env.render()
             time.sleep(0.01)
         else:
@@ -326,7 +326,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 alpha = i / num_steps
                 interpolated_qpos = (1 - alpha) * current_qpos + alpha * target_qpos
                 self.env.data.qpos[qpos_indices] = interpolated_qpos
-                mujoco.mj_forward(self.env.model, self.env.data)
+                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
                 time.sleep(0.01)
 

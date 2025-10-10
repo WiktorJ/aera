@@ -96,7 +96,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def _get_joint_indices(
         self,
-        model: mujoco.MjModel,
+        model: mujoco.MjModel,  # type: ignore
         joint_names: list[str],
         total_dims: int,
         addr_attr: str,
@@ -104,8 +104,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         ball_joint_dims: int,
     ) -> np.ndarray:
         """Helper to get DoF or qpos indices for a given list of joint names."""
-        if joint_names is None:
-            return np.arange(total_dims)
 
         indices = []
         for name in joint_names:
@@ -132,13 +130,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
         return np.array(indices)
 
     def _get_dof_indices(
-        self, model: mujoco.MjModel, joint_names: list[str]
+        self,
+        model: mujoco.MjModel,  # type: ignore
+        joint_names: list[str],
     ) -> np.ndarray:
         """Get the list of DoF indices for a given list of joint names."""
         return self._get_joint_indices(model, joint_names, model.nv, "jnt_dofadr", 6, 3)
 
     def _get_qpos_indices(
-        self, model: mujoco.MjModel, joint_names: list[str]
+        self,
+        model: mujoco.MjModel,  # type: ignore
+        joint_names: list[str],
     ) -> np.ndarray:
         """Get the list of qpos indices for a given list of joint names."""
         return self._get_joint_indices(

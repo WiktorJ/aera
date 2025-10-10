@@ -237,11 +237,30 @@ class Ar4Mk3RobotInterface(RobotInterface):
         return self.logger
 
     def go_home(self) -> bool:
-        """Move robot to home position and release gripper."""
+        """Move robot to home position by interpolating joint positions."""
         try:
-            if not self.move_to(self.home_pose):
-                self.logger.error("Failed to move to home pose.")
-                return False
+            target_qpos = self.env.initial_qpos
+            current_qpos = self.env.data.qpos.copy()
+
+            num_steps = 100  # for smooth movement
+
+            for i in range(num_steps + 1):
+                alpha = i / num_steps
+                interpolated_qpos = (1 - alpha) * current_qpos + alpha * target_qpos
+                self.env.data.qpos[:] = interpolated_qpos
+                mujoco.mj_forward(self.env.model, self.env.data)
+                self.env.render()
+                time.sleep(0.01)
+
+            # Verify final joint positions
+            final_qpos = self.env.data.qpos
+            qpos_error = np.linalg.norm(target_qpos - final_qpos)
+            if qpos_error > 1e-3:
+                self.logger.warning(
+                    f"Go home may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
+                )
+
+            return True
 
         except Exception as e:
             self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)

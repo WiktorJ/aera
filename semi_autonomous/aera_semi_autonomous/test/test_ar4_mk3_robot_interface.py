@@ -172,7 +172,10 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
             self.assertTrue(result)
             self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
-            mock_interpolate_gripper.assert_called_once_with(np.zeros(2))
+            mock_interpolate_gripper.assert_called_once()
+            # Check the argument passed to _interpolate_gripper
+            called_args = mock_interpolate_gripper.call_args[0][0]
+            np.testing.assert_array_equal(called_args, np.zeros(2))
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""

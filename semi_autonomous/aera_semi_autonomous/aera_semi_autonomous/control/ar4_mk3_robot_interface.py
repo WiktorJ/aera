@@ -13,16 +13,6 @@ from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 
 
-class IKResult(NamedTuple):
-    """Result of the inverse kinematics solver."""
-
-    qpos: np.ndarray
-    err_norm: float
-    steps: int
-    success: bool
-    failure_reason: str
-
-
 # Constants
 DEFAULT_CAMERA_CONFIG: Dict[str, Any] = {
     "width": 640,
@@ -53,9 +43,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     Provides a bridge between the semi-autonomous system and the RL environment.
     """
 
-    def __init__(
-        self, env: Ar4Mk3Env, camera_config: Optional[Dict[str, Any]] = None
-    ):
+    def __init__(self, env: Ar4Mk3Env, camera_config: Optional[Dict[str, Any]] = None):
         self.env = env
         self.logger = logging.getLogger(__name__)
 
@@ -147,9 +135,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self, model: mujoco.MjModel, joint_names: list[str]
     ) -> np.ndarray:
         """Get the list of DoF indices for a given list of joint names."""
-        return self._get_joint_indices(
-            model, joint_names, model.nv, "jnt_dofadr", 6, 3
-        )
+        return self._get_joint_indices(model, joint_names, model.nv, "jnt_dofadr", 6, 3)
 
     def _get_qpos_indices(
         self, model: mujoco.MjModel, joint_names: list[str]
@@ -174,7 +160,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         orientation_gain: float = 0.95,
         max_steps: int = 1000,
         inplace: bool = False,
-    ) -> IKResult:
+    ) -> bool:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
         if inplace:
@@ -263,15 +249,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
             success = False
             failure_reason = f"Max steps ({max_steps}) reached"
 
-        qpos = data.qpos.copy()
-
-        return IKResult(
-            qpos=qpos,
-            err_norm=err_norm,
-            steps=steps + 1,
-            success=success,
-            failure_reason=failure_reason,
-        )
+        if not success:
+            self.logger.warning(
+                f"IK failed to converge. Error: {err_norm:.4f}. "
+                f"Reason: {failure_reason}. "
+                f"Target Pos: {target_pos}, Target Quat: {target_quat}. "
+                f"Steps: {steps}."
+            )
+            return False
+        return True
 
     def _initialize_home_pose(self) -> Pose:
         """Initialize the home pose to the robot's actual initial position."""
@@ -346,20 +332,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 ]
             )
 
-            ik_result = self._solve_ik_for_site_pose(
+            if not self._solve_ik_for_site_pose(
                 site_name="grip",
                 target_pos=target_pos,
                 target_quat=target_quat,
                 inplace=True,
-            )
-
-            if not ik_result.success:
-                self.logger.warning(
-                    f"IK failed to converge. Error: {ik_result.err_norm:.4f}. "
-                    f"Reason: {ik_result.failure_reason}. "
-                    f"Target Pos: {target_pos}, Target Quat: {target_quat}. "
-                    f"Steps: {ik_result.steps}."
-                )
+            ):
                 return False
 
             # Verify final position
@@ -399,7 +377,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Check if gripper is open
             if self.env.data.qpos[-2] < 0.0 or self.env.data.qpos[-1] < 0.0:
-                self.logger.warning("Gripper may not be fully open after release action.")
+                self.logger.warning(
+                    "Gripper may not be fully open after release action."
+                )
 
             return True
         except Exception as e:

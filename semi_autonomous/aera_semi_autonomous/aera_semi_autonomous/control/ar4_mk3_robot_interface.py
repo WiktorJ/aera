@@ -105,6 +105,31 @@ class Ar4Mk3RobotInterface(RobotInterface):
             dof_indices.extend(range(dof_addr, dof_addr + ndof))
         return np.array(dof_indices)
 
+    def _get_qpos_indices(self, model, joint_names):
+        """Get the list of qpos indices for a given list of joint names."""
+        if joint_names is None:
+            return np.arange(model.nq)
+        qpos_indices = []
+        for name in joint_names:
+            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            if joint_id == -1:
+                raise ValueError(f'No joint named "{name}" found.')
+            qpos_addr = model.jnt_qposadr[joint_id]
+            joint_type = model.jnt_type[joint_id]
+            if joint_type == mujoco.mjtJoint.mjJNT_FREE:
+                nq = 7
+            elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
+                nq = 4
+            elif joint_type in (
+                mujoco.mjtJoint.mjJNT_SLIDE,
+                mujoco.mjtJoint.mjJNT_HINGE,
+            ):
+                nq = 1
+            else:
+                nq = 0
+            qpos_indices.extend(range(qpos_addr, qpos_addr + nq))
+        return np.array(qpos_indices)
+
     def _solve_ik_for_site_pose(
         self,
         site_name,
@@ -135,7 +160,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         steps = 0
         failure_reason = "Unknown"
         nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
-        home_joint_configuration = self.env.initial_qpos[:6]
+
+        dof_indices = self._get_dof_indices(model, self.joint_names)
+        qpos_indices = self._get_qpos_indices(model, self.joint_names)
+        home_joint_configuration = self.env.initial_qpos[qpos_indices]
 
         jac = np.empty((6, model.nv), dtype=dtype)
         err = np.empty(6, dtype=dtype)
@@ -143,7 +171,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_pos, err_rot = err[:3], err[3:]
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
-        dof_indices = self._get_dof_indices(model, self.joint_names)
 
         for steps in range(max_steps):
             mujoco.mj_fwdPosition(model, data)
@@ -177,7 +204,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             update_joints += (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
-            ) @ (nullspace_gain * (home_joint_configuration - data.qpos[dof_indices]))
+            ) @ (nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices]))
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm < 1e-6:
@@ -239,9 +266,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position by interpolating joint positions."""
         try:
-            dof_indices = self._get_dof_indices(self.env.model, self.joint_names)
-            target_qpos = self.env.initial_qpos[dof_indices]
-            current_qpos = self.env.data.qpos[dof_indices].copy()
+            home_joint_names = self.joint_names + [
+                "gripper_jaw1_joint",
+                "gripper_jaw2_joint",
+            ]
+            qpos_indices = self._get_qpos_indices(self.env.model, home_joint_names)
+            target_qpos = self.env.initial_qpos[qpos_indices]
+            current_qpos = self.env.data.qpos[qpos_indices].copy()
 
             if np.linalg.norm(target_qpos - current_qpos) < 1e-3:
                 return True
@@ -251,13 +282,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             for i in range(num_steps + 1):
                 alpha = i / num_steps
                 interpolated_qpos = (1 - alpha) * current_qpos + alpha * target_qpos
-                self.env.data.qpos[dof_indices] = interpolated_qpos
+                self.env.data.qpos[qpos_indices] = interpolated_qpos
                 mujoco.mj_forward(self.env.model, self.env.data)
                 self.env.render()
                 time.sleep(0.01)
 
             # Verify final joint positions
-            final_qpos = self.env.data.qpos[dof_indices]
+            final_qpos = self.env.data.qpos[qpos_indices]
             qpos_error = np.linalg.norm(target_qpos - final_qpos)
             if qpos_error > 1e-3:
                 self.logger.warning(

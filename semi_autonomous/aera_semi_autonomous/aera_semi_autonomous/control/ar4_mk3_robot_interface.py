@@ -68,6 +68,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
+        self.joint_names = [f"joint_{i}" for i in range(1, 7)]
 
     def _nullspace_method(self, jac_joints, delta, regularization_strength=0.0):
         """Calculates the joint velocities to achieve a specified end effector delta."""
@@ -109,7 +110,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_name,
         target_pos,
         target_quat,
-        joint_names=None,
         tol=1e-6,
         regularization_threshold=0.01,
         regularization_strength=3e-2,
@@ -143,7 +143,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_pos, err_rot = err[:3], err[3:]
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
-        dof_indices = self._get_dof_indices(model, joint_names)
+        dof_indices = self._get_dof_indices(model, self.joint_names)
 
         for steps in range(max_steps):
             mujoco.mj_fwdPosition(model, data)
@@ -239,21 +239,25 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position by interpolating joint positions."""
         try:
-            target_qpos = self.env.initial_qpos
-            current_qpos = self.env.data.qpos.copy()
+            dof_indices = self._get_dof_indices(self.env.model, self.joint_names)
+            target_qpos = self.env.initial_qpos[dof_indices]
+            current_qpos = self.env.data.qpos[dof_indices].copy()
+
+            if np.linalg.norm(target_qpos - current_qpos) < 1e-3:
+                return True
 
             num_steps = 100  # for smooth movement
 
             for i in range(num_steps + 1):
                 alpha = i / num_steps
                 interpolated_qpos = (1 - alpha) * current_qpos + alpha * target_qpos
-                self.env.data.qpos[:] = interpolated_qpos
+                self.env.data.qpos[dof_indices] = interpolated_qpos
                 mujoco.mj_forward(self.env.model, self.env.data)
                 self.env.render()
                 time.sleep(0.01)
 
             # Verify final joint positions
-            final_qpos = self.env.data.qpos
+            final_qpos = self.env.data.qpos[dof_indices]
             qpos_error = np.linalg.norm(target_qpos - final_qpos)
             if qpos_error > 1e-3:
                 self.logger.warning(
@@ -280,14 +284,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 ]
             )
 
-            # Assuming standard AR4 joint names
-            joint_names = [f"joint_{i}" for i in range(1, 7)]
-
             ik_result = self._solve_ik_for_site_pose(
                 site_name="grip",
                 target_pos=target_pos,
                 target_quat=target_quat,
-                joint_names=joint_names,
                 inplace=True,
             )
 

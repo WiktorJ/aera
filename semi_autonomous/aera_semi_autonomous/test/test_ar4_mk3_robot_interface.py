@@ -56,22 +56,22 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertEqual(robot_interface.camera_config["height"], 720)
         self.assertEqual(robot_interface.camera_config["fx"], 600.0)
 
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.time")
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
-    def test_go_home_success(self, mock_mujoco):
+    def test_go_home_success(self, mock_mujoco, mock_time):
         """Test go_home successful execution."""
-        with patch.object(
-            self.robot_interface, "release_gripper", return_value=True
-        ) as mock_release_gripper:
-            self.mock_env.initial_qpos = np.array([0.0] * 8)
-            result = self.robot_interface.go_home()
+        self.mock_env.initial_qpos = np.array([0.0] * 8)
+        result = self.robot_interface.go_home()
 
-            self.assertTrue(result)
-            np.testing.assert_array_equal(
-                self.mock_env.data.qpos, self.mock_env.initial_qpos
-            )
-            mock_mujoco.mj_forward.assert_called_once_with(
-                self.mock_env.model, self.mock_env.data
-            )
+        self.assertTrue(result)
+        np.testing.assert_array_equal(
+            self.mock_env.data.qpos, self.mock_env.initial_qpos
+        )
+        self.assertEqual(mock_mujoco.mj_forward.call_count, 101)
+        mock_mujoco.mj_forward.assert_called_with(
+            self.mock_env.model, self.mock_env.data
+        )
+        self.assertEqual(mock_time.sleep.call_count, 101)
 
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""

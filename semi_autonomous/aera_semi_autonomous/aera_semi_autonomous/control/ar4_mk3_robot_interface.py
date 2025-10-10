@@ -80,55 +80,54 @@ class Ar4Mk3RobotInterface(RobotInterface):
         else:
             return np.linalg.lstsq(hess_approx, joint_delta, rcond=-1)[0]
 
-    def _get_dof_indices(self, model, joint_names):
-        """Get the list of DoF indices for a given list of joint names."""
+    def _get_joint_indices(
+        self,
+        model,
+        joint_names,
+        total_dims,
+        addr_attr,
+        free_joint_dims,
+        ball_joint_dims,
+    ):
+        """Helper to get DoF or qpos indices for a given list of joint names."""
         if joint_names is None:
-            return np.arange(model.nv)
-        dof_indices = []
+            return np.arange(total_dims)
+
+        indices = []
         for name in joint_names:
             joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
             if joint_id == -1:
                 raise ValueError(f'No joint named "{name}" found.')
-            dof_addr = model.jnt_dofadr[joint_id]
+
+            addr = getattr(model, addr_attr)[joint_id]
             joint_type = model.jnt_type[joint_id]
+
             if joint_type == mujoco.mjtJoint.mjJNT_FREE:
-                ndof = 6
+                num_dims = free_joint_dims
             elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
-                ndof = 3
+                num_dims = ball_joint_dims
             elif joint_type in (
                 mujoco.mjtJoint.mjJNT_SLIDE,
                 mujoco.mjtJoint.mjJNT_HINGE,
             ):
-                ndof = 1
+                num_dims = 1
             else:
-                ndof = 0
-            dof_indices.extend(range(dof_addr, dof_addr + ndof))
-        return np.array(dof_indices)
+                num_dims = 0
+
+            indices.extend(range(addr, addr + num_dims))
+        return np.array(indices)
+
+    def _get_dof_indices(self, model, joint_names):
+        """Get the list of DoF indices for a given list of joint names."""
+        return self._get_joint_indices(
+            model, joint_names, model.nv, "jnt_dofadr", 6, 3
+        )
 
     def _get_qpos_indices(self, model, joint_names):
         """Get the list of qpos indices for a given list of joint names."""
-        if joint_names is None:
-            return np.arange(model.nq)
-        qpos_indices = []
-        for name in joint_names:
-            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)
-            if joint_id == -1:
-                raise ValueError(f'No joint named "{name}" found.')
-            qpos_addr = model.jnt_qposadr[joint_id]
-            joint_type = model.jnt_type[joint_id]
-            if joint_type == mujoco.mjtJoint.mjJNT_FREE:
-                nq = 7
-            elif joint_type == mujoco.mjtJoint.mjJNT_BALL:
-                nq = 4
-            elif joint_type in (
-                mujoco.mjtJoint.mjJNT_SLIDE,
-                mujoco.mjtJoint.mjJNT_HINGE,
-            ):
-                nq = 1
-            else:
-                nq = 0
-            qpos_indices.extend(range(qpos_addr, qpos_addr + nq))
-        return np.array(qpos_indices)
+        return self._get_joint_indices(
+            model, joint_names, model.nq, "jnt_qposadr", 7, 4
+        )
 
     def _solve_ik_for_site_pose(
         self,

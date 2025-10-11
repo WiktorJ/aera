@@ -1,7 +1,7 @@
 import copy
 import logging
 import time
-from typing import Any, Dict, NamedTuple, Optional
+from typing import Any, Dict, Optional
 
 import mujoco
 import numpy as np

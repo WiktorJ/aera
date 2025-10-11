@@ -393,8 +393,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_gripper(self) -> bool:
         """Release the gripper by interpolating to an open state."""
         try:
-            # Gripper is considered "released" or "open" when qpos values are positive.
-            # We assume initial_qpos has the gripper in an open state.
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
             target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices]
 

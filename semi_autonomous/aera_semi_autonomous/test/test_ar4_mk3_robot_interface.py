@@ -143,6 +143,22 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             expected_qpos = self.mock_env.initial_qpos[-2:]
             called_qpos = mock_interpolate.call_args[0][0]
             np.testing.assert_array_equal(called_qpos, expected_qpos)
+    
+    def test_release_gripper_with_invalid_initial_qpos(self):
+        """Test release_gripper when initial_qpos has invalid gripper values."""
+        # Set initial_qpos to have non-positive gripper values
+        self.mock_env.initial_qpos = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.01, -0.01])
+        
+        with patch.object(
+            self.robot_interface, "_interpolate_gripper", return_value=True
+        ) as mock_interpolate:
+            result = self.robot_interface.release_gripper()
+
+            self.assertTrue(result)
+            mock_interpolate.assert_called_once()
+            # Should use default open values when initial_qpos is invalid
+            called_qpos = mock_interpolate.call_args[0][0]
+            np.testing.assert_array_equal(called_qpos, np.array([0.04, 0.04]))
 
     def test_release_gripper_exception(self):
         """Test release_gripper when an exception occurs."""

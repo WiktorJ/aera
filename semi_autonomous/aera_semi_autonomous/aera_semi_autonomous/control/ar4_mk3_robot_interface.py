@@ -394,16 +394,24 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Release the gripper by interpolating to an open state."""
         try:
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
-            target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices]
+            # Use the initial gripper qpos values which should represent the open state
+            target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices].copy()
+            
+            # Ensure we're using positive values for open gripper
+            # The initial_qpos should have the correct open gripper values
+            if np.any(target_gripper_qpos <= 0):
+                self.logger.warning(f"Initial gripper qpos has non-positive values: {target_gripper_qpos}. Using default open values.")
+                # Use default open gripper values if initial_qpos doesn't look right
+                target_gripper_qpos = np.array([0.04, 0.04])  # Common open gripper values
 
             if not self._interpolate_gripper(target_gripper_qpos):
                 return False
 
-            # Check if gripper is open
+            # Check if gripper is open (should have positive values when open)
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
-            if final_gripper_qpos[0] < 0.0 or final_gripper_qpos[1] < 0.0:
+            if np.any(final_gripper_qpos <= 0.01):  # Allow small tolerance
                 self.logger.warning(
-                    "Gripper may not be fully open after release action."
+                    f"Gripper may not be fully open after release action. Final qpos: {final_gripper_qpos}"
                 )
 
             return True

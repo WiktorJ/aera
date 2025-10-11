@@ -394,22 +394,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Release the gripper by interpolating to an open state."""
         try:
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
+            # Based on the XML, gripper range is [-0.014, 0] where -0.014 is open and 0 is closed
             # Use the initial gripper qpos values which should represent the open state
             target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices].copy()
             
-            # Ensure we're using positive values for open gripper
-            # The initial_qpos should have the correct open gripper values
-            if np.any(target_gripper_qpos <= 0):
-                self.logger.warning(f"Initial gripper qpos has non-positive values: {target_gripper_qpos}. Using default open values.")
-                # Use default open gripper values if initial_qpos doesn't look right
-                target_gripper_qpos = np.array([0.04, 0.04])  # Common open gripper values
+            # If initial_qpos doesn't have proper open values, use the maximum open position
+            if np.any(target_gripper_qpos >= -0.001):  # Should be negative for open
+                self.logger.warning(f"Initial gripper qpos may not represent open state: {target_gripper_qpos}. Using maximum open values.")
+                # Use maximum open gripper values based on XML range [-0.014, 0]
+                target_gripper_qpos = np.array([-0.014, -0.014])
 
             if not self._interpolate_gripper(target_gripper_qpos):
                 return False
 
-            # Check if gripper is open (should have positive values when open)
+            # Check if gripper is open (should have negative values when open)
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
-            if np.any(final_gripper_qpos <= 0.01):  # Allow small tolerance
+            if np.any(final_gripper_qpos >= -0.001):  # Should be negative for open
                 self.logger.warning(
                     f"Gripper may not be fully open after release action. Final qpos: {final_gripper_qpos}"
                 )
@@ -435,7 +435,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 return False
 
             # 3. Gradually close the gripper
-            # Assuming closed gripper corresponds to qpos near 0.
+            # Based on XML range [-0.014, 0], closed gripper corresponds to qpos = 0
             target_gripper_qpos = np.zeros(2)
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")

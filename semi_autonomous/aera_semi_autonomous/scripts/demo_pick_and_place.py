@@ -42,14 +42,19 @@ def setup_logging(debug: bool = False) -> logging.Logger:
 def get_object_pose(env) -> Optional[Pose]:
     """Get the current pose of object0 from the environment."""
     try:
-        # Get object position from MuJoCo
+        # Get object position from MuJoCo (this is the center of the object)
         object_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
-
-        # For simplicity, assume object has identity orientation
-        # In a real scenario, you might want to get the actual orientation
+        
+        # The object is a box with size 0.025 in each dimension
+        # So we need to add half the object height to get the top surface
+        object_size = 0.025  # This should match the object size in the XML
+        
+        # Create pose for the top surface of the object
         pose = Pose()
         pose.position = Point(
-            x=float(object_pos[0]), y=float(object_pos[1]), z=float(object_pos[2])
+            x=float(object_pos[0]), 
+            y=float(object_pos[1]), 
+            z=float(object_pos[2] + object_size)  # Add half-height to get top surface
         )
         pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 
@@ -72,7 +77,9 @@ def generate_random_target_pose(
 
     target_x = initial_pos[0] + distance * np.cos(angle)
     target_y = initial_pos[1] + distance * np.sin(angle)
-    target_z = 0.025  # Object height (half of object size)
+    # Place the object on the ground surface (object center will be at half-height)
+    object_size = 0.025  # Half-height of the object
+    target_z = object_size  # This puts the object center at the right height for ground contact
 
     pose = Pose()
     pose.position = Point(x=float(target_x), y=float(target_y), z=float(target_z))

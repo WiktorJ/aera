@@ -434,9 +434,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.error("Grasp failed: could not move to target.")
                 return False
 
-            # 3. Gradually close the gripper
-            # Based on XML range [-0.014, 0], closed gripper corresponds to qpos = 0
-            target_gripper_qpos = np.zeros(2)
+            # 3. Gradually close the gripper based on gripper_pos
+            # gripper_pos: 0.0 = fully open (-0.014), 1.0 = fully closed (0.0)
+            # Based on XML range [-0.014, 0]
+            gripper_open_pos = -0.014
+            gripper_closed_pos = 0.0
+            target_gripper_value = gripper_open_pos + gripper_pos * (gripper_closed_pos - gripper_open_pos)
+            target_gripper_qpos = np.array([target_gripper_value, target_gripper_value])
+            
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False

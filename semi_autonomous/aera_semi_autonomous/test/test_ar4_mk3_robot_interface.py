@@ -190,8 +190,11 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
             mock_interpolate_gripper.assert_called_once()
             # Check the argument passed to _interpolate_gripper
+            # gripper_pos = 0.5 should map to halfway between -0.014 and 0.0 = -0.007
             called_args = mock_interpolate_gripper.call_args[0][0]
-            np.testing.assert_array_equal(called_args, np.zeros(2))
+            expected_gripper_value = -0.014 + 0.5 * (0.0 - (-0.014))  # -0.007
+            expected_args = np.array([expected_gripper_value, expected_gripper_value])
+            np.testing.assert_array_almost_equal(called_args, expected_args)
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""

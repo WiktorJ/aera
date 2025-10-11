@@ -420,33 +420,43 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return False
 
     def grasp_at(self, pose: Pose, gripper_pos: float) -> bool:
-        """Move to a pose and grasp."""
+        """Move to a pose and grasp.
+        
+        Args:
+            pose: Target pose for grasping
+            gripper_pos: Gripper position in actual range [-0.014, 0] where -0.014 is fully open and 0 is fully closed
+        """
         try:
-            # 1. Move to a position slightly above the target
+            # Validate gripper_pos is in the correct range
+            if not (-0.014 <= gripper_pos <= 0.0):
+                self.logger.error(f"Invalid gripper_pos {gripper_pos}. Must be in range [-0.014, 0]")
+                return False
+
+            # 1. Open the gripper first
+            if not self.release_gripper():
+                self.logger.error("Grasp failed: could not open gripper.")
+                return False
+
+            # 2. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
             above_pose.position.z += ABOVE_TARGET_OFFSET
             if not self.move_to(above_pose):
                 self.logger.error("Grasp failed: could not move above target.")
                 return False
 
-            # 2. Move to the grasp pose
+            # 3. Move to the grasp pose
             if not self.move_to(pose):
                 self.logger.error("Grasp failed: could not move to target.")
                 return False
 
-            # 3. Gradually close the gripper based on gripper_pos
-            # gripper_pos: 0.0 = fully open (-0.014), 1.0 = fully closed (0.0)
-            # Based on XML range [-0.014, 0]
-            gripper_open_pos = -0.014
-            gripper_closed_pos = 0.0
-            target_gripper_value = gripper_open_pos + gripper_pos * (gripper_closed_pos - gripper_open_pos)
-            target_gripper_qpos = np.array([target_gripper_value, target_gripper_value])
+            # 4. Close the gripper to the specified position
+            target_gripper_qpos = np.array([gripper_pos, gripper_pos])
             
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False
 
-            # 4. Lift the object
+            # 5. Lift the object
             if not self.move_to(above_pose):
                 self.logger.warning("Grasp succeeded, but failed to lift.")
 

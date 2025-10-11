@@ -178,33 +178,49 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             self.robot_interface, "move_to", return_value=True
         ) as mock_move_to, patch.object(
             self.robot_interface, "_interpolate_gripper", return_value=True
-        ) as mock_interpolate_gripper:
+        ) as mock_interpolate_gripper, patch.object(
+            self.robot_interface, "release_gripper", return_value=True
+        ) as mock_release_gripper:
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-            gripper_pos = 0.5
+            gripper_pos = -0.007  # Halfway between -0.014 (open) and 0 (closed)
 
             result = self.robot_interface.grasp_at(pose, gripper_pos)
 
             self.assertTrue(result)
+            mock_release_gripper.assert_called_once()  # Should open gripper first
             self.assertEqual(mock_move_to.call_count, 3)  # above, grasp, lift
             mock_interpolate_gripper.assert_called_once()
             # Check the argument passed to _interpolate_gripper
-            # gripper_pos = 0.5 should map to halfway between -0.014 and 0.0 = -0.007
             called_args = mock_interpolate_gripper.call_args[0][0]
-            expected_gripper_value = -0.014 + 0.5 * (0.0 - (-0.014))  # -0.007
-            expected_args = np.array([expected_gripper_value, expected_gripper_value])
+            expected_args = np.array([gripper_pos, gripper_pos])
             np.testing.assert_array_almost_equal(called_args, expected_args)
+
+    def test_grasp_at_invalid_gripper_pos(self):
+        """Test grasp_at with invalid gripper position."""
+        pose = Pose()
+        pose.position = Point(x=0.1, y=0.1, z=0.1)
+        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        
+        # Test with gripper_pos outside valid range
+        invalid_gripper_pos = 0.5  # Should be in [-0.014, 0]
+        
+        result = self.robot_interface.grasp_at(pose, invalid_gripper_pos)
+        
+        self.assertFalse(result)
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""
         with patch.object(
+            self.robot_interface, "release_gripper", return_value=True
+        ), patch.object(
             self.robot_interface, "move_to", return_value=False
         ) as mock_move_to:
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-            gripper_pos = 0.5
+            gripper_pos = -0.007
 
             result = self.robot_interface.grasp_at(pose, gripper_pos)
 

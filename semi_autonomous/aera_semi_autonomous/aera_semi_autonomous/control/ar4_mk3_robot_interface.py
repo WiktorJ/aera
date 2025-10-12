@@ -202,7 +202,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
         success = False
         steps = 0
         failure_reason = "Unknown"
-        nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 5.0, 5.0])
+        # Increased nullspace gain to encourage solutions closer to the home configuration,
+        # which helps avoid undesirable solutions like the arm going through the floor.
+        nullspace_gain = np.asarray([20.0, 20.0, 20.0, 20.0, 10.0, 10.0])
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
@@ -271,13 +273,17 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
 
-            # Store qpos before integration to revert in case of collision
-            qpos_before_update = data.qpos.copy()
             mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
+            self.env.render()
+            time.sleep(0.01)
+        else:
+            success = False
+            failure_reason = f"Max steps ({max_steps}) reached"
 
-            # Check for collisions with the floor to prevent the arm from going through it
+        # After converging, do a final check for floor collisions in the solution.
+        # This ensures that the IK solution is valid and not penetrating the floor.
+        if success:
             mujoco.mj_forward(model, data)
-            collision_with_floor = False
             if data.ncon > 0:
                 for i in range(data.ncon):
                     contact = data.contact[i]
@@ -287,24 +293,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     geom2_name = mujoco.mj_id2name(
                         model, mujoco.mjtObj.mjOBJ_GEOM, contact.geom2
                     )
-
-                    # NOTE: This assumes the floor geom is named 'floor'.
-                    # This may need to be adjusted based on the project's MuJoCo XML file.
                     if "floor" in (geom1_name, geom2_name):
-                        collision_with_floor = True
-                        failure_reason = f"Collision with floor detected ({geom1_name} vs {geom2_name})"
+                        success = False
+                        failure_reason = (
+                            f"IK solution resulted in floor collision "
+                            f"({geom1_name} vs {geom2_name})"
+                        )
                         break
-
-            if collision_with_floor:
-                data.qpos[:] = qpos_before_update
-                mujoco.mj_forward(model, data)  # Revert data to pre-collision state
-                break
-
-            self.env.render()
-            time.sleep(0.01)
-        else:
-            success = False
-            failure_reason = f"Max steps ({max_steps}) reached"
 
         if not success:
             self.logger.warning(

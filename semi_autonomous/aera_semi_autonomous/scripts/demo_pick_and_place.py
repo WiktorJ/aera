@@ -48,6 +48,24 @@ def get_object_pose(env) -> Optional[Pose]:
 
         # Get object orientation to align gripper
         object_body_id = env.model.body("object0").id
+
+        # Find the geom associated with the object body to check its dimensions
+        geom_id = -1
+        for i in range(env.model.ngeom):
+            if env.model.geom_bodyid[i] == object_body_id:
+                geom_id = i
+                break
+
+        additional_yaw = 0.0
+        if geom_id != -1:
+            geom_size = env.model.geom_size[geom_id]
+            # For a box, size is [dx, dy, dz] (half-lengths).
+            # If the object is longer along its y-axis (dy > dx), we want to
+            # align the gripper with the object's y-axis. This requires an
+            # additional 90-degree rotation.
+            if geom_size[1] > geom_size[0]:
+                additional_yaw = 90.0
+
         # MuJoCo quat is w,x,y,z. Scipy is x,y,z,w
         object_quat_wxyz = env.data.xquat[object_body_id]
         object_quat_xyzw = np.array(
@@ -71,7 +89,7 @@ def get_object_pose(env) -> Optional[Pose]:
 
         # Combine top-down orientation with object's yaw
         top_down_rot = Rotation.from_quat([0, 1, 0, 0])  # x, y, z, w
-        z_rot = Rotation.from_euler("z", object_yaw_deg, degrees=True)
+        z_rot = Rotation.from_euler("z", object_yaw_deg + additional_yaw, degrees=True)
         grasp_rot = z_rot * top_down_rot
         grasp_quat_xyzw = grasp_rot.as_quat()
 

@@ -204,7 +204,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         failure_reason = "Unknown"
         # Increased nullspace gain to encourage solutions closer to the home configuration,
         # which helps avoid undesirable solutions like the arm going through the floor.
-        nullspace_gain = np.asarray([20.0, 20.0, 20.0, 20.0, 10.0, 10.0])
+        nullspace_gain = np.asarray([100.0, 100.0, 100.0, 100.0, 100.0, 100.0])
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)

@@ -204,11 +204,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
         failure_reason = "Unknown"
         # Increased nullspace gain to encourage solutions closer to the home configuration,
         # which helps avoid undesirable solutions like the arm going through the floor.
-        nullspace_gain = np.asarray([100.0, 100.0, 100.0, 100.0, 100.0, 100.0])
+        nullspace_gain = np.asarray([1.0, 1.0, 1.0, 1.0, 1.0, -1.0])
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
         home_joint_configuration = self.env.initial_qpos[qpos_indices]
+        print(f"home join config: {home_joint_configuration}")
 
         jac = np.empty((6, model.nv), dtype=dtype)
         err = np.empty(6, dtype=dtype)
@@ -218,6 +219,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
         for steps in range(max_steps):
+            print(f"current joint pos: {data.qpos[qpos_indices]}")
             mujoco.mj_fwdPosition(model, data)  # type: ignore
 
             site_xpos = data.site_xpos[site_id]
@@ -249,12 +251,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
 
             # Nullspace projection for redundancy resolution, pulling towards home config
-            nullspace_projector = (
-                np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
-            )
+            # nullspace_projector = (
+            #     np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
+            # )
+            nullspace_projector = np.eye(len(dof_indices))
             nullspace_term = nullspace_projector @ (
                 nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
             )
+            # print(f"nullspace_term: {nullspace_term}")
             update_joints += nullspace_term
             update_norm = np.linalg.norm(update_joints)
 
@@ -262,10 +266,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 failure_reason = f"Update norm too small ({update_norm:.2e})"
                 break
 
-            progress_criterion = err_norm / update_norm
-            if progress_criterion > progress_thresh:
-                failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
-                break
+            # progress_criterion = err_norm / update_norm
+            # if progress_criterion > progress_thresh:
+            #     failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
+            #     break
 
             if update_norm > max_update_norm:
                 update_joints *= max_update_norm / update_norm

@@ -44,17 +44,17 @@ def get_object_pose(env) -> Optional[Pose]:
     try:
         # Get object position from MuJoCo (this is the center of the object)
         object_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
-        
+
         # The object is a box with size 0.025 in each dimension
         # So we need to add half the object height to get the top surface
         object_size = 0.025  # This should match the object size in the XML
-        
+
         # Create pose for the top surface of the object
         pose = Pose()
         pose.position = Point(
-            x=float(object_pos[0]), 
-            y=float(object_pos[1]), 
-            z=float(object_pos[2] + object_size)  # Add half-height to get top surface
+            x=float(object_pos[0]),
+            y=float(object_pos[1]),
+            z=float(object_pos[2]),  # Add half-height to get top surface
         )
         pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
 

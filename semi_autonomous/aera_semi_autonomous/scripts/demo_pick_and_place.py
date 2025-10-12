@@ -17,6 +17,7 @@ import os
 
 import numpy as np
 from geometry_msgs.msg import Pose, Point, Quaternion
+from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
@@ -45,19 +46,41 @@ def get_object_pose(env) -> Optional[Pose]:
         # Get object position from MuJoCo (this is the center of the object)
         object_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
 
-        # The object is a box with size 0.025 in each dimension
-        # So we need to add half the object height to get the top surface
-        object_size = 0.025  # This should match the object size in the XML
+        # Get object orientation to align gripper
+        object_body_id = env.model.body("object0").id
+        # MuJoCo quat is w,x,y,z. Scipy is x,y,z,w
+        object_quat_wxyz = env.data.xquat[object_body_id]
+        object_quat_xyzw = np.array(
+            [
+                object_quat_wxyz[1],
+                object_quat_wxyz[2],
+                object_quat_wxyz[3],
+                object_quat_wxyz[0],
+            ]
+        )
+        object_rotation = Rotation.from_quat(object_quat_xyzw)
+        object_yaw_deg = object_rotation.as_euler("xyz", degrees=True)[2]
 
         # Create pose for the top surface of the object
         pose = Pose()
         pose.position = Point(
             x=float(object_pos[0]),
             y=float(object_pos[1]),
-            z=float(object_pos[2]),  # Add half-height to get top surface
+            z=float(object_pos[2]),
         )
-        # Top-down grasp orientation to point the gripper downwards
-        pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
+
+        # Combine top-down orientation with object's yaw
+        top_down_rot = Rotation.from_quat([0, 1, 0, 0])  # x, y, z, w
+        z_rot = Rotation.from_euler("z", object_yaw_deg, degrees=True)
+        grasp_rot = z_rot * top_down_rot
+        grasp_quat_xyzw = grasp_rot.as_quat()
+
+        pose.orientation = Quaternion(
+            x=grasp_quat_xyzw[0],
+            y=grasp_quat_xyzw[1],
+            z=grasp_quat_xyzw[2],
+            w=grasp_quat_xyzw[3],
+        )
 
         return pose
     except Exception as e:

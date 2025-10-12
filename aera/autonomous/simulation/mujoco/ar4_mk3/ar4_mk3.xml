@@ -4,8 +4,8 @@
     <asset>
         <material name="white" rgba="1 1 1 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
-        <material name="black" rgba="0.149 0.149 0.149 1" friction="1.0 0.02 0.01"/>
-        <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1" friction="1.0 0.02 0.01"></material>
+        <material name="black" rgba="0.149 0.149 0.149 1"/>
+        <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1"></material>
 
         <mesh name="base_link" file="assets/base_link.STL"/>
         <mesh name="link_1" file="assets/link_1.STL"/>
@@ -64,7 +64,7 @@
         </body>
         <body name="object0" pos="0.025 0.025 0.025">
           <joint name="object0:joint" type="free" damping="0.01"></joint>
-          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="0.05"></geom>
+          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="0.05" friction="1.0 0.02 0.01"></geom>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">
@@ -117,7 +117,7 @@
                                                       diaginertia="1.2974e-06 1.23198e-06 8.70621e-07"/>
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
                                                    range="-0.014 0" class="size1"/>
-                                            <geom type="mesh" mesh="gripper_jaw1_link" material="black"/>
+                                            <geom type="mesh" mesh="gripper_jaw1_link" material="black" friction="1.0 0.02 0.01"/>
                                         </body>
                                         <body name="gripper_jaw2_link" pos="0 0.00970013 0.052"
                                               quat="0 0 -0.707105 0.707108">
@@ -126,7 +126,7 @@
                                                       diaginertia="1.25734e-06 1.16888e-06 8.63781e-07"/>
                                             <joint name="gripper_jaw2_joint" pos="0 0 0" axis="1 0 0" type="slide"
                                                    range="-0.014 0" class="size1"/>
-                                            <geom type="mesh" mesh="gripper_jaw2_link" material="black"/>
+                                            <geom type="mesh" mesh="gripper_jaw2_link" material="black" friction="1.0 0.02 0.01"/>
                                         </body>
                                         <site name="grip" pos="0 0 0.071" rgba="0 0 0 0" size="0.01" type="sphere"/>
                                     </body>

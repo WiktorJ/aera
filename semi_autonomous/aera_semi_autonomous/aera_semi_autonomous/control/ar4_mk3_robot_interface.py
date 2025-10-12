@@ -188,7 +188,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         orientation_gain: float = 0.95,
         max_steps: int = 1000,
         inplace: bool = False,
-        min_height: float = 0.0,
+        min_height: float = 0.01,
     ) -> bool:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
@@ -295,8 +295,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             new_site_xpos = data.site_xpos[site_id]
             if new_site_xpos[2] < min_height:
                 data.qpos[:] = prev_qpos
-                mujoco.mj_fwdPosition(model, data)  # Re-sync data
-                failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]:.3f} < {min_height:.3f})"
+                failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]} < {min_height})"
                 break
 
             self.env.render()
@@ -393,7 +392,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 inplace=True,
-                min_height=0.02,  # 2cm clearance from the floor
             ):
                 return False
 

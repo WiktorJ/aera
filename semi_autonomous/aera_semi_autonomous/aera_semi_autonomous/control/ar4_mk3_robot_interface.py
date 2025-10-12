@@ -188,6 +188,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         orientation_gain: float = 0.95,
         max_steps: int = 1000,
         inplace: bool = False,
+        min_height: float = 0.0,
     ) -> bool:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
@@ -281,12 +282,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
 
+            prev_qpos = data.qpos.copy()
             mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
 
             # Enforce joint limits
             data.qpos[qpos_indices] = np.clip(
                 data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             )
+
+            # Check for floor collision
+            mujoco.mj_fwdPosition(model, data)
+            new_site_xpos = data.site_xpos[site_id]
+            if new_site_xpos[2] < min_height:
+                data.qpos[:] = prev_qpos
+                mujoco.mj_fwdPosition(model, data)  # Re-sync data
+                failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]:.3f} < {min_height:.3f})"
+                break
 
             self.env.render()
             time.sleep(0.01)
@@ -382,6 +393,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 inplace=True,
+                min_height=0.02,  # 2cm clearance from the floor
             ):
                 return False
 

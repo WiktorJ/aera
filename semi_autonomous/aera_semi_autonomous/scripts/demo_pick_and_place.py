@@ -6,7 +6,7 @@ This script demonstrates how to use the Ar4Mk3RobotInterface to:
 1. Initialize the robot environment
 2. Locate object0 in the simulation
 3. Pick up the object
-4. Place it at a random location
+4. Place it at the target0 location
 """
 
 import argparse
@@ -106,31 +106,6 @@ def get_object_pose(env) -> Optional[Pose]:
         return None
 
 
-def generate_random_target_pose(
-    env, min_distance: float = 0.1, max_distance: float = 0.3
-) -> Pose:
-    """Generate a random target pose for placing the object."""
-    # Get the initial gripper position as reference
-    initial_pos = env.initial_gripper_xpos
-
-    # Generate random offset within specified distance range
-    angle = np.random.uniform(0, 2 * np.pi)
-    distance = np.random.uniform(min_distance, max_distance)
-
-    target_x = initial_pos[0] + distance * np.cos(angle)
-    target_y = initial_pos[1] + distance * np.sin(angle)
-    # Place the object on the ground surface (object center will be at half-height)
-    object_size = 0.025  # Half-height of the object
-    target_z = object_size  # This puts the object center at the right height for ground contact
-
-    pose = Pose()
-    pose.position = Point(x=float(target_x), y=float(target_y), z=float(target_z))
-    # Top-down orientation for placing
-    pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
-
-    return pose
-
-
 def main():
     """Main function to demonstrate pick and place operation."""
     parser = argparse.ArgumentParser(description="AR4 MK3 Pick and Place Demo")
@@ -225,10 +200,16 @@ def main():
             return False
         logger.info("Successfully picked up object")
 
-        # Step 4: Generate random target location
-        target_pose = generate_random_target_pose(env)
+        # Step 4: Get target location from env (target0)
+        target_pos = env.goal
+        target_pose = Pose()
+        target_pose.position = Point(
+            x=float(target_pos[0]), y=float(target_pos[1]), z=float(target_pos[2])
+        )
+        # Top-down orientation for placing
+        target_pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
         logger.info(
-            f"Generated target position: ({target_pose.position.x:.3f}, "
+            f"Target position from 'target0': ({target_pose.position.x:.3f}, "
             f"{target_pose.position.y:.3f}, {target_pose.position.z:.3f})"
         )
 

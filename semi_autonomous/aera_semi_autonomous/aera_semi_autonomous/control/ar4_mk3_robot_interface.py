@@ -211,6 +211,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
         home_joint_configuration = self.env.initial_qpos[qpos_indices]
         print(f"home join config: {home_joint_configuration}")
 
+        joint_ids = [
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)  # type: ignore
+            for name in self.joint_names
+        ]
+        joint_limits = model.jnt_range[joint_ids]
+
         jac = np.empty((6, model.nv), dtype=dtype)
         err = np.empty(6, dtype=dtype)
         jac_pos, jac_rot = jac[:3], jac[3:]
@@ -278,6 +284,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_nv[dof_indices] = update_joints
 
             mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
+
+            # Enforce joint limits
+            data.qpos[qpos_indices] = np.clip(
+                data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
+            )
+
             self.env.render()
             time.sleep(0.01)
         else:

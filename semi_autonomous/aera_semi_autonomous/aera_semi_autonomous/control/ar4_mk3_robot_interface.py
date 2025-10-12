@@ -156,15 +156,26 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if np.linalg.norm(target_gripper_qpos - current_gripper_qpos) < 1e-3:
                 return True
 
+            gripper_actuator_indices = np.arange(self.env.model.nu - 2, self.env.model.nu)
+            arm_actuator_indices = np.arange(self.env.model.nu - 2)
+            arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
+
             num_steps = GRIPPER_ACTION_STEPS
 
             for i in range(num_steps + 1):
                 alpha = i / num_steps
-                interpolated_gripper_qpos = (
-                    1 - alpha
-                ) * current_gripper_qpos + alpha * target_gripper_qpos
-                self.env.data.qpos[gripper_qpos_indices] = interpolated_gripper_qpos
-                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+                interpolated_gripper_ctrl = (
+                    (1 - alpha) * current_gripper_qpos + alpha * target_gripper_qpos
+                )
+
+                # Set gripper actuator controls
+                self.env.data.ctrl[gripper_actuator_indices] = interpolated_gripper_ctrl
+                # Hold arm position by setting arm controls to current joint positions
+                self.env.data.ctrl[arm_actuator_indices] = self.env.data.qpos[
+                    arm_qpos_indices
+                ]
+
+                mujoco.mj_step(self.env.model, self.env.data)
                 self.env.render()
                 time.sleep(0.01)
 

@@ -193,7 +193,7 @@ def main():
 
         # Step 3: Pick up the object
         logger.info("Attempting to pick up object...")
-        gripper_pos = -0.007  # Halfway between open (-0.014) and closed (0)
+        gripper_pos = 0.0  # Fully closed
 
         if not robot.grasp_at(object_pose, gripper_pos):
             logger.error("Failed to pick up object")

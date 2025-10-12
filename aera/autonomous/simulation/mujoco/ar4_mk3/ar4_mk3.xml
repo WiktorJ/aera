@@ -4,8 +4,8 @@
     <asset>
         <material name="white" rgba="1 1 1 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
-        <material name="black" rgba="0.149 0.149 0.149 1"/>
-        <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1"></material>
+        <material name="black" rgba="0.149 0.149 0.149 1" friction="1.0 0.02 0.01"/>
+        <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1" friction="1.0 0.02 0.01"></material>
 
         <mesh name="base_link" file="assets/base_link.STL"/>
         <mesh name="link_1" file="assets/link_1.STL"/>
@@ -64,7 +64,7 @@
         </body>
         <body name="object0" pos="0.025 0.025 0.025">
           <joint name="object0:joint" type="free" damping="0.01"></joint>
-          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="2"></geom>
+          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="0.05"></geom>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">

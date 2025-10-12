@@ -56,7 +56,8 @@ def get_object_pose(env) -> Optional[Pose]:
             y=float(object_pos[1]),
             z=float(object_pos[2]),  # Add half-height to get top surface
         )
-        pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        # Top-down grasp orientation to point the gripper downwards
+        pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
 
         return pose
     except Exception as e:
@@ -83,7 +84,8 @@ def generate_random_target_pose(
 
     pose = Pose()
     pose.position = Point(x=float(target_x), y=float(target_y), z=float(target_z))
-    pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+    # Top-down orientation for placing
+    pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
 
     return pose
 

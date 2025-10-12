@@ -270,7 +270,36 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
+
+            # Store qpos before integration to revert in case of collision
+            qpos_before_update = data.qpos.copy()
             mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
+
+            # Check for collisions with the floor to prevent the arm from going through it
+            mujoco.mj_forward(model, data)
+            collision_with_floor = False
+            if data.ncon > 0:
+                for i in range(data.ncon):
+                    contact = data.contact[i]
+                    geom1_name = mujoco.mj_id2name(
+                        model, mujoco.mjtObj.mjOBJ_GEOM, contact.geom1
+                    )
+                    geom2_name = mujoco.mj_id2name(
+                        model, mujoco.mjtObj.mjOBJ_GEOM, contact.geom2
+                    )
+
+                    # NOTE: This assumes the floor geom is named 'floor'.
+                    # This may need to be adjusted based on the project's MuJoCo XML file.
+                    if "floor" in (geom1_name, geom2_name):
+                        collision_with_floor = True
+                        failure_reason = f"Collision with floor detected ({geom1_name} vs {geom2_name})"
+                        break
+
+            if collision_with_floor:
+                data.qpos[:] = qpos_before_update
+                mujoco.mj_forward(model, data)  # Revert data to pre-collision state
+                break
+
             self.env.render()
             time.sleep(0.01)
         else:

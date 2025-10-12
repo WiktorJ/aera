@@ -394,15 +394,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Release the gripper by interpolating to an open state."""
         try:
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
-            # Based on the XML, gripper range is [-0.014, 0] where -0.014 is open and 0 is closed
-            # Use the initial gripper qpos values which should represent the open state
-            target_gripper_qpos = self.env.initial_qpos[gripper_qpos_indices].copy()
-            
-            # If initial_qpos doesn't have proper open values, use the maximum open position
-            if np.any(target_gripper_qpos >= -0.001):  # Should be negative for open
-                self.logger.warning(f"Initial gripper qpos may not represent open state: {target_gripper_qpos}. Using maximum open values.")
-                # Use maximum open gripper values based on XML range [-0.014, 0]
-                target_gripper_qpos = np.array([-0.014, -0.014])
+            # Fully open gripper
+            target_gripper_qpos = np.array([-0.014, -0.014])
 
             if not self._interpolate_gripper(target_gripper_qpos):
                 return False
@@ -421,7 +414,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def grasp_at(self, pose: Pose, gripper_pos: float) -> bool:
         """Move to a pose and grasp.
-        
+
         Args:
             pose: Target pose for grasping
             gripper_pos: Gripper position in actual range [-0.014, 0] where -0.014 is fully open and 0 is fully closed
@@ -429,7 +422,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             # Validate gripper_pos is in the correct range
             if not (-0.014 <= gripper_pos <= 0.0):
-                self.logger.error(f"Invalid gripper_pos {gripper_pos}. Must be in range [-0.014, 0]")
+                self.logger.error(
+                    f"Invalid gripper_pos {gripper_pos}. Must be in range [-0.014, 0]"
+                )
                 return False
 
             # 1. Open the gripper first
@@ -451,7 +446,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # 4. Close the gripper to the specified position
             target_gripper_qpos = np.array([gripper_pos, gripper_pos])
-            
+
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False

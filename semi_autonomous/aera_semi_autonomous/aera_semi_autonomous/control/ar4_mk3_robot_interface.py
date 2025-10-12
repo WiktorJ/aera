@@ -27,7 +27,7 @@ DEFAULT_CAMERA_CONFIG: Dict[str, Any] = {
 MOVE_TO_POS_TOLERANCE = 0.01  # 1cm
 """Position tolerance for move_to command."""
 
-ABOVE_TARGET_OFFSET = 0.05  # 5cm
+ABOVE_TARGET_OFFSET = 0.1  # 10cm
 """Offset to move above a target for grasping."""
 
 GRIPPER_ACTION_STEPS = 50
@@ -183,7 +183,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         regularization_strength: float = 3e-2,
         max_update_norm: float = 1.0,
         progress_thresh: float = 100.0,
-        integration_dt: float = 0.1,
+        integration_dt: float = 0.02,
         pos_gain: float = 0.95,
         orientation_gain: float = 0.95,
         max_steps: int = 1000,
@@ -205,7 +205,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         failure_reason = "Unknown"
         # Increased nullspace gain to encourage solutions closer to the home configuration,
         # which helps avoid undesirable solutions like the arm going through the floor.
-        nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        nullspace_gain = 1000000 * np.asarray([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
@@ -299,7 +299,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 break
 
             self.env.render()
-            time.sleep(0.01)
+            time.sleep(0.002)
         else:
             success = False
             failure_reason = f"Max steps ({max_steps}) reached"

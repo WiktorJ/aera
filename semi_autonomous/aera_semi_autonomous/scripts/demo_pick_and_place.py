@@ -220,6 +220,7 @@ def main():
             return False
         logger.info("Successfully placed object at target location")
 
+        robot.go_home()
         # Let the simulation run for a bit to see the result
         logger.info("Demo completed! Letting simulation run to observe result...")
         time.sleep(2)

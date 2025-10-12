@@ -60,7 +60,7 @@
     <worldbody>
         <light name="top" pos="0 0 2" mode="trackcom" diffuse="0 0 0"/>
         <body name="floor0" pos="0.2 0.2 0">
-            <site name="target0" pos="0 0 0.2" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
+            <site name="target0" pos="0 0 0.2" size="0.005 0.005 0.005" rgba="1 0 0 1" type="sphere"/>
         </body>
         <body name="object0" pos="0.025 0.025 0.025">
           <joint name="object0:joint" type="free" damping="0.01"></joint>

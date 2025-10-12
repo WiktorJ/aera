@@ -113,24 +113,58 @@ def main():
 
         # Step 3: Move to a target position
         print("\n3. Moving to target position...")
+        # target_pose = create_pose(
+        #     x=current_pose.position.x - 0.2,
+        #     y=current_pose.position.y,
+        #     z=current_pose.position.z - 0.1,
+        #     qx=current_pose.orientation.x,
+        #     qy=current_pose.orientation.y,
+        #     qz=current_pose.orientation.z,
+        #     qw=current_pose.orientation.w,
+        # )
         target_pose = create_pose(
             x=current_pose.position.x - 0.2,
             y=current_pose.position.y,
             z=current_pose.position.z - 0.1,
-            qx=current_pose.orientation.x,
-            qy=current_pose.orientation.y,
-            qz=current_pose.orientation.z,
-            qw=current_pose.orientation.w,
         )
 
         if robot.move_to(target_pose):
             print("✓ Successfully moved to target position")
         else:
             print("✗ Failed to move to target position")
-        time.sleep(3)
-        print("Moving home")
+        # time.sleep(1)
+        # print("Moving home")
+        # robot.go_home()
+        time.sleep(1)
+        # target_pose = create_pose(
+        #     x=current_pose.position.x - 0.3,
+        #     y=current_pose.position.y + 0.2,
+        #     z=current_pose.position.z - 0.1,
+        #     qx=current_pose.orientation.x,
+        #     qy=current_pose.orientation.y,
+        #     qz=current_pose.orientation.z,
+        #     qw=current_pose.orientation.w,
+        # )
+        print("Graping")
+        robot.grasp_at(target_pose, -0.006)
+        time.sleep(1)
+        print("releasing")
+        robot.release_at(target_pose)
+        time.sleep(1)
+        print("Grasping")
+        robot.grasp_at(target_pose, 0)
+        time.sleep(1)
+        # target_pose = create_pose(
+        #     x=current_pose.position.x + 0.1,
+        #     y=current_pose.position.y - 0.1,
+        #     z=current_pose.position.z,
+        #     qx=current_pose.orientation.x,
+        #     qy=current_pose.orientation.y,
+        #     qz=current_pose.orientation.z,
+        #     qw=current_pose.orientation.w,
+        # )
         robot.go_home()
-        time.sleep(3)
+        time.sleep(1)
         #
         # # Step 4: Test gripper control
         # print("\n4. Testing gripper control...")

@@ -148,7 +148,35 @@ class Ar4Mk3RobotInterface(RobotInterface):
         )
 
     def _interpolate_gripper(self, target_gripper_qpos: np.ndarray) -> bool:
-        return True
+        """Gradually move the gripper jaws to the target position."""
+        try:
+            gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
+            gripper_qpos_indices = self._get_qpos_indices(
+                self.env.model, gripper_joint_names
+            )
+            current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
+
+            for i in range(GRIPPER_ACTION_STEPS + 1):
+                alpha = i / GRIPPER_ACTION_STEPS
+                interpolated_qpos = (
+                    1 - alpha
+                ) * current_gripper_qpos + alpha * target_gripper_qpos
+                self.env.data.qpos[gripper_qpos_indices] = interpolated_qpos
+                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+                self.env.render()
+                time.sleep(0.01)
+
+            # Verify final position
+            final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
+            if np.linalg.norm(target_gripper_qpos - final_gripper_qpos) > 1e-4:
+                self.logger.warning(
+                    f"Gripper interpolation may not have reached target precisely. "
+                    f"Final error: {np.linalg.norm(target_gripper_qpos - final_gripper_qpos):.4f}"
+                )
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to interpolate gripper: {e}", exc_info=True)
+            return False
 
     def _solve_ik_for_site_pose(
         self,

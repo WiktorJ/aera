@@ -155,6 +155,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.env.model, gripper_joint_names
             )
             current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
+            print(f"current_gripper_qpos: {current_gripper_qpos}")
+            print(f"target_gripper_qpos: {target_gripper_qpos}")
 
             for i in range(GRIPPER_ACTION_STEPS + 1):
                 alpha = i / GRIPPER_ACTION_STEPS
@@ -168,6 +170,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
+            print(f"final_gripper_qpos: {final_gripper_qpos}")
             if np.linalg.norm(target_gripper_qpos - final_gripper_qpos) > 1e-4:
                 self.logger.warning(
                     f"Gripper interpolation may not have reached target precisely. "

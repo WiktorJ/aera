@@ -152,11 +152,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
             current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
+            print(f"current_gripper_qpos: {current_gripper_qpos}")
+            print(f"target_gripper_qpos: {target_gripper_qpos}")
 
             if np.linalg.norm(target_gripper_qpos - current_gripper_qpos) < 1e-3:
                 return True
 
-            gripper_actuator_indices = np.arange(self.env.model.nu - 2, self.env.model.nu)
+            gripper_actuator_indices = np.arange(
+                self.env.model.nu - 2, self.env.model.nu
+            )
             arm_actuator_indices = np.arange(self.env.model.nu - 2)
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
 
@@ -165,8 +169,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             for i in range(num_steps + 1):
                 alpha = i / num_steps
                 interpolated_gripper_ctrl = (
-                    (1 - alpha) * current_gripper_qpos + alpha * target_gripper_qpos
-                )
+                    1 - alpha
+                ) * current_gripper_qpos + alpha * target_gripper_qpos
 
                 # Set gripper actuator controls
                 self.env.data.ctrl[gripper_actuator_indices] = interpolated_gripper_ctrl
@@ -178,6 +182,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 mujoco.mj_step(self.env.model, self.env.data)
                 self.env.render()
                 time.sleep(0.01)
+            print(f"final gripper qpos: {self.env.data.qpos[gripper_qpos_indices]}")
 
             return True
         except Exception as e:
@@ -431,6 +436,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_gripper(self) -> bool:
         """Release the gripper by interpolating to an open state."""
         try:
+            self.logger.info("Releasing gripper")
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
             # Fully open gripper
             target_gripper_qpos = np.array([-0.014, -0.014])

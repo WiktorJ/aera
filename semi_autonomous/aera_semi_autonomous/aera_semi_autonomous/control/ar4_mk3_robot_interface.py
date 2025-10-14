@@ -60,17 +60,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             cy=self.camera_config["cy"],
         )
 
-        # Camera to base transform. example values -
-        # not needed for sim as we can always work in arm frame.
-        self.cam_to_base_transform = np.array(
-            [
-                [0.0, -1.0, 0.0, 0.3],
-                [0.0, 0.0, -1.0, 0.0],
-                [1.0, 0.0, 0.0, 0.5],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-
         # Store latest images
         self._latest_rgb_image: Optional[np.ndarray] = None
         self._latest_depth_image: Optional[np.ndarray] = None
@@ -166,7 +155,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
             print(f"current_gripper_qpos: {current_gripper_qpos}")
             print(f"target_gripper_qpos: {target_gripper_qpos}")
-            print(f"gripper_qpos_indices: {gripper_qpos_indices}")
 
             for i in range(GRIPPER_ACTION_STEPS + 1):
                 alpha = i / GRIPPER_ACTION_STEPS
@@ -176,7 +164,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
-                time.sleep(0.01)
+                print(
+                    f"Step {i} gripper qpos: {self.env.data.qpos[gripper_qpos_indices]}"
+                )
+                # time.sleep(0.01)
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
@@ -597,4 +588,4 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def get_cam_to_base_transform(self) -> Optional[np.ndarray]:
         """Get camera to base frame transformation."""
-        return self.cam_to_base_transform
+        return None

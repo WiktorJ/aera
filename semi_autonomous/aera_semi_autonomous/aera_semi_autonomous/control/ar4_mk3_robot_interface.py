@@ -150,8 +150,16 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _interpolate_gripper(self, target_gripper_qpos: np.ndarray) -> bool:
         """Gradually move the gripper jaws to the target position."""
         try:
+            # Set arm controls to current joint positions to hold it steady
+            arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
+            self.env.data.ctrl[:6] = self.env.data.qpos[arm_qpos_indices]
+
             gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
-            # Also get indices for self.env.data.ctrl AI!
+            gripper_actuator_names = ["act8", "act9"]
+            gripper_ctrl_indices = [
+                mujoco.mj_name2id(self.env.model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
+                for name in gripper_actuator_names
+            ]
             gripper_qpos_indices = self._get_qpos_indices(
                 self.env.model, gripper_joint_names
             )
@@ -165,15 +173,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 interpolated_qpos = (
                     1 - alpha
                 ) * current_gripper_qpos + alpha * target_gripper_qpos
-                self.env.data.ctrl[gripper_qpos_indices] = interpolated_qpos
-                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+                self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
+                mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
                 time.sleep(0.01)
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
             print(f"final_gripper_qpos: {final_gripper_qpos}")
-            if np.linalg.norm(target_gripper_qpos - final_gripper_qpos) > 1e-4:
+            if np.linalg.norm(target_gripper_qpos - final_gripper_qpos) > 1e-3:
                 self.logger.warning(
                     f"Gripper interpolation may not have reached target precisely. "
                     f"Final error: {np.linalg.norm(target_gripper_qpos - final_gripper_qpos):.4f}"

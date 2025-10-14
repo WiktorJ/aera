@@ -151,19 +151,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Gradually move the gripper jaws to the target position."""
         try:
             gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
+            # Also get indices for self.env.data.ctrl AI!
             gripper_qpos_indices = self._get_qpos_indices(
                 self.env.model, gripper_joint_names
             )
             current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
             print(f"current_gripper_qpos: {current_gripper_qpos}")
             print(f"target_gripper_qpos: {target_gripper_qpos}")
+            print(f"gripper_qpos_indices: {gripper_qpos_indices}")
 
             for i in range(GRIPPER_ACTION_STEPS + 1):
                 alpha = i / GRIPPER_ACTION_STEPS
                 interpolated_qpos = (
                     1 - alpha
                 ) * current_gripper_qpos + alpha * target_gripper_qpos
-                self.env.data.qpos[gripper_qpos_indices] = interpolated_qpos
+                self.env.data.ctrl[gripper_qpos_indices] = interpolated_qpos
                 mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
                 time.sleep(0.01)

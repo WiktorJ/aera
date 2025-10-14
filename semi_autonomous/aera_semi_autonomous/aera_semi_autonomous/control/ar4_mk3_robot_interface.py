@@ -37,6 +37,10 @@ HOME_QPOS_ERROR_TOLERANCE = 1e-3
 """Tolerance for joint position error when going home."""
 
 
+GRIPPER_POS_TOLERANCE = 1e-4
+"""Position tolerance for gripper actions."""
+
+
 class Ar4Mk3RobotInterface(RobotInterface):
     """
     RobotInterface implementation for Ar4Mk3Env MuJoCo simulation.
@@ -137,7 +141,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         )
 
     def _interpolate_gripper(self, target_gripper_qpos: np.ndarray) -> bool:
-        """Gradually move the gripper jaws to the target position."""
+        """Move the gripper jaws to the target position, waiting for convergence."""
         try:
             # Set arm controls to current joint positions to hold it steady
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
@@ -152,30 +156,38 @@ class Ar4Mk3RobotInterface(RobotInterface):
             gripper_qpos_indices = self._get_qpos_indices(
                 self.env.model, gripper_joint_names
             )
-            current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
-            print(f"current_gripper_qpos: {current_gripper_qpos}")
-            print(f"target_gripper_qpos: {target_gripper_qpos}")
+            start_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
 
-            for i in range(GRIPPER_ACTION_STEPS + 1):
-                alpha = i / GRIPPER_ACTION_STEPS
+            # Use a timeout to prevent infinite loops.
+            # The loop allows for convergence check while interpolating the setpoint.
+            max_steps = GRIPPER_ACTION_STEPS * 2
+
+            for i in range(max_steps):
+                current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
+                if (
+                    np.linalg.norm(target_gripper_qpos - current_gripper_qpos)
+                    < GRIPPER_POS_TOLERANCE
+                ):
+                    break  # Converged
+
+                # Interpolate control setpoint for smooth motion over GRIPPER_ACTION_STEPS
+                alpha = min(1.0, i / GRIPPER_ACTION_STEPS)
                 interpolated_qpos = (
-                    1 - alpha
-                ) * current_gripper_qpos + alpha * target_gripper_qpos
+                    (1 - alpha) * start_gripper_qpos + alpha * target_gripper_qpos
+                )
                 self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
+
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
-                print(
-                    f"Step {i} gripper qpos: {self.env.data.qpos[gripper_qpos_indices]}"
-                )
                 # time.sleep(0.01)
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
-            print(f"final_gripper_qpos: {final_gripper_qpos}")
-            if np.linalg.norm(target_gripper_qpos - final_gripper_qpos) > 1e-3:
+            final_error = np.linalg.norm(target_gripper_qpos - final_gripper_qpos)
+            if final_error > 1e-3:
                 self.logger.warning(
                     f"Gripper interpolation may not have reached target precisely. "
-                    f"Final error: {np.linalg.norm(target_gripper_qpos - final_gripper_qpos):.4f}"
+                    f"Final error: {final_error:.4f}"
                 )
             return True
         except Exception as e:

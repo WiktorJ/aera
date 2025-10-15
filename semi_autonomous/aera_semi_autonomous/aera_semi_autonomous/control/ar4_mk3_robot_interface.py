@@ -173,8 +173,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 # Interpolate control setpoint for smooth motion over GRIPPER_ACTION_STEPS
                 alpha = min(1.0, i / GRIPPER_ACTION_STEPS)
                 interpolated_qpos = (
-                    (1 - alpha) * start_gripper_qpos + alpha * target_gripper_qpos
-                )
+                    1 - alpha
+                ) * start_gripper_qpos + alpha * target_gripper_qpos
                 self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
 
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore

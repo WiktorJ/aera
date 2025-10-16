@@ -120,7 +120,7 @@
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
                                                    range="-0.014 0" class="size1"/>
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="black" contype="0" conaffinity="0" group="2"/>
-                                            <geom name="gripper_jaw1_contact" size="0.002 0.02 0.01" pos="0.0 0.015 0.01" 
+                                            <geom name="gripper_jaw1_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.01" 
                                                   type="box" contype="1" conaffinity="1" condim="3" 
                                                   solref="0.01 1" solimp="0.9 0.95 0.001"
                                                   material="red" friction="2.0 0.02 0.01"

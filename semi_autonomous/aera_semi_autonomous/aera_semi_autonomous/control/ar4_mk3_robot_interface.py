@@ -97,7 +97,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         ball_joint_dims: int,
     ) -> np.ndarray:
         """Helper to get DoF or qpos indices for a given list of joint names."""
-
         indices = []
         for name in joint_names:
             joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, name)  # type: ignore
@@ -146,7 +145,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Set arm controls to current joint positions to hold it steady
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
             self.env.data.ctrl[:6] = self.env.data.qpos[arm_qpos_indices]
-
             gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
             gripper_actuator_names = ["act8", "act9"]
             gripper_ctrl_indices = [
@@ -156,6 +154,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
             gripper_qpos_indices = self._get_qpos_indices(
                 self.env.model, gripper_joint_names
             )
+            self.logger.info(
+                f"Current gripper position: {self.env.data.qpos[gripper_qpos_indices]}"
+            )
+            self.logger.info(f"Target gripper position: {target_gripper_qpos}")
+
             start_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
 
             # Use a timeout to prevent infinite loops.
@@ -184,7 +187,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
             final_error = np.linalg.norm(target_gripper_qpos - final_gripper_qpos)
-            if final_error > 1e-3:
+            self.logger.info(
+                f"Final gripper position: {final_gripper_qpos} in {i} steps"
+            )
+            if final_error > GRIPPER_POS_TOLERANCE:
                 self.logger.warning(
                     f"Gripper interpolation may not have reached target precisely. "
                     f"Final error: {final_error:.4f}"

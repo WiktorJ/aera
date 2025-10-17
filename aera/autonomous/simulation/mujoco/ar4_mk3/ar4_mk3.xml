@@ -68,9 +68,9 @@
             <site name="target0" pos="0 0 0.3" size="0.005 0.005 0.005" rgba="1 0 0 1" type="sphere"/>
         </body>
         <body name="object0" pos="0.025 0.025 0.025">
-          <joint name="object0:joint" type="free" damping="0.0"></joint>
-      <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat"
-            mass="0.1" friction="1.0 0.02 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.9 0.95 0.001"/>
+          <joint name="object0:joint" type="free" damping="0.01"></joint>
+          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="0.1"
+            friction="1.0 0.02 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.9 0.95 0.001"/>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">
@@ -123,11 +123,11 @@
                                             <!--           quat="0.909592 0.206495 -0.239067 0.269904" mass="0.5" -->
                                             <!--           diaginertia="1.2974e-06 1.23198e-06 8.70621e-07"/> -->
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                                                   range="-0.014 0"/>
+                        range="-0.014 0" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw1_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.01" 
-                                                  type="box" contype="1" conaffinity="1" condim="3" 
-                                                  solref="0.002 1" solimp="0.9 0.95 0.001"
+                                                  type="box" contype="1" conaffinity="1" condim="4" 
+                                                  solref="0.002 1" solimp="0.99 0.99 0.001"
                                                   material="red" friction="2.0 0.1 0.01"
                                                   />
                                         </body>
@@ -138,11 +138,11 @@
                                             <!--           quat="0.922918 0.214097 -0.253072 0.195807" mass="0.5" -->
                                             <!--           diaginertia="1.25734e-06 1.16888e-06 8.63781e-07"/> -->
                                             <joint name="gripper_jaw2_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                                                   range="-0.014 0"/>
+                        range="-0.014 0" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw2_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw2_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.015" 
-                                                  type="box" contype="1" conaffinity="1" condim="3" 
-                                                  solref="0.002 1" solimp="0.9 0.95 0.001"
+                                                  type="box" contype="1" conaffinity="1" condim="4" 
+                                                  solref="0.002 1" solimp="0.99 0.99 0.001"
                                                   material="blue" friction="2.0 0.1 0.01"
                                                   />
                                         </body>

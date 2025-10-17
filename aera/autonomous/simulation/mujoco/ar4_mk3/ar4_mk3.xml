@@ -118,12 +118,12 @@
                                               mesh="gripper_base_link"/>
                                         <body name="gripper_jaw1_link" pos="0 -0.0155 0.052"
                                               quat="0.707105 -0.707108 0 0">
-                                            <inertial diaginertia="0.1 0.1 0.1" mass="1" pos="0 0 0"/>
-                                            <!-- <inertial pos="-0.00435839 -0.00469536 0.00757141" -->
-                                            <!--           quat="0.909592 0.206495 -0.239067 0.269904" mass="0.5" -->
-                                            <!--           diaginertia="1.2974e-06 1.23198e-06 8.70621e-07"/> -->
+                                            <!-- <inertial diaginertia="0.1 0.1 0.1" mass="1" pos="0 0 0"/> -->
+                                            <inertial pos="-0.00435839 -0.00469536 0.00757141"
+                                                      quat="0.909592 0.206495 -0.239067 0.269904" mass="0.05"
+                                                      diaginertia="1.2974e-06 1.23198e-06 8.70621e-07"/>
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                        range="-0.014 0" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
+                        range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw1_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.01" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 
@@ -133,12 +133,12 @@
                                         </body>
                                         <body name="gripper_jaw2_link" pos="0 0.0097 0.052"
                                               quat="0 0 -0.707105 0.707108">
-                                            <inertial diaginertia="0.1 0.1 0.1" mass="1" pos="0 0 0"/>
-                                            <!-- <inertial pos="-0.00423971 -0.00491236 0.00814582" -->
-                                            <!--           quat="0.922918 0.214097 -0.253072 0.195807" mass="0.5" -->
-                                            <!--           diaginertia="1.25734e-06 1.16888e-06 8.63781e-07"/> -->
+                                            <!-- <inertial diaginertia="0.1 0.1 0.1" mass="1" pos="0 0 0"/> -->
+                                            <inertial pos="-0.00423971 -0.00491236 0.00814582"
+                                                      quat="0.922918 0.214097 -0.253072 0.195807" mass="0.05"
+                                                      diaginertia="1.25734e-06 1.16888e-06 8.63781e-07"/>
                                             <joint name="gripper_jaw2_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                        range="-0.014 0" armature="100" damping="1000" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
+                        range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw2_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw2_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.015" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 

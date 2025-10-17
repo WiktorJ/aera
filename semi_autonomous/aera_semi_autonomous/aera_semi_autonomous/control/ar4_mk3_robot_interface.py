@@ -143,12 +143,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Move the gripper jaws to the target position, waiting for convergence."""
         try:
             # For debugging, enable contact visualization
-            if self.env.render_mode == "human" and self.env.viewer is not None:
+            if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
                 # Show contact points and forces
-                self.env.viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = 1
-                self.env.viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = 1
+                self.env.mujoco_renderer.viewer.vopt.flags[
+                    mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
+                ] = 1
+                self.env.mujoco_renderer.viewer.vopt.flags[
+                    mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
+                ] = 1
                 # Adjust the scale of the force vectors for better visibility
-                self.env.viewer.vopt.scale[mujoco.mjtScl.mjSCL_CONTACTFORCE] = 0.1
+                self.env.mujoco_renderer.viewer.vopt.scale[
+                    mujoco.mjtScl.mjSCL_CONTACTFORCE
+                ] = 0.1
 
             # Set arm controls to current joint positions to hold it steady
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
@@ -260,12 +266,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
         # For debugging, enable contact visualization
-        if self.env.render_mode == "human" and self.env.viewer is not None:
+        if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
             # Show contact points and forces
-            self.env.viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTPOINT] = 1
-            self.env.viewer.vopt.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = 1
+            self.env.mujoco_renderer.viewer.vopt.flags[
+                mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
+            ] = 1
+            self.env.mujoco_renderer.viewer.vopt.flags[
+                mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
+            ] = 1
             # Adjust the scale of the force vectors for better visibility
-            self.env.viewer.vopt.scale[mujoco.mjtScl.mjSCL_CONTACTFORCE] = 0.1
+            self.env.mujoco_renderer.viewer.vopt.scale[
+                mujoco.mjtScl.mjSCL_CONTACTFORCE
+            ] = 0.1
 
         for steps in range(max_steps):
             mujoco.mj_fwdPosition(model, data)  # type: ignore

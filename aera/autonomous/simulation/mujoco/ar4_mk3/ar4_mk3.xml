@@ -1,7 +1,7 @@
 <mujoco model="ar4_mk3">
     <compiler angle="radian" autolimits="true"/>
-    <option timestep="0.002">
-        <flag contact="enable"/>
+    <option timestep="0.002" noslip_iterations="1000000000">
+        <flag contact="enable" multiccd="enable"/>
     </option>
     <statistic meansize="0.116999" extent="0.779996" center="0.0273132 -0.0950417 0.259419"/>
     <asset>
@@ -67,10 +67,10 @@
         <body name="floor0" pos="0.2 0.2 0">
             <site name="target0" pos="0 0 0.3" size="0.005 0.005 0.005" rgba="1 0 0 1" type="sphere"/>
         </body>
-        <body name="object0" pos="0.025 0.025 0.025">
+        <body name="object0" pos="-0.15 -0.3 0.02">
           <joint name="object0:joint" type="free" damping="0.01"></joint>
-          <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="0.1"
-            friction="1.0 0.02 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.9 0.95 0.001"/>
+          <geom size="0.008 0.008 0.008" type="box" condim="3" name="object0" material="block_mat" mass="0.1"
+            friction="2.0 0.01 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"/>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">
@@ -127,9 +127,8 @@
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw1_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.01" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 
-                                                  solref="0.002 1" solimp="0.99 0.99 0.001"
-                                                  material="red" friction="2.0 0.1 0.01"
-                                                  />
+                                                  solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
+                                                  friction="2.0 0.01 0.01" material="red"/>
                                         </body>
                                         <body name="gripper_jaw2_link" pos="0 0.0097 0.052"
                                               quat="0 0 -0.707105 0.707108">
@@ -142,8 +141,8 @@
                                             <geom type="mesh" mesh="gripper_jaw2_link" material="black" contype="0" conaffinity="0" group="2"/>
                                             <geom name="gripper_jaw2_contact" size="0.002 0.02 0.01" pos="0.0 -0.015 0.015" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 
-                                                  solref="0.002 1" solimp="0.99 0.99 0.001"
-                                                  material="blue" friction="2.0 0.1 0.01"
+                                                  solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
+                                                  friction="2.0 0.01 0.01" material="blue"/>
                                                   />
                                         </body>
                                         <site name="grip" pos="0 0 0.071" rgba="0 0 0 0" size="0.01" type="sphere"/>

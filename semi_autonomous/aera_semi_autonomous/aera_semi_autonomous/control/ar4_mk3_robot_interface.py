@@ -37,7 +37,7 @@ HOME_QPOS_ERROR_TOLERANCE = 1e-3
 """Tolerance for joint position error when going home."""
 
 
-GRIPPER_POS_TOLERANCE = 1e-4
+GRIPPER_POS_TOLERANCE = 1e-3
 """Position tolerance for gripper actions."""
 
 
@@ -143,14 +143,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Move the gripper jaws to the target position, waiting for convergence."""
         try:
             # For debugging, enable contact visualization
-            if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
-                # Show contact points and forces
-                # self.env.mujoco_renderer.viewer.vopt.flags[
-                #     mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
-                # ] = 1
-                self.env.mujoco_renderer.viewer.vopt.flags[
-                    mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
-                ] = 1
+            # if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
+            #     self.env.mujoco_renderer.viewer.vopt.flags[
+            #         mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
+            #     ] = 1
+            # self.env.mujoco_renderer.viewer.vopt.flags[
+            #     mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
+            # ] = 1
 
             # Set arm controls to current joint positions to hold it steady
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
@@ -192,7 +191,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
-                # time.sleep(0.01)
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]

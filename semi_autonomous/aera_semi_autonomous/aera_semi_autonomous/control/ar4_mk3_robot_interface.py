@@ -254,12 +254,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
-        # Keep track of the previous site_is position to check for convergence AI!
+        previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
         for steps in range(max_steps):
             self.logger.info(
                 f"current position: {data.site_xpos[site_id]}, target_position: {target_pos}"
             )
             site_xpos = data.site_xpos[site_id]
+
+            if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-6:
+                failure_reason = "IK solver got stuck."
+                break
+            previous_site_xpos = site_xpos.copy()
+
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
 
             site_xmat = data.site_xmat[site_id].reshape(3, 3)

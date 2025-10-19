@@ -554,13 +554,30 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_at(self, pose: Pose) -> bool:
         """Move to a pose and release the gripper."""
         try:
+            # 1. Move to a position slightly above the target
+            above_pose = copy.deepcopy(pose)
+            above_pose.position.z += ABOVE_TARGET_OFFSET
+            if not self.move_to(above_pose):
+                self.logger.error("Release at failed: could not move above target.")
+                return False
+            self.logger.info("Moved above target for release.")
+
+            # 2. Move to the release pose
             if not self.move_to(pose):
                 self.logger.error("Release at failed: could not move to target.")
                 return False
+            self.logger.info("Moved to release target.")
 
+            # 3. Release the gripper
             if not self.release_gripper():
                 self.logger.error("Release at failed: could not release gripper.")
                 return False
+            self.logger.info("Released gripper.")
+
+            # 4. Move back up
+            if not self.move_to(above_pose):
+                self.logger.warning("Release succeeded, but failed to move up afterwards.")
+            self.logger.info("Moved up after release.")
 
             return True
         except Exception as e:

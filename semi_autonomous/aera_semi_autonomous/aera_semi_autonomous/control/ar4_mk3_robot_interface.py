@@ -261,9 +261,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
             site_xpos = data.site_xpos[site_id]
 
-            if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-6:
-                failure_reason = "IK solver got stuck."
-                break
+            if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-4:
+                self.logger.info(
+                    f"Potentialy stuck, this is joint position: {data.qpos}"
+                )
             previous_site_xpos = site_xpos.copy()
 
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt

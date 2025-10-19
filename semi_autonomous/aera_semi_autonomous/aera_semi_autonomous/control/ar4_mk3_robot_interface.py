@@ -143,15 +143,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _interpolate_gripper(self, target_gripper_qpos: np.ndarray) -> bool:
         """Move the gripper jaws to the target position, waiting for convergence."""
         try:
-            # For debugging, enable contact visualization
-            # if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
-            #     self.env.mujoco_renderer.viewer.vopt.flags[
-            #         mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
-            #     ] = 1
-            # self.env.mujoco_renderer.viewer.vopt.flags[
-            #     mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
-            # ] = 1
-
             # Set arm controls to current joint positions to hold it steady
             arm_qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
             self.env.data.ctrl[:6] = self.env.data.qpos[arm_qpos_indices]
@@ -263,6 +254,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
+        # Keep track of the previous site_is position to check for convergence AI!
         for steps in range(max_steps):
             self.logger.info(
                 f"current position: {data.site_xpos[site_id]}, target_position: {target_pos}"
@@ -576,7 +568,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # 4. Move back up
             if not self.move_to(above_pose):
-                self.logger.warning("Release succeeded, but failed to move up afterwards.")
+                self.logger.warning(
+                    "Release succeeded, but failed to move up afterwards."
+                )
             self.logger.info("Moved up after release.")
 
             return True

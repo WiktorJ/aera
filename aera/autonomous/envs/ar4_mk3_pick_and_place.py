@@ -178,7 +178,7 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
             distance_threshold=0.05,
             initial_qpos=initial_qpos,
             reward_type=reward_type,
-            object_size=(0.025, 0.01, 0.015),
+            object_size=(0.025, 0.008, 0.015),
             # object_size=0.015,
             **kwargs,
         )

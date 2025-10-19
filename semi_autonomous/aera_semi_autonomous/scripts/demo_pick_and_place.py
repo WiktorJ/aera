@@ -84,7 +84,7 @@ def get_object_pose(env) -> Optional[Pose]:
         pose.position = Point(
             x=float(object_pos[0]),
             y=float(object_pos[1]),
-            z=float(object_pos[2]),
+            z=float(object_pos[2]) + 0.07,
         )
 
         # Combine top-down orientation with object's yaw

@@ -80,11 +80,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
         regularization_strength: float = 0.0,
     ) -> np.ndarray:
         """Calculates the joint velocities to achieve a specified end effector delta."""
-        # Damped least squares
-        diag = regularization_strength * np.eye(6)
-        return jac_joints.T @ np.linalg.solve(
-            jac_joints @ jac_joints.T + diag, delta
-        )
+        hess_approx = jac_joints.T.dot(jac_joints)
+        joint_delta = jac_joints.T.dot(delta)
+        if regularization_strength > 0:
+            hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
+            return np.linalg.solve(hess_approx, joint_delta)
+        else:
+            return np.linalg.lstsq(hess_approx, joint_delta, rcond=-1)[0]
 
     def _get_joint_indices(
         self,
@@ -212,15 +214,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_name: str,
         target_pos: np.ndarray,
         target_quat: np.ndarray,
-        tol: float = 1e-6,
+        tol: float = 1e-3,
         regularization_threshold: float = 0.01,
-        regularization_strength: float = 3e-4,
-        max_update_norm: float = 1.0,
+        regularization_strength: float = 1e-4,
+        max_update_norm: float = 0.75,
         progress_thresh: float = 100.0,
-        integration_dt: float = 0.02,
+        integration_dt: float = 0.1,
         pos_gain: float = 0.95,
         orientation_gain: float = 0.95,
-        max_steps: int = 1000,
+        max_steps: int = 20000,
         inplace: bool = False,
         min_height: float = 0.01,
     ) -> bool:
@@ -262,6 +264,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
         for steps in range(max_steps):
+            self.logger.info(
+                f"current position: {data.site_xpos[site_id]}, target_position: {target_pos}"
+            )
             site_xpos = data.site_xpos[site_id]
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
 
@@ -275,7 +280,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
             err_rot *= orientation_gain / integration_dt
 
-            err_norm = np.linalg.norm(err_pos) + np.linalg.norm(err_rot)
+            err_norm = np.linalg.norm(
+                err_pos * integration_dt / pos_gain
+            )  # + np.linalg.norm(err_rot * integration_dt)
+            # self.logger.info(
+            #     f"error_pos: {err_pos}, error_rot: {err_rot}, error_norm: {err_norm}"
+            # )
 
             if err_norm < tol:
                 success = True
@@ -285,10 +295,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)  # type: ignore
             jac_joints = jac[:, dof_indices]
 
-            reg_strength = (
-                regularization_strength if err_norm > regularization_threshold else 0.0
+            # reg_strength = (
+            #     regularization_strength if err_norm > regularization_threshold else 0.0
+            # )
+            # update_joints = self._nullspace_method(jac_joints, err, reg_strength)
+            diag = regularization_strength * np.eye(6)
+            update_joints = jac_joints.T @ np.linalg.solve(
+                jac_joints @ jac_joints.T + diag, err
             )
-            update_joints = self._nullspace_method(jac_joints, err, reg_strength)
 
             # Nullspace projection for redundancy resolution, pulling towards home config
             nullspace_projector = (
@@ -300,8 +314,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
             # print(f"nullspace_term: {nullspace_term}")
             update_joints += nullspace_term
-            # update_norm = np.linalg.norm(update_joints)
-            update_norm = np.abs(update_joints).max()
+            update_norm = np.linalg.norm(update_joints)
+            # update_norm = np.abs(update_joints).max()
 
             #     failure_reason = f"Update norm too small ({update_norm:.2e})"
             #     break
@@ -327,9 +341,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             #     data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             # )
 
-            data.ctrl[actuator_ids] = np.clip(
+            q[qpos_indices] = np.clip(
                 q[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             )
+            data.ctrl[actuator_ids] = q[qpos_indices]
 
             # Check for floor collision
             # mujoco.mj_fwdPosition(model, data)
@@ -341,7 +356,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             #     break
 
             self.env.render()
-            time.sleep(0.002)
+            # time.sleep(0.002)
         else:
             success = False
             failure_reason = f"Max steps ({max_steps}) reached"
@@ -351,6 +366,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 f"IK failed to converge. Error: {err_norm:.4f}. "
                 f"Reason: {failure_reason}. "
                 f"Target Pos: {target_pos}, Target Quat: {target_quat}. "
+                f"Curent Pos: {data.site_xpos[site_id]}. "
                 f"Steps: {steps}."
             )
             return False
@@ -501,6 +517,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self.release_gripper():
                 self.logger.error("Grasp failed: could not open gripper.")
                 return False
+            self.logger.info("Opened gripper.")
 
             # 2. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
@@ -508,11 +525,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self.move_to(above_pose):
                 self.logger.error("Grasp failed: could not move above target.")
                 return False
+            self.logger.info("Moved above target.")
 
             # 3. Move to the grasp pose
             if not self.move_to(pose):
                 self.logger.error("Grasp failed: could not move to target.")
                 return False
+            self.logger.info("Moved to target.")
 
             # 4. Close the gripper to the specified position
             target_gripper_qpos = np.array([gripper_pos, gripper_pos])
@@ -520,10 +539,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False
+            self.logger.info("Closed gripper.")
 
             # 5. Lift the object
             if not self.move_to(above_pose):
                 self.logger.warning("Grasp succeeded, but failed to lift.")
+            self.logger.info("Lifted object.")
 
             return True
         except Exception as e:

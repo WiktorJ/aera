@@ -296,6 +296,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             nullspace_projector = (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
             )
+            # nullspace_projector = np.eye(len(dof_indices))
             nullspace_term = nullspace_projector @ (
                 nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
             )

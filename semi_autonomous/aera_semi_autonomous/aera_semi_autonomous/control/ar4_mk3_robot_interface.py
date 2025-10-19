@@ -80,13 +80,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
         regularization_strength: float = 0.0,
     ) -> np.ndarray:
         """Calculates the joint velocities to achieve a specified end effector delta."""
-        hess_approx = jac_joints.T.dot(jac_joints)
-        joint_delta = jac_joints.T.dot(delta)
-        if regularization_strength > 0:
-            hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
-            return np.linalg.solve(hess_approx, joint_delta)
-        else:
-            return np.linalg.lstsq(hess_approx, joint_delta, rcond=-1)[0]
+        # Damped least squares
+        diag = regularization_strength * np.eye(6)
+        return jac_joints.T @ np.linalg.solve(
+            jac_joints @ jac_joints.T + diag, delta
+        )
 
     def _get_joint_indices(
         self,

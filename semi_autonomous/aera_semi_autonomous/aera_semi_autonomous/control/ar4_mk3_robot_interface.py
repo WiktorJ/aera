@@ -71,6 +71,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
+        self.actuator_names = [f"act{i}" for i in range(1, 7)]
 
     def _nullspace_method(
         self,
@@ -215,7 +216,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         target_quat: np.ndarray,
         tol: float = 1e-6,
         regularization_threshold: float = 0.01,
-        regularization_strength: float = 3e-2,
+        regularization_strength: float = 3e-4,
         max_update_norm: float = 1.0,
         progress_thresh: float = 100.0,
         integration_dt: float = 0.02,
@@ -240,10 +241,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
         failure_reason = "Unknown"
         # Increased nullspace gain to encourage solutions closer to the home configuration,
         # which helps avoid undesirable solutions like the arm going through the floor.
-        nullspace_gain = 1000000 * np.asarray([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
+        actuator_ids = np.array(
+            [model.actuator(name).id for name in self.actuator_names]
+        )
         home_joint_configuration = self.env.initial_qpos[qpos_indices]
 
         joint_ids = [
@@ -259,19 +263,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
 
-        # For debugging, enable contact visualization
-        # if self.env.render_mode == "human" and self.env.mujoco_renderer is not None:
-        #     # Show contact points and forces
-        #     self.env.mujoco_renderer.viewer.vopt.flags[
-        #         mujoco.mjtVisFlag.mjVIS_CONTACTPOINT
-        #     ] = 1
-        #     self.env.mujoco_renderer.viewer.vopt.flags[
-        #         mujoco.mjtVisFlag.mjVIS_CONTACTFORCE
-        #     ] = 1
-
         for steps in range(max_steps):
-            mujoco.mj_fwdPosition(model, data)  # type: ignore
-
             site_xpos = data.site_xpos[site_id]
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
 
@@ -304,22 +296,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
             nullspace_projector = (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
             )
-            # nullspace_projector = np.eye(len(dof_indices))
+            nullspace_projector = np.eye(len(dof_indices))
             nullspace_term = nullspace_projector @ (
                 nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
             )
             # print(f"nullspace_term: {nullspace_term}")
             update_joints += nullspace_term
-            update_norm = np.linalg.norm(update_joints)
+            # update_norm = np.linalg.norm(update_joints)
+            update_norm = np.abs(update_joints).max()
 
-            if update_norm < 1e-6:
-                failure_reason = f"Update norm too small ({update_norm:.2e})"
-                break
+            #     failure_reason = f"Update norm too small ({update_norm:.2e})"
+            #     break
 
-            progress_criterion = err_norm / update_norm
-            if progress_criterion > progress_thresh:
-                failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
-                break
+            # progress_criterion = err_norm / update_norm
+            # if progress_criterion > progress_thresh:
+            #     failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
+            #     break
 
             if update_norm > max_update_norm:
                 update_joints *= max_update_norm / update_norm
@@ -327,21 +319,28 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
 
-            prev_qpos = data.qpos.copy()
-            mujoco.mj_integratePos(model, data.qpos, update_nv, integration_dt)  # type: ignore
+            q = data.qpos.copy()
+
+            # prev_qpos = data.qpos.copy()
+            mujoco.mj_integratePos(model, q, update_nv, integration_dt)  # type: ignore
 
             # Enforce joint limits
-            data.qpos[qpos_indices] = np.clip(
-                data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
+            # data.qpos[qpos_indices] = np.clip(
+            #     data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
+            # )
+
+            data.ctrl[actuator_ids] = np.clip(
+                q[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             )
 
             # Check for floor collision
-            mujoco.mj_fwdPosition(model, data)
-            new_site_xpos = data.site_xpos[site_id]
-            if new_site_xpos[2] < min_height:
-                data.qpos[:] = prev_qpos
-                failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]} < {min_height})"
-                break
+            # mujoco.mj_fwdPosition(model, data)
+            mujoco.mj_step(model, data)
+            # new_site_xpos = data.site_xpos[site_id]
+            # if new_site_xpos[2] < min_height:
+            #     data.qpos[:] = prev_qpos
+            #     failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]} < {min_height})"
+            #     break
 
             self.env.render()
             time.sleep(0.002)

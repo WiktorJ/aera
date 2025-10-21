@@ -28,6 +28,7 @@ class BaseEnv(MujocoRobotEnv):
         target_in_the_air,
         target_offset,
         obj_range,
+        obj_offset,
         target_range,
         distance_threshold,
         reward_type,
@@ -59,6 +60,7 @@ class BaseEnv(MujocoRobotEnv):
         self.target_in_the_air = target_in_the_air
         self.target_offset = target_offset
         self.obj_range = obj_range
+        self.obj_offset = obj_offset
         self.target_range = target_range
         self.distance_threshold = distance_threshold
         self.reward_type = reward_type
@@ -343,11 +345,23 @@ class Ar4Mk3Env(BaseEnv):
 
         # Randomize start position of object.
         if self.has_object:
-            object_xpos = self.initial_gripper_xpos[:2]
-            while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.1:
-                object_xpos = self.initial_gripper_xpos[:2] + self.np_random.uniform(
-                    -self.obj_range, self.obj_range, size=2
+            object_xpos = self.initial_gripper_xpos[:2].copy()
+            while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.05:
+                object_xpos[0] = (
+                    self.initial_gripper_xpos[0]
+                    + self.np_random.uniform(
+                        -self.obj_range[0], self.obj_range[0], size=1
+                    )
+                    + self.obj_offset[0]
                 )
+                object_xpos[1] = (
+                    self.initial_gripper_xpos[1]
+                    + self.np_random.uniform(
+                        -self.obj_range[1], self.obj_range[1], size=1
+                    )
+                    + self.obj_offset[1]
+                )
+
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"
             )
@@ -402,7 +416,7 @@ class Ar4Mk3Env(BaseEnv):
             goal = self.initial_gripper_xpos[:3] + self.np_random.uniform(
                 -self.target_range, self.target_range, size=3
             )
-            goal += (
+            goal[:2] += (
                 self.target_offset
                 if isinstance(self.target_offset, float)
                 else self.target_offset[:2]

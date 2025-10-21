@@ -60,9 +60,9 @@
                 </default>
             </default>
             <default class="position">
-              <position kp="2000" kv="150" forcerange="-1000 1000"/>
+              <position kp="20000" kv="150" forcerange="-1000 1000"/>
               <default class="position3">
-                <position kp="500" kv="30" forcerange="-200 200"/>
+                <position kp="5000" kv="30" forcerange="-200 200"/>
               </default>
             </default>
         </default>

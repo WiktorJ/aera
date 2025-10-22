@@ -24,7 +24,7 @@ DEFAULT_CAMERA_CONFIG: Dict[str, Any] = {
 }
 """Default camera configuration if none is provided."""
 
-MOVE_TO_POS_TOLERANCE = 0.01  # 1cm
+MOVE_TO_POS_TOLERANCE = 1e-3  # 1mm
 """Position tolerance for move_to command."""
 
 ABOVE_TARGET_OFFSET = 0.1  # 10cm
@@ -35,7 +35,6 @@ GRIPPER_ACTION_STEPS = 50
 
 HOME_QPOS_ERROR_TOLERANCE = 1e-3
 """Tolerance for joint position error when going home."""
-
 
 GRIPPER_POS_TOLERANCE = 1e-3
 """Position tolerance for gripper actions."""
@@ -80,8 +79,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         regularization_strength: float = 0.0,
     ) -> np.ndarray:
         """Calculates the joint velocities to achieve a specified end effector delta."""
-        hess_approx = jac_joints.T.dot(jac_joints)
-        joint_delta = jac_joints.T.dot(delta)
+        hess_approx = jac_joints.T @ jac_joints
+        joint_delta = jac_joints.T @ delta
         if regularization_strength > 0:
             hess_approx += np.eye(hess_approx.shape[0]) * regularization_strength
             return np.linalg.solve(hess_approx, joint_delta)
@@ -206,16 +205,16 @@ class Ar4Mk3RobotInterface(RobotInterface):
         target_pos: np.ndarray,
         target_quat: np.ndarray,
         tol: float = 1e-3,
-        regularization_threshold: float = 0.01,
-        regularization_strength: float = 1e-4,
+        regularization_threshold: float = 1e-5,
+        regularization_strength: float = 1e-3,
         max_update_norm: float = 0.75,
-        progress_thresh: float = 100.0,
-        integration_dt: float = 0.1,
+        integration_dt: float = 0.05,
         pos_gain: float = 0.95,
         orientation_gain: float = 0.95,
-        max_steps: int = 20000,
+        max_steps: int = 5000,
         inplace: bool = False,
         min_height: float = 0.01,
+        include_rotation_in_target_error_measure: bool = False,
     ) -> bool:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
@@ -251,21 +250,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err = np.empty(6, dtype=dtype)
         jac_pos, jac_rot = jac[:3], jac[3:]
         err_pos, err_rot = err[:3], err[3:]
-
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
-
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
         for steps in range(max_steps):
-            self.logger.info(
-                f"current position: {data.site_xpos[site_id]}, target_position: {target_pos}"
-            )
             site_xpos = data.site_xpos[site_id]
-
-            if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-4:
-                self.logger.info(
-                    f"Potentialy stuck, this is joint position: {data.qpos}"
-                )
-            previous_site_xpos = site_xpos.copy()
 
             err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
 
@@ -277,14 +265,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             err_rot_quat = np.empty(4, dtype=dtype)
             mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)  # type: ignore
             mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
-            err_rot *= orientation_gain / integration_dt
+            err_norm = np.linalg.norm(target_pos - site_xpos)
 
-            err_norm = np.linalg.norm(
-                err_pos * integration_dt / pos_gain
-            )  # + np.linalg.norm(err_rot * integration_dt)
-            # self.logger.info(
-            #     f"error_pos: {err_pos}, error_rot: {err_rot}, error_norm: {err_norm}"
-            # )
+            if include_rotation_in_target_error_measure:
+                err_norm += np.linalg.norm(err_rot)
+
+            err_rot *= orientation_gain / integration_dt
 
             if err_norm < tol:
                 success = True
@@ -294,35 +280,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_jacSite(model, data, jac_pos, jac_rot, site_id)  # type: ignore
             jac_joints = jac[:, dof_indices]
 
-            # reg_strength = (
-            #     regularization_strength if err_norm > regularization_threshold else 0.0
-            # )
-            # update_joints = self._nullspace_method(jac_joints, err, reg_strength)
-            diag = regularization_strength * np.eye(6)
-            update_joints = jac_joints.T @ np.linalg.solve(
-                jac_joints @ jac_joints.T + diag, err
+            reg_strength = (
+                regularization_strength if err_norm > regularization_threshold else 0.0
             )
-
+            update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             # Nullspace projection for redundancy resolution, pulling towards home config
             nullspace_projector = (
                 np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
             )
-            # nullspace_projector = np.eye(len(dof_indices))
             nullspace_term = nullspace_projector @ (
                 nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
             )
-            # print(f"nullspace_term: {nullspace_term}")
             update_joints += nullspace_term
             update_norm = np.linalg.norm(update_joints)
-            # update_norm = np.abs(update_joints).max()
-
-            #     failure_reason = f"Update norm too small ({update_norm:.2e})"
-            #     break
-
-            # progress_criterion = err_norm / update_norm
-            # if progress_criterion > progress_thresh:
-            #     failure_reason = f"Progress criterion not met ({progress_criterion:.2f} > {progress_thresh:.2f})"
-            #     break
 
             if update_norm > max_update_norm:
                 update_joints *= max_update_norm / update_norm
@@ -336,26 +306,26 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_integratePos(model, q, update_nv, integration_dt)  # type: ignore
 
             # Enforce joint limits
-            # data.qpos[qpos_indices] = np.clip(
-            #     data.qpos[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
-            # )
-
             q[qpos_indices] = np.clip(
                 q[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             )
+            if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-7:
+                success = False
+                failure_reason = "IK step failed to converge"
+                break
+
             data.ctrl[actuator_ids] = q[qpos_indices]
 
-            # Check for floor collision
-            # mujoco.mj_fwdPosition(model, data)
-            mujoco.mj_step(model, data)
-            # new_site_xpos = data.site_xpos[site_id]
-            # if new_site_xpos[2] < min_height:
-            #     data.qpos[:] = prev_qpos
-            #     failure_reason = f"IK step would move gripper below minimum height ({new_site_xpos[2]} < {min_height})"
-            #     break
+            previous_site_xpos = site_xpos.copy()
+            mujoco.mj_step(model, data)  # type: ignore
+
+            new_site_xpos = data.site_xpos[site_id]
+            if new_site_xpos[2] < min_height:
+                success = False
+                failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {min_height})"
+                break
 
             self.env.render()
-            # time.sleep(0.002)
         else:
             success = False
             failure_reason = f"Max steps ({max_steps}) reached"
@@ -449,24 +419,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 inplace=True,
+                tol=MOVE_TO_POS_TOLERANCE,
             ):
-                return False
-
-            # Verify final position
-            final_pose = self.get_end_effector_pose()
-            if final_pose is None:
-                return False
-
-            final_pos = np.array(
-                [final_pose.position.x, final_pose.position.y, final_pose.position.z]
-            )
-            pos_error = np.linalg.norm(target_pos - final_pos)
-
-            # Check if we are close enough to the target
-            if pos_error > MOVE_TO_POS_TOLERANCE:
-                self.logger.warning(
-                    f"Move to failed. Final position error: {pos_error:.4f}m"
-                )
                 return False
 
             return True

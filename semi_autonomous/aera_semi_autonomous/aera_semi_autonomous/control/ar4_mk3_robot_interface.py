@@ -185,11 +185,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
             final_error = np.linalg.norm(target_gripper_qpos - final_gripper_qpos)
             if final_error > GRIPPER_POS_TOLERANCE:
-                self.logger.warning(
+                self.logger.info(
                     f"Gripper interpolation may not have reached target."
                     f"Final error: {final_error:.4f}"
                 )
-                return False
+                # TODO: Because we are closing on giving the gripper 0.0 pos, this will always happen if there is object in the gripper.
+                #   Eventually we should pass the object dims and then we can return false from here.
+                # return False
             return True
         except Exception as e:
             self.logger.error(f"Failed to interpolate gripper: {e}", exc_info=True)

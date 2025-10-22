@@ -371,20 +371,32 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
             target_qpos = self.env.initial_qpos[qpos_indices]
-            current_qpos = self.env.data.qpos[qpos_indices].copy()
+            start_qpos = self.env.data.qpos[qpos_indices].copy()
 
-            if np.linalg.norm(target_qpos - current_qpos) < HOME_QPOS_ERROR_TOLERANCE:
+            if np.linalg.norm(target_qpos - start_qpos) < HOME_QPOS_ERROR_TOLERANCE:
                 return True
 
-            num_steps = 100  # for smooth movement
+            actuator_ids = np.array(
+                [self.env.model.actuator(name).id for name in self.actuator_names]
+            )
 
-            for i in range(num_steps + 1):
-                alpha = i / num_steps
-                interpolated_qpos = (1 - alpha) * current_qpos + alpha * target_qpos
-                self.env.data.qpos[qpos_indices] = interpolated_qpos
-                mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+            num_steps = 100  # for smooth movement
+            max_steps = num_steps * 2  # timeout
+
+            for i in range(max_steps):
+                current_qpos = self.env.data.qpos[qpos_indices]
+                if (
+                    np.linalg.norm(target_qpos - current_qpos)
+                    < HOME_QPOS_ERROR_TOLERANCE
+                ):
+                    break  # Converged
+
+                # Interpolate control setpoint for smooth motion
+                alpha = min(1.0, i / num_steps)
+                interpolated_qpos = (1 - alpha) * start_qpos + alpha * target_qpos
+                self.env.data.ctrl[actuator_ids] = interpolated_qpos
+                mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self.env.render()
-                time.sleep(0.01)
 
             # Verify final joint positions
             final_qpos = self.env.data.qpos[qpos_indices]

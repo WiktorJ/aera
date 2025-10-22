@@ -224,8 +224,6 @@ def main():
 
         robot.go_home()
         # Let the simulation run for a bit to see the result
-        logger.info("Demo completed! Letting simulation run to observe result...")
-        time.sleep(2)
 
         logger.info("Pick and place demo completed successfully!")
         return True

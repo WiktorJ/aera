@@ -33,6 +33,9 @@ ABOVE_TARGET_OFFSET = 0.1  # 10cm
 GRIPPER_ACTION_STEPS = 50
 """Number of simulation steps to apply for gripper actions."""
 
+GO_HOME_INTERPOLATION_STEPS = 100
+"""Number of steps to interpolate when going home."""
+
 HOME_QPOS_ERROR_TOLERANCE = 1e-3
 """Tolerance for joint position error when going home."""
 
@@ -154,11 +157,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             gripper_qpos_indices = self._get_qpos_indices(
                 self.env.model, gripper_joint_names
             )
-            self.logger.info(
-                f"Current gripper position: {self.env.data.qpos[gripper_qpos_indices]}"
-            )
-            self.logger.info(f"Target gripper position: {target_gripper_qpos}")
-
             start_gripper_qpos = self.env.data.qpos[gripper_qpos_indices].copy()
 
             # Use a timeout to prevent infinite loops.
@@ -186,14 +184,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
             final_error = np.linalg.norm(target_gripper_qpos - final_gripper_qpos)
-            self.logger.info(
-                f"Final gripper position: {final_gripper_qpos} in {i} steps"
-            )
             if final_error > GRIPPER_POS_TOLERANCE:
                 self.logger.warning(
-                    f"Gripper interpolation may not have reached target precisely. "
+                    f"Gripper interpolation may not have reached target."
                     f"Final error: {final_error:.4f}"
                 )
+                return False
             return True
         except Exception as e:
             self.logger.error(f"Failed to interpolate gripper: {e}", exc_info=True)
@@ -380,7 +376,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 [self.env.model.actuator(name).id for name in self.actuator_names]
             )
 
-            num_steps = 100  # for smooth movement
+            num_steps = GO_HOME_INTERPOLATION_STEPS  # for smooth movement
             max_steps = num_steps * 2  # timeout
 
             for i in range(max_steps):
@@ -405,6 +401,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.warning(
                     f"Go home may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
                 )
+                return False
 
             return True
 

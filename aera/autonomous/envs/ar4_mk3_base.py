@@ -380,6 +380,19 @@ class Ar4Mk3Env(BaseEnv):
                 self.model, self.data, "object0:joint", object_qpos
             )
 
+        # Randomize start position of distractors.
+        distractor_body_names = ["distractor1_visual_body", "distractor2_visual_body"]
+        for body_name in distractor_body_names:
+            body_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_BODY, body_name
+            )
+            distractor_pos = self.initial_gripper_xpos[:3].copy()
+            distractor_pos[:2] += self.np_random.uniform(
+                -self.target_range, self.target_range, size=2
+            )
+            distractor_pos[2] = 0.0
+            self.model.body_pos[body_id] = distractor_pos
+
         self._mujoco.mj_forward(self.model, self.data)
         return True
 

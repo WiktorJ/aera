@@ -317,11 +317,10 @@ class Ar4Mk3Env(BaseEnv):
 
     def _render_callback(self):
         # Visualize target.
-        sites_offset = (self.data.site_xpos - self.model.site_pos).copy()
-        site_id = self._mujoco.mj_name2id(
-            self.model, self._mujoco.mjtObj.mjOBJ_SITE, "target0"
+        body_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_BODY, "target"
         )
-        self.model.site_pos[site_id] = self.goal - sites_offset[0]
+        self.model.body_pos[body_id] = self.goal
         self._mujoco.mj_forward(self.model, self.data)
 
     def _reset_sim(self):

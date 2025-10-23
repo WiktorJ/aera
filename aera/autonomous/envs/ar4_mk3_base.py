@@ -333,6 +333,42 @@ class Ar4Mk3Env(BaseEnv):
 
         self._mujoco.mj_forward(self.model, self.data)
 
+    def _reset_distractors(self):
+        """Randomize start position of distractors, ensuring they don't overlap."""
+        distractor_body_names = ["distractor1_visual_body", "distractor2_visual_body"]
+        placed_positions_2d = []
+        min_dist = 0.06  # Minimum distance between centers of objects
+
+        if self.has_object:
+            object_qpos = self._utils.get_joint_qpos(
+                self.model, self.data, "object0:joint"
+            )
+            placed_positions_2d.append(object_qpos[:2])
+
+        for body_name in distractor_body_names:
+            body_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_BODY, body_name
+            )
+
+            while True:
+                distractor_pos_2d = (
+                    self.initial_gripper_xpos[:2]
+                    + self.np_random.uniform(
+                        -self.target_range, self.target_range, size=2
+                    )
+                )
+
+                if all(
+                    np.linalg.norm(distractor_pos_2d - pos) >= min_dist
+                    for pos in placed_positions_2d
+                ):
+                    placed_positions_2d.append(distractor_pos_2d)
+                    distractor_pos_3d = np.array(
+                        [distractor_pos_2d[0], distractor_pos_2d[1], 0.0]
+                    )
+                    self.model.body_pos[body_id] = distractor_pos_3d
+                    break
+
     def _reset_sim(self):
         # Reset buffers for joint states, actuators, warm-start, control buffers etc.
         self._mujoco.mj_resetData(self.model, self.data)
@@ -381,17 +417,7 @@ class Ar4Mk3Env(BaseEnv):
             )
 
         # Randomize start position of distractors.
-        distractor_body_names = ["distractor1_visual_body", "distractor2_visual_body"]
-        for body_name in distractor_body_names:
-            body_id = self._mujoco.mj_name2id(
-                self.model, self._mujoco.mjtObj.mjOBJ_BODY, body_name
-            )
-            distractor_pos = self.initial_gripper_xpos[:3].copy()
-            distractor_pos[:2] += self.np_random.uniform(
-                -self.target_range, self.target_range, size=2
-            )
-            distractor_pos[2] = 0.0
-            self.model.body_pos[body_id] = distractor_pos
+        self._reset_distractors()
 
         self._mujoco.mj_forward(self.model, self.data)
         return True

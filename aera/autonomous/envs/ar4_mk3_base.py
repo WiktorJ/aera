@@ -317,10 +317,20 @@ class Ar4Mk3Env(BaseEnv):
 
     def _render_callback(self):
         # Visualize target.
-        body_id = self._mujoco.mj_name2id(
-            self.model, self._mujoco.mjtObj.mjOBJ_BODY, "target"
+        # Move the visual element on the floor
+        visual_body_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_BODY, "target_visual_body"
         )
-        self.model.body_pos[body_id] = self.goal
+        target_visual_pos = self.goal.copy()
+        target_visual_pos[2] = 0.0
+        self.model.body_pos[visual_body_id] = target_visual_pos
+
+        # Move the target site to the goal position
+        site_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_SITE, "target0"
+        )
+        self.model.site_pos[site_id] = self.goal
+
         self._mujoco.mj_forward(self.model, self.data)
 
     def _reset_sim(self):

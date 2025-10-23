@@ -151,6 +151,23 @@ class Ar4Mk3Env(BaseEnv):
             )
         super().__init__(default_camera_config=default_camera_config, **kwargs)
 
+    def reset(self, *, seed: int | None = None, options: dict | None = None):
+        # gymnasium.Env.reset
+        super(MujocoRobotEnv, self).reset(seed=seed)
+
+        did_reset_sim = False
+        while not did_reset_sim:
+            did_reset_sim = self._reset_sim()
+        self.goal = self._sample_goal()
+        self._reset_distractors()
+        self._mujoco.mj_forward(self.model, self.data)
+        obs = self._get_obs()
+
+        if self.render_mode == "human":
+            self.render()
+
+        return obs, {}
+
     def _calculate_camera_config_from_transform(
         self, translation, quatertion, z_offset=0.0, distance_multiplier=1.0
     ):
@@ -339,6 +356,9 @@ class Ar4Mk3Env(BaseEnv):
         placed_positions_2d = []
         min_dist = 0.06  # Minimum distance between centers of objects
 
+        # Ensure distractors don't overlap with the target visual
+        placed_positions_2d.append(self.goal[:2])
+
         if self.has_object:
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"
@@ -417,7 +437,6 @@ class Ar4Mk3Env(BaseEnv):
             )
 
         # Randomize start position of distractors.
-        self._reset_distractors()
 
         self._mujoco.mj_forward(self.model, self.data)
         return True

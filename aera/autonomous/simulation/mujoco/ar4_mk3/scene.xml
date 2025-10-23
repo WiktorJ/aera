@@ -18,6 +18,13 @@
   <worldbody>
     <light pos="0 0 1.5" dir="0 0 -1" directional="true" diffuse="0.3 0.3 0.3"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+    <!-- Walls -->
+    <geom name="wall_y_pos" type="box" size="3 0.01 1.5" pos="0 3 1.5" material="groundplane" contype="0" conaffinity="0"/>
+    <geom name="wall_y_neg" type="box" size="3 0.01 1.5" pos="0 -3 1.5" material="groundplane" contype="0" conaffinity="0"/>
+    <geom name="wall_x_pos" type="box" size="0.01 3 1.5" pos="3 0 1.5" material="groundplane" contype="0" conaffinity="0"/>
+    <geom name="wall_x_neg" type="box" size="0.01 3 1.5" pos="-3 0 1.5" material="groundplane" contype="0" conaffinity="0"/>
+    <!-- Ceiling -->
+    <geom name="ceiling" type="box" size="3 3 0.01" pos="0 0 3" material="groundplane" contype="0" conaffinity="0"/>
 <!--    <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>-->
   </worldbody>
 </mujoco>

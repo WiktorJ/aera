@@ -19,7 +19,11 @@ import numpy as np
 from geometry_msgs.msg import Pose, Point, Quaternion
 from scipy.spatial.transform import Rotation
 
+from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera_semi_autonomous.control.ar4_mk3_interface_config import (
+    Ar4Mk3InterfaceConfig,
+)
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
@@ -152,15 +156,18 @@ def main():
     try:
         # Initialize the environment
         logger.info("Initializing AR4 MK3 environment...")
-        env = Ar4Mk3PickAndPlaceEnv(
-            model_path=model_path,
-            render_mode="human",
+        env_config = Ar4Mk3EnvConfig(
             reward_type="sparse",
             use_eef_control=False,  # Use joint control for better precision
             translation=T,
             quaterion=Q,
             distance_multiplier=1.2,
             z_offset=0.3,
+        )
+        env = Ar4Mk3PickAndPlaceEnv(
+            model_path=model_path,
+            render_mode="human",
+            config=env_config,
         )
 
         # Reset environment to get initial state
@@ -169,7 +176,8 @@ def main():
 
         # Initialize robot interface
         logger.info("Initializing robot interface...")
-        robot = Ar4Mk3RobotInterface(env)
+        interface_config = Ar4Mk3InterfaceConfig()
+        robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")
 
         # Step 1: Go to home position

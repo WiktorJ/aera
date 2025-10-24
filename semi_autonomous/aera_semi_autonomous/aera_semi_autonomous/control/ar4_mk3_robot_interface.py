@@ -334,6 +334,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
         home_pose.orientation.w = float(quat[3])
         return home_pose
 
+    def _format_pose(self, pose: Pose) -> str:
+        """Formats a Pose object into a readable string."""
+        pos = pose.position
+        orient = pose.orientation
+        return (
+            f"Position(x={pos.x:.3f}, y={pos.y:.3f}, z={pos.z:.3f}), "
+            f"Orientation(x={orient.x:.3f}, y={orient.y:.3f}, z={orient.z:.3f}, w={orient.w:.3f})"
+        )
+
     def get_logger(self) -> logging.Logger:
         return self.logger
 
@@ -391,7 +400,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose using inverse kinematics."""
         try:
-            self.logger.info(f"Moving to pose: {pose}")
+            self.logger.info(f"Moving to pose: {self._format_pose(pose)}")
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
             # Convert from ROS quaternion (x, y, z, w) to MuJoCo quaternion (w, x, y, z)
             target_quat = np.array(
@@ -448,7 +457,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             gripper_pos: Gripper position in actual range [-0.014, 0] where -0.014 is fully open and 0 is fully closed
         """
         try:
-            self.logger.info(f"Grasping at pose: {pose}")
+            self.logger.info(f"Grasping at pose: {self._format_pose(pose)}")
             # Validate gripper_pos is in the correct range
             if not (-0.014 <= gripper_pos <= 0.0):
                 self.logger.error(
@@ -492,7 +501,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_at(self, pose: Pose) -> bool:
         """Move to a pose and release the gripper."""
         try:
-            self.logger.info(f"Releasing at pose: {pose}")
+            self.logger.info(f"Releasing at pose: {self._format_pose(pose)}")
             # 1. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
             above_pose.position.z += self.config.above_target_offset

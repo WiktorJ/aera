@@ -206,7 +206,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         regularization_threshold: float = 1e-5,
         regularization_strength: float = 1e-3,
         max_update_norm: float = 0.75,
-        integration_dt: float = 0.05,
+        integration_dt: float = 0.1,
         pos_gain: float = 0.95,
         orientation_gain: float = 0.95,
         max_steps: int = 5000,

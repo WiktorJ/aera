@@ -51,7 +51,12 @@ class BaseEnv(MujocoRobotEnv):
         self.object_size = config.object_size
         self.use_eef_control = config.use_eef_control
 
-        super().__init__(n_actions=4 if config.use_eef_control else 7, **kwargs)
+        super().__init__(
+            model_path=config.model_path,
+            n_substeps=config.n_substeps,
+            n_actions=4 if config.use_eef_control else 7,
+            **kwargs,
+        )
 
     # GoalEnv methods
     # ----------------------------

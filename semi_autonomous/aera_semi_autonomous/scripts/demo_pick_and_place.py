@@ -88,7 +88,7 @@ def get_object_pose(env) -> Optional[Pose]:
         pose.position = Point(
             x=float(object_pos[0]),
             y=float(object_pos[1]),
-            z=float(object_pos[2]) + 0.07,
+            z=float(object_pos[2]) + 0.06,
         )
 
         # Combine top-down orientation with object's yaw
@@ -157,6 +157,7 @@ def main():
         # Initialize the environment
         logger.info("Initializing AR4 MK3 environment...")
         env_config = Ar4Mk3EnvConfig(
+            model_path=model_path,
             reward_type="sparse",
             use_eef_control=False,  # Use joint control for better precision
             translation=T,
@@ -165,7 +166,6 @@ def main():
             z_offset=0.3,
         )
         env = Ar4Mk3PickAndPlaceEnv(
-            model_path=model_path,
             render_mode="human",
             config=env_config,
         )

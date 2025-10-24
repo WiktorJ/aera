@@ -138,7 +138,9 @@ class Ar4Mk3Env(BaseEnv):
                 config.z_offset,
                 config.distance_multiplier,
             )
-        super().__init__(config=config, default_camera_config=default_camera_config, **kwargs)
+        super().__init__(
+            config=config, default_camera_config=default_camera_config, **kwargs
+        )
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         # gymnasium.Env.reset
@@ -360,11 +362,10 @@ class Ar4Mk3Env(BaseEnv):
             )
 
             while True:
-                distractor_pos_2d = (
-                    self.initial_gripper_xpos[:2]
-                    + self.np_random.uniform(
-                        -self.target_range, self.target_range, size=2
-                    )
+                distractor_pos_2d = self.initial_gripper_xpos[
+                    :2
+                ] + self.np_random.uniform(
+                    -self.target_range, self.target_range, size=2
                 )
 
                 if all(
@@ -421,11 +422,10 @@ class Ar4Mk3Env(BaseEnv):
             )
             assert object_qpos.shape == (7,)
             object_qpos[:2] = object_xpos
+            object_qpos[2] = self.object_size[2]
             self._utils.set_joint_qpos(
                 self.model, self.data, "object0:joint", object_qpos
             )
-
-        # Randomize start position of distractors.
 
         self._mujoco.mj_forward(self.model, self.data)
         return True

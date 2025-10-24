@@ -10,37 +10,10 @@ from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
+from aera_semi_autonomous.control.ar4_mk3_interface_config import (
+    Ar4Mk3InterfaceConfig,
+)
 from aera_semi_autonomous.control.robot_interface import RobotInterface
-
-
-# Constants
-DEFAULT_CAMERA_CONFIG: Dict[str, Any] = {
-    "width": 640,
-    "height": 480,
-    "fx": 525.0,
-    "fy": 525.0,
-    "cx": 320.0,
-    "cy": 240.0,
-}
-"""Default camera configuration if none is provided."""
-
-MOVE_TO_POS_TOLERANCE = 1e-3  # 1mm
-"""Position tolerance for move_to command."""
-
-ABOVE_TARGET_OFFSET = 0.1  # 10cm
-"""Offset to move above a target for grasping."""
-
-GRIPPER_ACTION_STEPS = 50
-"""Number of simulation steps to apply for gripper actions."""
-
-GO_HOME_INTERPOLATION_STEPS = 100
-"""Number of steps to interpolate when going home."""
-
-HOME_QPOS_ERROR_TOLERANCE = 1e-3
-"""Tolerance for joint position error when going home."""
-
-GRIPPER_POS_TOLERANCE = 1e-3
-"""Position tolerance for gripper actions."""
 
 
 class Ar4Mk3RobotInterface(RobotInterface):
@@ -49,12 +22,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
     Provides a bridge between the semi-autonomous system and the RL environment.
     """
 
-    def __init__(self, env: Ar4Mk3Env, camera_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, env: Ar4Mk3Env, config: Ar4Mk3InterfaceConfig):
         self.env = env
+        self.config = config
         self.logger = logging.getLogger(__name__)
 
         # Camera configuration
-        self.camera_config = camera_config or DEFAULT_CAMERA_CONFIG
+        self.camera_config = self.config.camera_config
 
         # Create camera intrinsics
         self.camera_intrinsics = o3d.camera.PinholeCameraIntrinsic(
@@ -161,18 +135,18 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Use a timeout to prevent infinite loops.
             # The loop allows for convergence check while interpolating the setpoint.
-            max_steps = GRIPPER_ACTION_STEPS * 2
+            max_steps = self.config.gripper_action_steps * 2
 
             for i in range(max_steps):
                 current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
                 if (
                     np.linalg.norm(target_gripper_qpos - current_gripper_qpos)
-                    < GRIPPER_POS_TOLERANCE
+                    < self.config.gripper_pos_tolerance
                 ):
                     break  # Converged
 
                 # Interpolate control setpoint for smooth motion over GRIPPER_ACTION_STEPS
-                alpha = min(1.0, i / GRIPPER_ACTION_STEPS)
+                alpha = min(1.0, i / self.config.gripper_action_steps)
                 interpolated_qpos = (
                     1 - alpha
                 ) * start_gripper_qpos + alpha * target_gripper_qpos
@@ -184,7 +158,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
             final_error = np.linalg.norm(target_gripper_qpos - final_gripper_qpos)
-            if final_error > GRIPPER_POS_TOLERANCE:
+            if final_error > self.config.gripper_pos_tolerance:
                 self.logger.info(
                     f"Gripper interpolation may not have reached target."
                     f"Final error: {final_error:.4f}"
@@ -202,17 +176,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_name: str,
         target_pos: np.ndarray,
         target_quat: np.ndarray,
-        tol: float = 1e-3,
-        regularization_threshold: float = 1e-5,
-        regularization_strength: float = 1e-3,
-        max_update_norm: float = 0.75,
-        integration_dt: float = 0.1,
-        pos_gain: float = 0.95,
-        orientation_gain: float = 0.95,
-        max_steps: int = 5000,
         inplace: bool = False,
-        min_height: float = 0.01,
-        include_rotation_in_target_error_measure: bool = False,
+        tol: Optional[float] = None,
     ) -> bool:
         """Find joint positions that satisfy a target site position and/or rotation."""
         model = self.env.model
@@ -222,6 +187,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = mujoco.MjData(model)  # type: ignore
             data = copy.deepcopy(self.env.data)
 
+        ik_tol = tol if tol is not None else self.config.ik_tolerance
+
         dtype = data.qpos.dtype
         err_norm = 0.0
         success = False
@@ -229,7 +196,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         failure_reason = "Unknown"
         # Increased nullspace gain to encourage solutions closer to the home configuration,
         # which helps avoid undesirable solutions like the arm going through the floor.
-        nullspace_gain = np.asarray([10.0, 10.0, 10.0, 10.0, 10.0, 10.0])
+        nullspace_gain = np.asarray(self.config.ik_nullspace_gain)
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
@@ -250,10 +217,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_pos, err_rot = err[:3], err[3:]
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
-        for steps in range(max_steps):
+        for steps in range(self.config.ik_max_steps):
             site_xpos = data.site_xpos[site_id]
 
-            err_pos[:] = pos_gain * (target_pos - site_xpos) / integration_dt
+            err_pos[:] = (
+                self.config.ik_pos_gain
+                * (target_pos - site_xpos)
+                / self.config.ik_integration_dt
+            )
 
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
@@ -265,12 +236,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
             err_norm = np.linalg.norm(target_pos - site_xpos)
 
-            if include_rotation_in_target_error_measure:
+            if self.config.ik_include_rotation_in_target_error_measure:
                 err_norm += np.linalg.norm(err_rot)
 
-            err_rot *= orientation_gain / integration_dt
+            err_rot *= self.config.ik_orientation_gain / self.config.ik_integration_dt
 
-            if err_norm < tol:
+            if err_norm < ik_tol:
                 success = True
                 failure_reason = ""
                 break
@@ -279,7 +250,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             jac_joints = jac[:, dof_indices]
 
             reg_strength = (
-                regularization_strength if err_norm > regularization_threshold else 0.0
+                self.config.ik_regularization_strength
+                if err_norm > self.config.ik_regularization_threshold
+                else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             # Nullspace projection for redundancy resolution, pulling towards home config
@@ -292,8 +265,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
             update_joints += nullspace_term
             update_norm = np.linalg.norm(update_joints)
 
-            if update_norm > max_update_norm:
-                update_joints *= max_update_norm / update_norm
+            if update_norm > self.config.ik_max_update_norm:
+                update_joints *= self.config.ik_max_update_norm / update_norm
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
@@ -301,7 +274,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             q = data.qpos.copy()
 
             # prev_qpos = data.qpos.copy()
-            mujoco.mj_integratePos(model, q, update_nv, integration_dt)  # type: ignore
+            mujoco.mj_integratePos(model, q, update_nv, self.config.ik_integration_dt)  # type: ignore
 
             # Enforce joint limits
             q[qpos_indices] = np.clip(
@@ -318,15 +291,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mj_step(model, data)  # type: ignore
 
             new_site_xpos = data.site_xpos[site_id]
-            if new_site_xpos[2] < min_height:
+            if new_site_xpos[2] < self.config.ik_min_height:
                 success = False
-                failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {min_height})"
+                failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {self.config.ik_min_height})"
                 break
 
             self.env.render()
         else:
             success = False
-            failure_reason = f"Max steps ({max_steps}) reached"
+            failure_reason = f"Max steps ({self.config.ik_max_steps}) reached"
 
         if not success:
             self.logger.warning(
@@ -371,21 +344,24 @@ class Ar4Mk3RobotInterface(RobotInterface):
             target_qpos = self.env.initial_qpos[qpos_indices]
             start_qpos = self.env.data.qpos[qpos_indices].copy()
 
-            if np.linalg.norm(target_qpos - start_qpos) < HOME_QPOS_ERROR_TOLERANCE:
+            if (
+                np.linalg.norm(target_qpos - start_qpos)
+                < self.config.home_qpos_error_tolerance
+            ):
                 return True
 
             actuator_ids = np.array(
                 [self.env.model.actuator(name).id for name in self.actuator_names]
             )
 
-            num_steps = GO_HOME_INTERPOLATION_STEPS  # for smooth movement
+            num_steps = self.config.go_home_interpolation_steps  # for smooth movement
             max_steps = num_steps * 2  # timeout
 
             for i in range(max_steps):
                 current_qpos = self.env.data.qpos[qpos_indices]
                 if (
                     np.linalg.norm(target_qpos - current_qpos)
-                    < HOME_QPOS_ERROR_TOLERANCE
+                    < self.config.home_qpos_error_tolerance
                 ):
                     break  # Converged
 
@@ -399,7 +375,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Verify final joint positions
             final_qpos = self.env.data.qpos[qpos_indices]
             qpos_error = np.linalg.norm(target_qpos - final_qpos)
-            if qpos_error > HOME_QPOS_ERROR_TOLERANCE:
+            if qpos_error > self.config.home_qpos_error_tolerance:
                 self.logger.warning(
                     f"Go home may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
                 )
@@ -430,7 +406,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 target_pos=target_pos,
                 target_quat=target_quat,
                 inplace=True,
-                tol=MOVE_TO_POS_TOLERANCE,
+                tol=self.config.move_to_pos_tolerance,
             ):
                 return False
 
@@ -485,7 +461,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # 2. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
-            above_pose.position.z += ABOVE_TARGET_OFFSET
+            above_pose.position.z += self.config.above_target_offset
             if not self.move_to(above_pose):
                 self.logger.error("Grasp failed: could not move above target.")
                 return False
@@ -520,7 +496,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         try:
             # 1. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
-            above_pose.position.z += ABOVE_TARGET_OFFSET
+            above_pose.position.z += self.config.above_target_offset
             if not self.move_to(above_pose):
                 self.logger.error("Release at failed: could not move above target.")
                 return False

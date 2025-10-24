@@ -4,12 +4,7 @@ from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
 from scipy.spatial.transform import Rotation
 
-DEFAULT_CAMERA_CONFIG = {
-    "distance": 0.98,
-    "azimuth": -133,
-    "elevation": -26,
-    "lookat": np.array([0, 0, 0]),
-}
+from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 
 
 def goal_distance(goal_a, goal_b):
@@ -22,18 +17,7 @@ class BaseEnv(MujocoRobotEnv):
 
     def __init__(
         self,
-        gripper_extra_height,
-        block_gripper,
-        has_object: bool,
-        target_in_the_air,
-        target_offset,
-        obj_range,
-        obj_offset,
-        target_range,
-        distance_threshold,
-        reward_type,
-        object_size=0.025,
-        use_eef_control=False,
+        config: Ar4Mk3EnvConfig,
         **kwargs,
     ):
         """Initializes a new Fetch environment.
@@ -54,20 +38,20 @@ class BaseEnv(MujocoRobotEnv):
             object_size (float or array-like with 3 elements): size of the object (box half-lengths).
         """
 
-        self.gripper_extra_height = gripper_extra_height
-        self.block_gripper = block_gripper
-        self.has_object = has_object
-        self.target_in_the_air = target_in_the_air
-        self.target_offset = target_offset
-        self.obj_range = obj_range
-        self.obj_offset = obj_offset
-        self.target_range = target_range
-        self.distance_threshold = distance_threshold
-        self.reward_type = reward_type
-        self.object_size = object_size
-        self.use_eef_control = use_eef_control
+        self.gripper_extra_height = config.gripper_extra_height
+        self.block_gripper = config.block_gripper
+        self.has_object = config.has_object
+        self.target_in_the_air = config.target_in_the_air
+        self.target_offset = config.target_offset
+        self.obj_range = config.obj_range
+        self.obj_offset = config.obj_offset
+        self.target_range = config.target_range
+        self.distance_threshold = config.distance_threshold
+        self.reward_type = config.reward_type
+        self.object_size = config.object_size
+        self.use_eef_control = config.use_eef_control
 
-        super().__init__(n_actions=4 if use_eef_control else 7, **kwargs)
+        super().__init__(n_actions=4 if config.use_eef_control else 7, **kwargs)
 
     # GoalEnv methods
     # ----------------------------
@@ -138,18 +122,18 @@ class BaseEnv(MujocoRobotEnv):
 class Ar4Mk3Env(BaseEnv):
     def __init__(
         self,
-        translation: np.ndarray | None = None,
-        quaterion: np.ndarray | None = None,
-        z_offset: float = 0.0,
-        distance_multiplier: float = 1.0,
-        default_camera_config: dict = DEFAULT_CAMERA_CONFIG,
+        config: Ar4Mk3EnvConfig,
         **kwargs,
     ):
-        if translation is not None and quaterion is not None:
+        default_camera_config = config.default_camera_config
+        if config.translation is not None and config.quaterion is not None:
             default_camera_config = self._calculate_camera_config_from_transform(
-                translation, quaterion, z_offset, distance_multiplier
+                config.translation,
+                config.quaterion,
+                config.z_offset,
+                config.distance_multiplier,
             )
-        super().__init__(default_camera_config=default_camera_config, **kwargs)
+        super().__init__(config=config, default_camera_config=default_camera_config, **kwargs)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         # gymnasium.Env.reset

@@ -3,6 +3,7 @@ import os
 from gymnasium.utils.ezpickle import EzPickle
 
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
+from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 
 
 class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
@@ -153,36 +154,6 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     * v1: the environment depends on `mujoco_py` which is no longer maintained.
     """
 
-    def __init__(
-        self, model_path: str, reward_type="sparse", object_size=0.015, **kwargs
-    ):
-        initial_qpos = {
-            # "robot0:slide0": 0.405,
-            # "robot0:slide1": 0.48,
-            "robot0:slide0": 0.0,
-            "robot0:slide1": 0.0,
-            "robot0:slide2": 0.0,
-            # "object0:joint": [1.25, 0.53, 0.4, 1.0, 0.0, 0.0, 0.0],
-        }
-        Ar4Mk3Env.__init__(
-            self,
-            model_path=model_path,
-            has_object=True,
-            block_gripper=False,
-            n_substeps=20,
-            gripper_extra_height=0.2,
-            target_in_the_air=False,
-            target_offset=(0.0, -0.04, 0.01),
-            target_range=0.13,
-            obj_range=(0.09, 0.08),
-            obj_offset=(0.0, -0.04),
-            distance_threshold=0.05,
-            initial_qpos=initial_qpos,
-            reward_type=reward_type,
-            object_size=(0.012, 0.012, 0.012),
-            # object_size=0.015,
-            **kwargs,
-        )
-        EzPickle.__init__(
-            self, reward_type=reward_type, object_size=object_size, **kwargs
-        )
+    def __init__(self, config: Ar4Mk3EnvConfig, **kwargs):
+        Ar4Mk3Env.__init__(self, config=config, initial_qpos=config.initial_qpos, **kwargs)
+        EzPickle.__init__(self, config=config, **kwargs)

@@ -48,7 +48,13 @@ class BaseEnv(MujocoRobotEnv):
         self.target_range = config.target_range
         self.distance_threshold = config.distance_threshold
         self.reward_type = config.reward_type
-        self.object_size = config.object_size
+        if isinstance(config.object_size, (float, int)):
+            self.object_size = np.array([config.object_size] * 3)
+        else:
+            self.object_size = np.array(config.object_size)
+        assert self.object_size.shape == (
+            3,
+        ), "object_size must be a float or a 3-element array-like"
         self.use_eef_control = config.use_eef_control
 
         super().__init__(
@@ -447,14 +453,7 @@ class Ar4Mk3Env(BaseEnv):
 
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]
-            if isinstance(self.object_size, (float, int)):
-                size = np.array([self.object_size] * 3)
-            else:
-                size = np.array(self.object_size)
-            assert size.shape == (3,), (
-                "object_size must be a float or a 3-element array-like"
-            )
-            self.model.geom_size[geom_id] = size
+            self.model.geom_size[geom_id] = self.object_size
 
         self._mujoco.mj_forward(self.model, self.data)
 

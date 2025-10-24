@@ -47,8 +47,9 @@ def setup_logging(debug: bool = False) -> logging.Logger:
 def get_object_pose(env) -> Optional[Pose]:
     """Get the current pose of object0 from the environment."""
     try:
-        # Get object position from MuJoCo (this is the center of the object)
-        object_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
+        # Get object pose from MuJoCo's joint state, which is randomized at reset
+        object_qpos = env._utils.get_joint_qpos(env.model, env.data, "object0:joint")
+        object_pos = object_qpos[:3]
 
         # Get object orientation to align gripper
         object_body_id = env.model.body("object0").id
@@ -71,7 +72,7 @@ def get_object_pose(env) -> Optional[Pose]:
                 additional_yaw = 90.0
 
         # MuJoCo quat is w,x,y,z. Scipy is x,y,z,w
-        object_quat_wxyz = env.data.xquat[object_body_id]
+        object_quat_wxyz = object_qpos[3:]
         object_quat_xyzw = np.array(
             [
                 object_quat_wxyz[1],

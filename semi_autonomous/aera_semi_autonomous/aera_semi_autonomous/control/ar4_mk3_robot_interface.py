@@ -340,6 +340,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def go_home(self) -> bool:
         """Move robot to home position by interpolating joint positions."""
         try:
+            self.logger.info("Going home.")
             qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
             target_qpos = self.env.initial_qpos[qpos_indices]
             start_qpos = self.env.data.qpos[qpos_indices].copy()
@@ -390,6 +391,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose using inverse kinematics."""
         try:
+            self.logger.info(f"Moving to pose: {pose}")
             target_pos = np.array([pose.position.x, pose.position.y, pose.position.z])
             # Convert from ROS quaternion (x, y, z, w) to MuJoCo quaternion (w, x, y, z)
             target_quat = np.array(
@@ -446,6 +448,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             gripper_pos: Gripper position in actual range [-0.014, 0] where -0.014 is fully open and 0 is fully closed
         """
         try:
+            self.logger.info(f"Grasping at pose: {pose}")
             # Validate gripper_pos is in the correct range
             if not (-0.014 <= gripper_pos <= 0.0):
                 self.logger.error(
@@ -457,7 +460,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self.release_gripper():
                 self.logger.error("Grasp failed: could not open gripper.")
                 return False
-            self.logger.info("Opened gripper.")
 
             # 2. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
@@ -465,13 +467,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self.move_to(above_pose):
                 self.logger.error("Grasp failed: could not move above target.")
                 return False
-            self.logger.info("Moved above target.")
 
             # 3. Move to the grasp pose
             if not self.move_to(pose):
                 self.logger.error("Grasp failed: could not move to target.")
                 return False
-            self.logger.info("Moved to target.")
 
             # 4. Close the gripper to the specified position
             target_gripper_qpos = np.array([gripper_pos, gripper_pos])
@@ -479,12 +479,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False
-            self.logger.info("Closed gripper.")
 
             # 5. Lift the object
             if not self.move_to(above_pose):
                 self.logger.warning("Grasp succeeded, but failed to lift.")
-            self.logger.info("Lifted object.")
 
             return True
         except Exception as e:
@@ -494,32 +492,29 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def release_at(self, pose: Pose) -> bool:
         """Move to a pose and release the gripper."""
         try:
+            self.logger.info(f"Releasing at pose: {pose}")
             # 1. Move to a position slightly above the target
             above_pose = copy.deepcopy(pose)
             above_pose.position.z += self.config.above_target_offset
             if not self.move_to(above_pose):
                 self.logger.error("Release at failed: could not move above target.")
                 return False
-            self.logger.info("Moved above target for release.")
 
             # 2. Move to the release pose
             if not self.move_to(pose):
                 self.logger.error("Release at failed: could not move to target.")
                 return False
-            self.logger.info("Moved to release target.")
 
             # 3. Release the gripper
             if not self.release_gripper():
                 self.logger.error("Release at failed: could not release gripper.")
                 return False
-            self.logger.info("Released gripper.")
 
             # 4. Move back up
             if not self.move_to(above_pose):
                 self.logger.warning(
                     "Release succeeded, but failed to move up afterwards."
                 )
-            self.logger.info("Moved up after release.")
 
             return True
         except Exception as e:

@@ -98,6 +98,7 @@ def get_object_pose(env) -> Optional[Pose]:
             z=2 * float(object_pos[2]),
         )
 
+        print(f"object_yaw_deg: {object_yaw_deg}")
         # Combine top-down orientation with object's yaw
         top_down_rot = Rotation.from_quat([0, 1, 0, 0])  # x, y, z, w
         z_rot = Rotation.from_euler("z", object_yaw_deg + additional_yaw, degrees=True)
@@ -211,7 +212,22 @@ def main():
                 ),
                 # --- Dynamics Properties ---
                 object_dynamics=DynamicsConfig(
-                    mass=0.2, friction=(1.2, 0.01, 0.01), damping=0.02
+                    mass=0.2,
+                    friction=(1.2, 0.01, 0.01),
+                    damping=0.02,
+                    size=(0.015, 0.01, 0.012),
+                ),
+                object_distractor1_dynamics=DynamicsConfig(
+                    mass=0.2,
+                    friction=(1.2, 0.01, 0.01),
+                    damping=0.02,
+                    size=(0.015, 0.01, 0.012),
+                ),
+                object_distractor2_dynamics=DynamicsConfig(
+                    mass=0.2,
+                    friction=(1.2, 0.01, 0.01),
+                    damping=0.02,
+                    size=(0.01, 0.01, 0.012),
                 ),
             )
 

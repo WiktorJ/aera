@@ -89,7 +89,7 @@ def get_object_pose(env) -> Optional[Pose]:
         pose.position = Point(
             x=float(object_pos[0]),
             y=float(object_pos[1]),
-            z=float(object_pos[2]),
+            z=2 * float(object_pos[2]),
         )
 
         # Combine top-down orientation with object's yaw
@@ -215,7 +215,7 @@ def main():
         target_pose.position = Point(
             x=float(target_pos[0]),
             y=float(target_pos[1]),
-            z=float(target_pos[2] + 0.07),
+            z=float(target_pos[2]),
         )
         # Top-down orientation for placing
         target_pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)

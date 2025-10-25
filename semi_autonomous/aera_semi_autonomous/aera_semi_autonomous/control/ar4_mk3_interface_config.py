@@ -18,7 +18,7 @@ class Ar4Mk3InterfaceConfig:
         default_factory=lambda: DEFAULT_CAMERA_CONFIG
     )
     move_to_pos_tolerance: float = 1e-3
-    above_target_offset: float = 0.1
+    above_target_offset: float = 0.05
     gripper_action_steps: int = 50
     go_home_interpolation_steps: int = 100
     home_qpos_error_tolerance: float = 1e-3
@@ -31,7 +31,7 @@ class Ar4Mk3InterfaceConfig:
     ik_pos_gain: float = 0.95
     ik_orientation_gain: float = 0.95
     ik_max_steps: int = 5000
-    ik_min_height: float = 0.01
+    ik_min_height: float = 0.005
     ik_include_rotation_in_target_error_measure: bool = False
     ik_nullspace_gain: typing.List[float] = field(
         default_factory=lambda: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]

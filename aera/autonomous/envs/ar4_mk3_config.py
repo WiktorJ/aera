@@ -20,13 +20,13 @@ class Ar4Mk3EnvConfig:
     block_gripper: bool = False
     has_object: bool = True
     target_in_the_air: bool = False
-    target_offset: tuple[float, float, float] = (0.0, -0.04, 0.01)
+    target_offset: tuple[float, float, float] = (0.0, -0.04, 0.02)
     obj_range: tuple[float, float] = (0.09, 0.08)
     obj_offset: tuple[float, float] = (0.0, -0.04)
     target_range: float = 0.13
     distance_threshold: float = 0.05
     reward_type: str = "sparse"
-    object_size: tuple[float, float, float] = (0.012, 0.012, 0.062)
+    object_size: tuple[float, float, float] = (0.012, 0.012, 0.01)
     use_eef_control: bool = False
     initial_qpos: dict = field(
         default_factory=lambda: {

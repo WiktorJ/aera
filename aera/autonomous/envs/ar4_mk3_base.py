@@ -482,10 +482,6 @@ class Ar4Mk3Env(BaseEnv):
         self.initial_gripper_xpos = self._utils.get_site_xpos(
             self.model, self.data, "grip"
         ).copy()
-        if self.has_object:
-            self.height_offset = self._utils.get_site_xpos(
-                self.model, self.data, "object0"
-            )[2]
 
     def _sample_goal(self):
         if self.has_object:
@@ -497,7 +493,7 @@ class Ar4Mk3Env(BaseEnv):
                 if isinstance(self.target_offset, float)
                 else self.target_offset[:2]
             )
-            goal[2] = self.height_offset + (
+            goal[2] = (
                 self.target_offset
                 if isinstance(self.target_offset, float)
                 else self.target_offset[2]

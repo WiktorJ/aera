@@ -77,8 +77,8 @@ class DomainRandConfig:
     target_material: Optional[MaterialConfig] = None
     distractor1_material: Optional[MaterialConfig] = None
     distractor2_material: Optional[MaterialConfig] = None
-    distractor1_object_material: Optional[MaterialConfig] = None
-    distractor2_object_material: Optional[MaterialConfig] = None
+    object_distractor1_material: Optional[MaterialConfig] = None
+    object_distractor2_material: Optional[MaterialConfig] = None
     floor_material: Optional[MaterialConfig] = None
     wall_material: Optional[MaterialConfig] = None
     base_link_material: Optional[MaterialConfig] = None
@@ -95,8 +95,8 @@ class DomainRandConfig:
     top_light: Optional[LightConfig] = None
     scene_light: Optional[LightConfig] = None
     object_dynamics: Optional[DynamicsConfig] = None
-    distractor1_dynamics: Optional[DynamicsConfig] = None
-    distractor2_dynamics: Optional[DynamicsConfig] = None
+    object_distractor1_dynamics: Optional[DynamicsConfig] = None
+    object_distractor2_dynamics: Optional[DynamicsConfig] = None
 
 
 @dataclasses.dataclass

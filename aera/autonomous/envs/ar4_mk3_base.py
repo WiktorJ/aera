@@ -576,11 +576,31 @@ class Ar4Mk3Env(BaseEnv):
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"
             )
+            object_distractor1_qpos = self._utils.get_joint_qpos(
+                self.model, self.data, "object_distractor1:joint"
+            )
+            object_distractor2_qpos = self._utils.get_joint_qpos(
+                self.model, self.data, "object_distractor2:joint"
+            )
             assert object_qpos.shape == (7,)
             object_qpos[:2] = object_xpos
             object_qpos[2] = self.object_size[2]
             self._utils.set_joint_qpos(
                 self.model, self.data, "object0:joint", object_qpos
+            )
+            object_distractor1_qpos[2] = self.object_size[2]
+            self._utils.set_joint_qpos(
+                self.model,
+                self.data,
+                "object_distractor1:joint",
+                object_distractor1_qpos,
+            )
+            object_distractor2_qpos[2] = self.object_size[2]
+            self._utils.set_joint_qpos(
+                self.model,
+                self.data,
+                "object_distractor2:joint",
+                object_distractor2_qpos,
             )
 
         self._mujoco.mj_forward(self.model, self.data)

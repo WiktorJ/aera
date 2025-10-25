@@ -171,9 +171,36 @@ def main():
         if args.domain_rand:
             logger.info("Enabling domain randomization")
             domain_rand_config = DomainRandConfig(
-                object_material=MaterialConfig(rgba=(0.8, 0.2, 0.2, 1.0)),
-                target_material=MaterialConfig(rgba=(0.9, 0.2, 0.2, 0.5)),
-                floor_material=MaterialConfig(specular=0.8, shininess=0.7),
+                # --- Material Properties ---
+                object_material=MaterialConfig(
+                    rgba=(0.8, 0.2, 0.2, 1.0),
+                    specular=0.9,
+                    shininess=0.8,
+                    reflectance=0.1,
+                ),
+                target_material=MaterialConfig(rgba=(0.2, 0.8, 0.2, 0.5)),
+                distractor1_material=MaterialConfig(rgba=(0.2, 0.2, 0.8, 0.5)),
+                distractor2_material=MaterialConfig(rgba=(0.8, 0.8, 0.2, 0.5)),
+                floor_material=MaterialConfig(
+                    specular=0.8, shininess=0.7, rgba=(0.9, 0.9, 0.9, 1.0)
+                ),
+                wall_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
+                base_link_material=MaterialConfig(rgba=(0.5, 0.5, 0.5, 1.0)),
+                link_1_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
+                link_2_material=MaterialConfig(rgba=(0.7, 0.7, 0.7, 1.0)),
+                link_3_material=MaterialConfig(rgba=(0.8, 0.8, 0.8, 1.0)),
+                link_4_material=MaterialConfig(rgba=(0.7, 0.7, 0.7, 1.0)),
+                link_5_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
+                link_6_material=MaterialConfig(rgba=(0.5, 0.5, 0.5, 1.0)),
+                gripper_base_link_material=MaterialConfig(rgba=(0.4, 0.4, 0.4, 1.0)),
+                gripper_jaw1_material=MaterialConfig(rgba=(0.3, 0.3, 0.3, 1.0)),
+                gripper_jaw2_material=MaterialConfig(rgba=(0.3, 0.3, 0.3, 1.0)),
+                # --- Light Properties ---
+                headlight=LightConfig(
+                    diffuse=(0.7, 0.7, 0.7),
+                    ambient=(0.2, 0.2, 0.2),
+                    specular=(0.5, 0.5, 0.5),
+                ),
                 top_light=LightConfig(active=False),
                 scene_light=LightConfig(
                     pos=(0.0, 0.0, 3.0),
@@ -182,7 +209,10 @@ def main():
                     ambient=(0.4, 0.4, 0.4),
                     specular=(0.9, 0.9, 0.9),
                 ),
-                object_dynamics=DynamicsConfig(mass=0.2, friction=(1.2, 0.01, 0.01)),
+                # --- Dynamics Properties ---
+                object_dynamics=DynamicsConfig(
+                    mass=0.2, friction=(1.2, 0.01, 0.01), damping=0.02
+                ),
             )
 
         env_config = Ar4Mk3EnvConfig(

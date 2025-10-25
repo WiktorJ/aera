@@ -215,7 +215,7 @@ def main():
                     mass=0.2,
                     friction=(1.2, 0.01, 0.01),
                     damping=0.02,
-                    size=(0.015, 0.01, 0.012),
+                    size=(0.01, 0.015, 0.012),
                 ),
                 object_distractor1_dynamics=DynamicsConfig(
                     mass=0.2,

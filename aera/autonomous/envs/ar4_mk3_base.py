@@ -556,31 +556,30 @@ class Ar4Mk3Env(BaseEnv):
 
         # Randomize start position of object.
         if self.has_object:
+            placed_object_positions_2d = []
+            min_dist = 0.06  # Minimum distance between centers of objects
+
+            # Position for object0
             object_xpos = self.initial_gripper_xpos[:2].copy()
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.05:
                 object_xpos[0] = (
                     self.initial_gripper_xpos[0]
                     + self.np_random.uniform(
-                        -self.obj_range[0], self.obj_range[0], size=1
+                        -self.obj_range[0], self.obj_range[0]
                     )
                     + self.obj_offset[0]
                 )
                 object_xpos[1] = (
                     self.initial_gripper_xpos[1]
                     + self.np_random.uniform(
-                        -self.obj_range[1], self.obj_range[1], size=1
+                        -self.obj_range[1], self.obj_range[1]
                     )
                     + self.obj_offset[1]
                 )
+            placed_object_positions_2d.append(object_xpos)
 
             object_qpos = self._utils.get_joint_qpos(
                 self.model, self.data, "object0:joint"
-            )
-            object_distractor1_qpos = self._utils.get_joint_qpos(
-                self.model, self.data, "object_distractor1:joint"
-            )
-            object_distractor2_qpos = self._utils.get_joint_qpos(
-                self.model, self.data, "object_distractor2:joint"
             )
             assert object_qpos.shape == (7,)
             object_qpos[:2] = object_xpos
@@ -588,20 +587,33 @@ class Ar4Mk3Env(BaseEnv):
             self._utils.set_joint_qpos(
                 self.model, self.data, "object0:joint", object_qpos
             )
-            object_distractor1_qpos[2] = self.object_size[2]
-            self._utils.set_joint_qpos(
-                self.model,
-                self.data,
+
+            # Now position distractors
+            object_distractor_joint_names = [
                 "object_distractor1:joint",
-                object_distractor1_qpos,
-            )
-            object_distractor2_qpos[2] = self.object_size[2]
-            self._utils.set_joint_qpos(
-                self.model,
-                self.data,
                 "object_distractor2:joint",
-                object_distractor2_qpos,
-            )
+            ]
+            for joint_name in object_distractor_joint_names:
+                while True:
+                    distractor_pos_2d = self.initial_gripper_xpos[
+                        :2
+                    ] + self.np_random.uniform(
+                        -self.target_range, self.target_range, size=2
+                    )
+                    if all(
+                        np.linalg.norm(distractor_pos_2d - pos) >= min_dist
+                        for pos in placed_object_positions_2d
+                    ):
+                        placed_object_positions_2d.append(distractor_pos_2d)
+                        distractor_qpos = self._utils.get_joint_qpos(
+                            self.model, self.data, joint_name
+                        )
+                        distractor_qpos[:2] = distractor_pos_2d
+                        distractor_qpos[2] = self.object_size[2]
+                        self._utils.set_joint_qpos(
+                            self.model, self.data, joint_name, distractor_qpos
+                        )
+                        break
 
         self._mujoco.mj_forward(self.model, self.data)
         return True

@@ -96,12 +96,12 @@
            	<joint armature="0.0001" axis="0 1 0" damping="1e+11" name="robot0:slide1" pos="0 0 0" type="slide"></joint>
 		        <joint armature="0.0001" axis="0 0 1" damping="1e+11" name="robot0:slide2" pos="0 0 0" type="slide"></joint>
             <inertial mass="0.7102" pos="-4.6941E-06 0.054174 0.038824" diaginertia="0.0039943 0.0014946 0.0042554"/>
-            <geom type="mesh" mesh="base_link" contype="0" conaffinity="0" material="black"/>
+            <geom type="mesh" mesh="base_link" contype="0" conaffinity="0" material="robot_link_material"/>
             <body name="link_1" pos="0 0 0" quat="0 1 0 0">
                 <inertial pos="-0.022706 0.04294 -0.12205" quat="0.605544 0.332827 -0.00148159 0.722869" mass="0.88065"
                           diaginertia="0.00475513 0.00393687 0.0015935"/>
                 <joint name="joint_1" pos="0 0 0" axis="0 0 1" range="-2.96706 2.96706" class="size5"/>
-                <geom type="mesh" mesh="link_1" material="black"/>
+                <geom type="mesh" mesh="link_1" material="robot_link_material"/>
                 <body name="link_2" pos="0 0.064146 -0.16608" quat="0.353551 0.612373 -0.353555 -0.612373">
                     <inertial pos="0.064818 -0.11189 -0.038671" quat="0.637507 0.725997 0.196395 0.167158"
                               mass="0.57738"

@@ -215,7 +215,7 @@ def main():
         target_pose.position = Point(
             x=float(target_pos[0]),
             y=float(target_pos[1]),
-            z=float(target_pos[2]),
+            z=float(target_pos[2] + object_pose.position.z),
         )
         # Top-down orientation for placing
         target_pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)

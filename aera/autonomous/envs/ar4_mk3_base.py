@@ -471,28 +471,44 @@ class Ar4Mk3Env(BaseEnv):
                 self.model.vis.headlight.specular = dr_config.headlight.specular
 
         # --- Apply Dynamics Properties ---
-        if dr_config.object_dynamics:
-            dyn_config = dr_config.object_dynamics
-            if dyn_config.mass is not None:
-                body_id = self._mujoco.mj_name2id(
-                    self.model, self._mujoco.mjtObj.mjOBJ_BODY, "object0"
-                )
-                if body_id != -1:
-                    self.model.body_mass[body_id] = dyn_config.mass
-            if dyn_config.damping is not None:
-                joint_id = self._mujoco.mj_name2id(
-                    self.model, self._mujoco.mjtObj.mjOBJ_JOINT, "object0:joint"
-                )
-                if joint_id != -1:
-                    dof_adr = self.model.jnt_dofadr[joint_id]
-                    # A free joint has 6 DoFs
-                    self.model.dof_damping[dof_adr : dof_adr + 6] = dyn_config.damping
-            if dyn_config.friction is not None:
-                geom_id = self._mujoco.mj_name2id(
-                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "object0"
-                )
-                if geom_id != -1:
-                    self.model.geom_friction[geom_id] = dyn_config.friction
+        dynamics_map = {
+            "object_dynamics": "object0",
+            "object_distractor1_dynamics": "object_distractor1",
+            "object_distractor2_dynamics": "object_distractor2",
+        }
+        for config_key, object_name in dynamics_map.items():
+            dyn_config = getattr(dr_config, config_key)
+            if dyn_config:
+                if dyn_config.mass is not None:
+                    body_id = self._mujoco.mj_name2id(
+                        self.model, self._mujoco.mjtObj.mjOBJ_BODY, object_name
+                    )
+                    if body_id != -1:
+                        self.model.body_mass[body_id] = dyn_config.mass
+                if dyn_config.damping is not None:
+                    joint_id = self._mujoco.mj_name2id(
+                        self.model,
+                        self._mujoco.mjtObj.mjOBJ_JOINT,
+                        f"{object_name}:joint",
+                    )
+                    if joint_id != -1:
+                        dof_adr = self.model.jnt_dofadr[joint_id]
+                        # A free joint has 6 DoFs
+                        self.model.dof_damping[
+                            dof_adr : dof_adr + 6
+                        ] = dyn_config.damping
+                if dyn_config.friction is not None:
+                    geom_id = self._mujoco.mj_name2id(
+                        self.model, self._mujoco.mjtObj.mjOBJ_GEOM, object_name
+                    )
+                    if geom_id != -1:
+                        self.model.geom_friction[geom_id] = dyn_config.friction
+                if dyn_config.size is not None:
+                    geom_id = self._mujoco.mj_name2id(
+                        self.model, self._mujoco.mjtObj.mjOBJ_GEOM, object_name
+                    )
+                    if geom_id != -1:
+                        self.model.geom_size[geom_id] = dyn_config.size
 
     def _reset_distractors(self):
         """Randomize start position of distractors, ensuring they don't overlap."""

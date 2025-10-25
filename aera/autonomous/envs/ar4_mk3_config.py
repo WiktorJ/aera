@@ -69,6 +69,7 @@ class DynamicsConfig:
     damping: Optional[float] = None
     friction: Optional[Sequence[float]] = None
     mass: Optional[float] = None
+    size: Optional[Sequence[float]] = None
 
 
 @dataclasses.dataclass

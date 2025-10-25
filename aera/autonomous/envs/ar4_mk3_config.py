@@ -1,6 +1,6 @@
 import dataclasses
 from dataclasses import field
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Union
 
 import numpy as np
 
@@ -11,10 +11,44 @@ DEFAULT_CAMERA_CONFIG = {
     "lookat": np.array([0, 0, 0]),
 }
 
+AVAILABLE_TEXTURES = [
+    "blue-wood",
+    "brass-ambra",
+    "bread",
+    "can",
+    "ceramic",
+    "cereal",
+    "clay",
+    "cream-plaster",
+    "dark-wood",
+    "dirt",
+    "glass",
+    "gray-felt",
+    "gray-plaster",
+    "gray-woodgrain",
+    "green-wood",
+    "lemon",
+    "light-gray-floor-tile",
+    "light-gray-plaster",
+    "light-wood",
+    "metal",
+    "metal-dark",
+    "pink-plaster",
+    "red-wood",
+    "soda",
+    "steel-brushed",
+    "steel-scratched",
+    "white-bricks",
+    "white-plaster",
+    "wood-tiles",
+    "wood-varnished-panels",
+    "yellow-plaster",
+]
+
 
 @dataclasses.dataclass
 class MaterialConfig:
-    texture_name: Optional[str] = None
+    texture_name: Optional[Union[str, Sequence[str]]] = None
     rgba: Optional[Sequence[float]] = None
     specular: Optional[float] = None
     shininess: Optional[float] = None

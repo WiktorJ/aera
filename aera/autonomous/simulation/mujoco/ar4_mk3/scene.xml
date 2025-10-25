@@ -12,8 +12,37 @@
   <asset>
     <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
     <texture type="2d" name="groundplane" file="../../textures/light-wood.png"/>
+    <texture type="2d" name="blue-wood" file="../../textures/blue-wood.png"/>
+    <texture type="2d" name="brass-ambra" file="../../textures/brass-ambra.png"/>
+    <texture type="2d" name="bread" file="../../textures/bread.png"/>
+    <texture type="2d" name="can" file="../../textures/can.png"/>
+    <texture type="2d" name="ceramic" file="../../textures/ceramic.png"/>
+    <texture type="2d" name="cereal" file="../../textures/cereal.png"/>
+    <texture type="2d" name="clay" file="../../textures/clay.png"/>
+    <texture type="2d" name="cream-plaster" file="../../textures/cream-plaster.png"/>
+    <texture type="2d" name="dark-wood" file="../../textures/dark-wood.png"/>
+    <texture type="2d" name="dirt" file="../../textures/dirt.png"/>
+    <texture type="2d" name="glass" file="../../textures/glass.png"/>
+    <texture type="2d" name="gray-felt" file="../../textures/gray-felt.png"/>
+    <texture type="2d" name="gray-plaster" file="../../textures/gray-plaster.png"/>
+    <texture type="2d" name="gray-woodgrain" file="../../textures/gray-woodgrain.png"/>
+    <texture type="2d" name="green-wood" file="../../textures/green-wood.png"/>
+    <texture type="2d" name="lemon" file="../../textures/lemon.png"/>
+    <texture type="2d" name="light-gray-floor-tile" file="../../textures/light-gray-floor-tile.png"/>
+    <texture type="2d" name="light-gray-plaster" file="../../textures/light-gray-plaster.png"/>
     <texture type="2d" name="light-wood" file="../../textures/light-wood.png"/>
+    <texture type="2d" name="metal" file="../../textures/metal.png"/>
     <texture type="2d" name="metal-dark" file="../../textures/metal-dark.png"/>
+    <texture type="2d" name="pink-plaster" file="../../textures/pink-plaster.png"/>
+    <texture type="2d" name="red-wood" file="../../textures/red-wood.png"/>
+    <texture type="2d" name="soda" file="../../textures/soda.png"/>
+    <texture type="2d" name="steel-brushed" file="../../textures/steel-brushed.png"/>
+    <texture type="2d" name="steel-scratched" file="../../textures/steel-scratched.png"/>
+    <texture type="2d" name="white-bricks" file="../../textures/white-bricks.png"/>
+    <texture type="2d" name="white-plaster" file="../../textures/white-plaster.png"/>
+    <texture type="2d" name="wood-tiles" file="../../textures/wood-tiles.png"/>
+    <texture type="2d" name="wood-varnished-panels" file="../../textures/wood-varnished-panels.png"/>
+    <texture type="2d" name="yellow-plaster" file="../../textures/yellow-plaster.png"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0"/>
     <material name="wallmaterial" rgba="0.5 0.5 0.5 1"/>
   </asset>

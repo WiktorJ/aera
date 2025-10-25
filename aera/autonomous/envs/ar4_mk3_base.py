@@ -403,11 +403,20 @@ class Ar4Mk3Env(BaseEnv):
                     self.model, self._mujoco.mjtObj.mjOBJ_MATERIAL, mat_name
                 )
                 if mat_id != -1:
+                    texture_name_to_apply = None
                     if mat_config.texture_name:
+                        if isinstance(mat_config.texture_name, str):
+                            texture_name_to_apply = mat_config.texture_name
+                        else:  # It's a sequence
+                            texture_name_to_apply = np.random.choice(
+                                mat_config.texture_name
+                            )
+
+                    if texture_name_to_apply:
                         tex_id = self._mujoco.mj_name2id(
                             self.model,
                             self._mujoco.mjtObj.mjOBJ_TEXTURE,
-                            mat_config.texture_name,
+                            texture_name_to_apply,
                         )
                         if tex_id != -1:
                             self.model.mat_texid[mat_id] = tex_id
@@ -419,7 +428,7 @@ class Ar4Mk3Env(BaseEnv):
                                 self.model.mat_rgba[mat_id] = [1.0, 1.0, 1.0, 1.0]
                         else:
                             print(
-                                f"Warning: Texture '{mat_config.texture_name}' not found in model."
+                                f"Warning: Texture '{texture_name_to_apply}' not found in model."
                             )
                     elif mat_config.rgba is not None:
                         self.model.mat_rgba[mat_id] = mat_config.rgba

@@ -456,7 +456,9 @@ class Ar4Mk3Env(BaseEnv):
                     self.model, self._mujoco.mjtObj.mjOBJ_JOINT, "object0:joint"
                 )
                 if joint_id != -1:
-                    self.model.jnt_damping[joint_id] = dyn_config.damping
+                    dof_adr = self.model.jnt_dofadr[joint_id]
+                    # A free joint has 6 DoFs
+                    self.model.dof_damping[dof_adr : dof_adr + 6] = dyn_config.damping
             if dyn_config.friction is not None:
                 geom_id = self._mujoco.mj_name2id(
                     self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "object0"

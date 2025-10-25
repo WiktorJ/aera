@@ -172,7 +172,7 @@ def main():
             logger.info("Enabling domain randomization")
             domain_rand_config = DomainRandConfig(
                 object_material=MaterialConfig(rgba=(0.8, 0.2, 0.2, 1.0)),
-                target_material=MaterialConfig(rgba=(0.2, 0.8, 0.2, 0.5)),
+                target_material=MaterialConfig(rgba=(0.9, 0.2, 0.2, 0.5)),
                 floor_material=MaterialConfig(specular=0.8, shininess=0.7),
                 top_light=LightConfig(active=False),
                 scene_light=LightConfig(

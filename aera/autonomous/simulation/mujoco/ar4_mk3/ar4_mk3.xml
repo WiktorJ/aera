@@ -9,7 +9,6 @@
         <material name="red" rgba="1 0 0 1"/>
         <material name="blue" rgba="0 0 1 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
-        <material name="black" rgba="0.149 0.149 0.149 1"/>
         <material name="transparent" rgba="0 0 0 0"/>
         <material name="base_link_mat" rgba="1 1 1 1"/>
         <material name="link_1_mat" rgba="1 1 1 1"/>

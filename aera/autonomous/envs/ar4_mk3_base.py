@@ -345,6 +345,15 @@ class Ar4Mk3Env(BaseEnv):
         )
         self.model.site_pos[site_id] = self.goal
 
+        # Display grip position
+        if self.render_mode == "human" and self._mujoco_renderer.viewer:
+            grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
+            self._mujoco_renderer.viewer.add_overlay(
+                self._mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                "Grip Position (x, y, z)",
+                f"{grip_pos[0]:.3f}, {grip_pos[1]:.3f}, {grip_pos[2]:.3f}",
+            )
+
         self._mujoco.mj_forward(self.model, self.data)
 
     def _reset_distractors(self):

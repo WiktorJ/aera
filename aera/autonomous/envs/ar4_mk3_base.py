@@ -1,3 +1,5 @@
+from typing import Optional, Sequence
+
 import numpy as np
 
 from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
@@ -368,6 +370,91 @@ class Ar4Mk3Env(BaseEnv):
 
         self._mujoco.mj_forward(self.model, self.data)
 
+    def _apply_domain_randomization(self):
+        """Applies domain randomization settings from the config to the Mujoco model."""
+        if not self.config.domain_rand:
+            return
+
+        dr_config = self.config.domain_rand
+
+        # --- Apply Material Properties ---
+        materials_map = {
+            "robot_material": "black",
+            "object_material": "gray",
+            "target_material": "target_mat",
+            "distractor1_material": "distractor1_mat",
+            "distractor2_material": "distractor2_mat",
+            "floor_material": "groundplane",
+            "wall_material": "wallmaterial",
+        }
+        for config_key, mat_name in materials_map.items():
+            mat_config = getattr(dr_config, config_key)
+            if mat_config:
+                mat_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_MATERIAL, mat_name
+                )
+                if mat_id != -1:
+                    if mat_config.rgba is not None:
+                        self.model.mat_rgba[mat_id] = mat_config.rgba
+                    if mat_config.specular is not None:
+                        self.model.mat_specular[mat_id] = mat_config.specular
+                    if mat_config.shininess is not None:
+                        self.model.mat_shininess[mat_id] = mat_config.shininess
+                    if mat_config.reflectance is not None:
+                        self.model.mat_reflectance[mat_id] = mat_config.reflectance
+
+        # --- Apply Light Properties ---
+        lights_map = {"top_light": "top", "scene_light": "scene_light"}
+        for config_key, light_name in lights_map.items():
+            light_config = getattr(dr_config, config_key)
+            if light_config:
+                light_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_LIGHT, light_name
+                )
+                if light_id != -1:
+                    if light_config.active is not None:
+                        self.model.light_active[light_id] = int(light_config.active)
+                    if light_config.pos is not None:
+                        self.model.light_pos[light_id] = light_config.pos
+                    if light_config.dir is not None:
+                        self.model.light_dir[light_id] = light_config.dir
+                    if light_config.diffuse is not None:
+                        self.model.light_diffuse[light_id] = light_config.diffuse
+                    if light_config.ambient is not None:
+                        self.model.light_ambient[light_id] = light_config.ambient
+                    if light_config.specular is not None:
+                        self.model.light_specular[light_id] = light_config.specular
+
+        if dr_config.headlight:
+            if dr_config.headlight.diffuse is not None:
+                self.model.vis.headlight.diffuse = dr_config.headlight.diffuse
+            if dr_config.headlight.ambient is not None:
+                self.model.vis.headlight.ambient = dr_config.headlight.ambient
+            if dr_config.headlight.specular is not None:
+                self.model.vis.headlight.specular = dr_config.headlight.specular
+
+        # --- Apply Dynamics Properties ---
+        if dr_config.object_dynamics:
+            dyn_config = dr_config.object_dynamics
+            if dyn_config.mass is not None:
+                body_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_BODY, "object0"
+                )
+                if body_id != -1:
+                    self.model.body_mass[body_id] = dyn_config.mass
+            if dyn_config.damping is not None:
+                joint_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_JOINT, "object0:joint"
+                )
+                if joint_id != -1:
+                    self.model.jnt_damping[joint_id] = dyn_config.damping
+            if dyn_config.friction is not None:
+                geom_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "object0"
+                )
+                if geom_id != -1:
+                    self.model.geom_friction[geom_id] = dyn_config.friction
+
     def _reset_distractors(self):
         """Randomize start position of distractors, ensuring they don't overlap."""
         distractor_body_names = ["distractor1_visual_body", "distractor2_visual_body"]
@@ -475,6 +562,8 @@ class Ar4Mk3Env(BaseEnv):
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]
             self.model.geom_size[geom_id] = self.object_size
+
+        self._apply_domain_randomization()
 
         self._mujoco.mj_forward(self.model, self.data)
 

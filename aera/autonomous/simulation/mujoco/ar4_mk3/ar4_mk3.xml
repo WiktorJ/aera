@@ -159,7 +159,7 @@
                                                   friction="2.0 0.01 0.01" material="transparent"/>
                                                   />
                                         </body>
-                                        <site name="grip" pos="0 0 0.0" rgba="0 0 0 0" size="0.01" type="sphere"/>
+                                        <site name="grip" pos="0 0 0.125" rgba="1 0 0 1" size="0.02" type="sphere"/>
                                     </body>
                                 </body>
                             </body>

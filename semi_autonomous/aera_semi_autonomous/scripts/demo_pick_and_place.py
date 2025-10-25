@@ -19,7 +19,13 @@ import numpy as np
 from geometry_msgs.msg import Pose, Point, Quaternion
 from scipy.spatial.transform import Rotation
 
-from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
+from aera.autonomous.envs.ar4_mk3_config import (
+    Ar4Mk3EnvConfig,
+    DomainRandConfig,
+    DynamicsConfig,
+    LightConfig,
+    MaterialConfig,
+)
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
@@ -117,6 +123,9 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--render", action="store_true", help="Enable rendering")
     parser.add_argument("--steps", type=int, default=1000, help="Max simulation steps")
+    parser.add_argument(
+        "--domain-rand", action="store_true", help="Enable domain randomization"
+    )
     args = parser.parse_args()
 
     logger = setup_logging(args.debug)
@@ -157,6 +166,25 @@ def main():
     try:
         # Initialize the environment
         logger.info("Initializing AR4 MK3 environment...")
+
+        domain_rand_config = None
+        if args.domain_rand:
+            logger.info("Enabling domain randomization")
+            domain_rand_config = DomainRandConfig(
+                object_material=MaterialConfig(rgba=(0.8, 0.2, 0.2, 1.0)),
+                target_material=MaterialConfig(rgba=(0.2, 0.8, 0.2, 0.5)),
+                floor_material=MaterialConfig(specular=0.8, shininess=0.7),
+                top_light=LightConfig(active=False),
+                scene_light=LightConfig(
+                    pos=(0.0, 0.0, 3.0),
+                    dir=(0.0, 0.0, -1.0),
+                    diffuse=(0.9, 0.9, 0.9),
+                    ambient=(0.4, 0.4, 0.4),
+                    specular=(0.9, 0.9, 0.9),
+                ),
+                object_dynamics=DynamicsConfig(mass=0.2, friction=(1.2, 0.01, 0.01)),
+            )
+
         env_config = Ar4Mk3EnvConfig(
             model_path=model_path,
             reward_type="sparse",
@@ -165,6 +193,7 @@ def main():
             quaterion=Q,
             distance_multiplier=1.2,
             z_offset=0.3,
+            domain_rand=domain_rand_config,
         )
         env = Ar4Mk3PickAndPlaceEnv(
             render_mode="human",

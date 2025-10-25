@@ -177,8 +177,8 @@
         <position class="position" name="act4" joint="joint_4" ctrlrange="-2.87979 2.87979"/>
         <position class="position3" name="act5" joint="joint_5" ctrlrange="-1.8326 1.8326"/>
         <position class="position3" name="act6" joint="joint_6" ctrlrange="-2.70526 2.70526"/>
-        <position name="act8" joint="gripper_jaw1_joint" kp="10000" ctrlrange="-0.014 0"/>
-        <position name="act9" joint="gripper_jaw2_joint" kp="10000" ctrlrange="-0.014 0"/>
+        <position name="act8" joint="gripper_jaw1_joint" kp="1000" ctrlrange="-0.014 0"/>
+        <position name="act9" joint="gripper_jaw2_joint" kp="1000" ctrlrange="-0.014 0"/>
     </actuator>
 
 

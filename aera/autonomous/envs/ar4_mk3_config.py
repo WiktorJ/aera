@@ -32,7 +32,6 @@ AVAILABLE_TEXTURES = [
     "light-gray-plaster",
     "light-wood",
     "metal",
-    "metal-dark",
     "pink-plaster",
     "red-wood",
     "soda",

@@ -496,7 +496,10 @@ class Ar4Mk3Env(BaseEnv):
 
     def _reset_distractors(self):
         """Randomize start position of distractors, ensuring they don't overlap."""
-        distractor_body_names = ["distractor1_visual_body", "distractor2_visual_body"]
+        distractor_body_names = [
+            "target_distractor1_visual_body",
+            "target_distractor2_visual_body",
+        ]
         placed_positions_2d = []
         min_dist = 0.06  # Minimum distance between centers of objects
 

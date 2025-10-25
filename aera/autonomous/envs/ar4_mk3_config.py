@@ -26,7 +26,7 @@ class Ar4Mk3EnvConfig:
     target_range: float = 0.13
     distance_threshold: float = 0.05
     reward_type: str = "sparse"
-    object_size: tuple[float, float, float] = (0.012, 0.012, 0.052)
+    object_size: tuple[float, float, float] = (0.012, 0.012, 0.062)
     use_eef_control: bool = False
     initial_qpos: dict = field(
         default_factory=lambda: {

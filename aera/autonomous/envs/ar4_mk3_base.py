@@ -39,7 +39,7 @@ class BaseEnv(MujocoRobotEnv):
             reward_type ('sparse' or 'dense'): the reward type, i.e. sparse or dense
             object_size (float or array-like with 3 elements): size of the object (box half-lengths).
         """
-
+        self.config = config
         self.gripper_extra_height = config.gripper_extra_height
         self.block_gripper = config.block_gripper
         self.has_object = config.has_object

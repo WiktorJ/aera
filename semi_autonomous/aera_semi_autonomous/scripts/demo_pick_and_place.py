@@ -173,7 +173,7 @@ def main():
             domain_rand_config = DomainRandConfig(
                 # --- Material Properties ---
                 object_material=MaterialConfig(
-                    texture_name="light-wood",
+                    texture_name="steel-brushed",
                     specular=0.9,
                     shininess=0.8,
                     reflectance=0.1,
@@ -182,19 +182,19 @@ def main():
                 distractor1_material=MaterialConfig(rgba=(0.2, 0.2, 0.8, 0.5)),
                 distractor2_material=MaterialConfig(rgba=(0.8, 0.8, 0.2, 0.5)),
                 floor_material=MaterialConfig(
-                    specular=0.8, shininess=0.7, rgba=(0.9, 0.9, 0.9, 1.0)
+                    texture_name="wood-tiles", specular=0.8, shininess=0.7
                 ),
-                wall_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
-                base_link_material=MaterialConfig(rgba=(0.5, 0.5, 0.5, 1.0)),
-                link_1_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
-                link_2_material=MaterialConfig(rgba=(0.7, 0.7, 0.7, 1.0)),
-                link_3_material=MaterialConfig(rgba=(0.8, 0.8, 0.8, 1.0)),
-                link_4_material=MaterialConfig(rgba=(0.7, 0.7, 0.7, 1.0)),
-                link_5_material=MaterialConfig(rgba=(0.6, 0.6, 0.6, 1.0)),
-                link_6_material=MaterialConfig(rgba=(0.5, 0.5, 0.5, 1.0)),
-                gripper_base_link_material=MaterialConfig(rgba=(0.4, 0.4, 0.4, 1.0)),
-                gripper_jaw1_material=MaterialConfig(rgba=(0.3, 0.3, 0.3, 1.0)),
-                gripper_jaw2_material=MaterialConfig(rgba=(0.3, 0.3, 0.3, 1.0)),
+                wall_material=MaterialConfig(texture_name="white-bricks"),
+                base_link_material=MaterialConfig(texture_name="metal"),
+                link_1_material=MaterialConfig(texture_name="gray-woodgrain"),
+                link_2_material=MaterialConfig(texture_name="gray-woodgrain"),
+                link_3_material=MaterialConfig(texture_name="gray-woodgrain"),
+                link_4_material=MaterialConfig(texture_name="gray-woodgrain"),
+                link_5_material=MaterialConfig(texture_name="gray-woodgrain"),
+                link_6_material=MaterialConfig(texture_name="gray-woodgrain"),
+                gripper_base_link_material=MaterialConfig(texture_name="brass-ambra"),
+                gripper_jaw1_material=MaterialConfig(texture_name="steel-scratched"),
+                gripper_jaw2_material=MaterialConfig(texture_name="steel-scratched"),
                 # --- Light Properties ---
                 headlight=LightConfig(
                     diffuse=(0.7, 0.7, 0.7),

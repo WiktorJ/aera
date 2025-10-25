@@ -39,14 +39,22 @@ class DynamicsConfig:
 
 @dataclasses.dataclass
 class DomainRandConfig:
-    robot_material: Optional[MaterialConfig] = None
-    robot_link_material: Optional[MaterialConfig] = None
     object_material: Optional[MaterialConfig] = None
     target_material: Optional[MaterialConfig] = None
     distractor1_material: Optional[MaterialConfig] = None
     distractor2_material: Optional[MaterialConfig] = None
     floor_material: Optional[MaterialConfig] = None
     wall_material: Optional[MaterialConfig] = None
+    base_link_material: Optional[MaterialConfig] = None
+    link_1_material: Optional[MaterialConfig] = None
+    link_2_material: Optional[MaterialConfig] = None
+    link_3_material: Optional[MaterialConfig] = None
+    link_4_material: Optional[MaterialConfig] = None
+    link_5_material: Optional[MaterialConfig] = None
+    link_6_material: Optional[MaterialConfig] = None
+    gripper_base_link_material: Optional[MaterialConfig] = None
+    gripper_jaw1_material: Optional[MaterialConfig] = None
+    gripper_jaw2_material: Optional[MaterialConfig] = None
     headlight: Optional[LightConfig] = None
     top_light: Optional[LightConfig] = None
     scene_light: Optional[LightConfig] = None

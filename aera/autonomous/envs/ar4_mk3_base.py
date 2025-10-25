@@ -379,14 +379,22 @@ class Ar4Mk3Env(BaseEnv):
 
         # --- Apply Material Properties ---
         materials_map = {
-            "robot_material": "black",
-            "robot_link_material": "robot_link_material",
             "object_material": "gray",
             "target_material": "target_mat",
             "distractor1_material": "distractor1_mat",
             "distractor2_material": "distractor2_mat",
             "floor_material": "groundplane",
             "wall_material": "wallmaterial",
+            "base_link_material": "base_link_mat",
+            "link_1_material": "link_1_mat",
+            "link_2_material": "link_2_mat",
+            "link_3_material": "link_3_mat",
+            "link_4_material": "link_4_mat",
+            "link_5_material": "link_5_mat",
+            "link_6_material": "link_6_mat",
+            "gripper_base_link_material": "gripper_base_link_mat",
+            "gripper_jaw1_material": "gripper_jaw1_mat",
+            "gripper_jaw2_material": "gripper_jaw2_mat",
         }
         for config_key, mat_name in materials_map.items():
             mat_config = getattr(dr_config, config_key)

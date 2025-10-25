@@ -353,6 +353,18 @@ class Ar4Mk3Env(BaseEnv):
                 "Grip Position (x, y, z)",
                 f"{grip_pos[0]:.3f}, {grip_pos[1]:.3f}, {grip_pos[2]:.3f}",
             )
+            if self.has_object:
+                object_pos = self._utils.get_site_xpos(self.model, self.data, "object0")
+                object_rot = self._utils.get_site_xmat(
+                    self.model, self.data, "object0"
+                ).reshape(3, 3)
+                top_offset_local = np.array([0, 0, self.object_size[2]])
+                top_pos_world = object_pos + object_rot @ top_offset_local
+                self.mujoco_renderer.viewer.add_overlay(
+                    self._mujoco.mjtGridPos.mjGRID_TOPLEFT,
+                    "Object Top (x, y, z)",
+                    f"{top_pos_world[0]:.3f}, {top_pos_world[1]:.3f}, {top_pos_world[2]:.3f}",
+                )
 
         self._mujoco.mj_forward(self.model, self.data)
 

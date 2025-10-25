@@ -380,6 +380,7 @@ class Ar4Mk3Env(BaseEnv):
         # --- Apply Material Properties ---
         materials_map = {
             "robot_material": "black",
+            "robot_link_material": "robot_link_material",
             "object_material": "gray",
             "target_material": "target_mat",
             "distractor1_material": "distractor1_mat",

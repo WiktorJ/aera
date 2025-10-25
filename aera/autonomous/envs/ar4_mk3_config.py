@@ -40,6 +40,7 @@ class DynamicsConfig:
 @dataclasses.dataclass
 class DomainRandConfig:
     robot_material: Optional[MaterialConfig] = None
+    robot_link_material: Optional[MaterialConfig] = None
     object_material: Optional[MaterialConfig] = None
     target_material: Optional[MaterialConfig] = None
     distractor1_material: Optional[MaterialConfig] = None

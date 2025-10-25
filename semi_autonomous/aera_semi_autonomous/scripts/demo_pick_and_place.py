@@ -173,7 +173,7 @@ def main():
             domain_rand_config = DomainRandConfig(
                 # --- Material Properties ---
                 object_material=MaterialConfig(
-                    rgba=(0.8, 0.2, 0.2, 1.0),
+                    texture_name="light-wood",
                     specular=0.9,
                     shininess=0.8,
                     reflectance=0.1,

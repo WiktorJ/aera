@@ -403,8 +403,27 @@ class Ar4Mk3Env(BaseEnv):
                     self.model, self._mujoco.mjtObj.mjOBJ_MATERIAL, mat_name
                 )
                 if mat_id != -1:
-                    if mat_config.rgba is not None:
+                    if mat_config.texture_name:
+                        tex_id = self._mujoco.mj_name2id(
+                            self.model,
+                            self._mujoco.mjtObj.mjOBJ_TEXTURE,
+                            mat_config.texture_name,
+                        )
+                        if tex_id != -1:
+                            self.model.mat_texid[mat_id] = tex_id
+                            # When using a texture, we can also apply a color tint.
+                            # If no color is specified, default to white to show original texture colors.
+                            if mat_config.rgba is not None:
+                                self.model.mat_rgba[mat_id] = mat_config.rgba
+                            else:
+                                self.model.mat_rgba[mat_id] = [1.0, 1.0, 1.0, 1.0]
+                        else:
+                            print(
+                                f"Warning: Texture '{mat_config.texture_name}' not found in model."
+                            )
+                    elif mat_config.rgba is not None:
                         self.model.mat_rgba[mat_id] = mat_config.rgba
+
                     if mat_config.specular is not None:
                         self.model.mat_specular[mat_id] = mat_config.specular
                     if mat_config.shininess is not None:

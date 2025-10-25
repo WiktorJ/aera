@@ -14,6 +14,7 @@ DEFAULT_CAMERA_CONFIG = {
 
 @dataclasses.dataclass
 class MaterialConfig:
+    texture_name: Optional[str] = None
     rgba: Optional[Sequence[float]] = None
     specular: Optional[float] = None
     shininess: Optional[float] = None

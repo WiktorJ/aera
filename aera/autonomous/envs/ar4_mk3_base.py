@@ -52,9 +52,9 @@ class BaseEnv(MujocoRobotEnv):
             self.object_size = np.array([config.object_size] * 3)
         else:
             self.object_size = np.array(config.object_size)
-        assert self.object_size.shape == (
-            3,
-        ), "object_size must be a float or a 3-element array-like"
+        assert self.object_size.shape == (3,), (
+            "object_size must be a float or a 3-element array-like"
+        )
         self.use_eef_control = config.use_eef_control
 
         super().__init__(
@@ -346,9 +346,9 @@ class Ar4Mk3Env(BaseEnv):
         self.model.site_pos[site_id] = self.goal
 
         # Display grip position
-        if self.render_mode == "human" and self._mujoco_renderer.viewer:
+        if self.render_mode == "human" and self.mujoco_renderer.viewer:
             grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
-            self._mujoco_renderer.viewer.add_overlay(
+            self.mujoco_renderer.viewer.add_overlay(
                 self._mujoco.mjtGridPos.mjGRID_TOPLEFT,
                 "Grip Position (x, y, z)",
                 f"{grip_pos[0]:.3f}, {grip_pos[1]:.3f}, {grip_pos[2]:.3f}",

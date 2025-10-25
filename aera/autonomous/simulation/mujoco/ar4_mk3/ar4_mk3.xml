@@ -139,7 +139,7 @@
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
                         range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="black" contype="0" conaffinity="0" group="2"/>
-                                            <geom name="gripper_jaw1_contact" size="0.0001 0.0115 0.0088" pos="-0.0005 -0.0167 0.0126" 
+                                            <geom name="gripper_jaw1_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 
                                                   solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
                                                   friction="2.0 0.01 0.01" material="transparent"/>
@@ -153,10 +153,10 @@
                                             <joint name="gripper_jaw2_joint" pos="0 0 0" axis="1 0 0" type="slide"
                         range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw2_link" material="black" contype="0" conaffinity="0" group="2"/>
-                                            <geom name="gripper_jaw2_contact" size="0.0001 0.0115 0.0088" pos="-0.0005 -0.0167 0.0126" 
+                                            <geom name="gripper_jaw2_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126" 
                                                   type="box" contype="1" conaffinity="1" condim="4" 
                                                   solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
-                                                  friction="2.0 0.01 0.01" material="transparent"/>
+                                                  friction="1.0 0.01 0.01" material="transparent"/>
                                                   />
                                         </body>
                                         <site name="grip" pos="0 0 0.062" rgba="1 0 0 1" size="0.002" type="sphere"/>
@@ -177,8 +177,8 @@
         <position class="position" name="act4" joint="joint_4" ctrlrange="-2.87979 2.87979"/>
         <position class="position3" name="act5" joint="joint_5" ctrlrange="-1.8326 1.8326"/>
         <position class="position3" name="act6" joint="joint_6" ctrlrange="-2.70526 2.70526"/>
-        <position name="act8" joint="gripper_jaw1_joint" kp="1000" ctrlrange="-0.014 0"/>
-        <position name="act9" joint="gripper_jaw2_joint" kp="1000" ctrlrange="-0.014 0"/>
+        <position name="act8" joint="gripper_jaw1_joint" kp="5000" ctrlrange="-0.014 0"/>
+        <position name="act9" joint="gripper_jaw2_joint" kp="5000" ctrlrange="-0.014 0"/>
     </actuator>
 
 

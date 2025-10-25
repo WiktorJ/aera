@@ -604,6 +604,10 @@ class Ar4Mk3Env(BaseEnv):
         if self.has_object:
             geom_id = self._model_names.geom_name2id["object0"]
             self.model.geom_size[geom_id] = self.object_size
+            distractor1_geom_id = self._model_names.geom_name2id["object_distractor1"]
+            self.model.geom_size[distractor1_geom_id] = self.object_size
+            distractor2_geom_id = self._model_names.geom_name2id["object_distractor2"]
+            self.model.geom_size[distractor2_geom_id] = self.object_size
 
         self._apply_domain_randomization()
 

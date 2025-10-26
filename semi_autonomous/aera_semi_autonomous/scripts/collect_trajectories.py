@@ -175,7 +175,9 @@ def main():
     """Main function to collect trajectories."""
     parser = argparse.ArgumentParser(description="AR4 MK3 Trajectory Collection")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--render", action="store_true", help="Enable rendering")
+    parser.add_argument(
+        "--render", default="human", action="store_true", help="Enable rendering"
+    )
     parser.add_argument(
         "--num-trajectories",
         type=int,

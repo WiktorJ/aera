@@ -33,6 +33,6 @@ class Ar4Mk3InterfaceConfig:
     ik_max_steps: int = 5000
     ik_min_height: float = 0.005
     ik_include_rotation_in_target_error_measure: bool = False
-    ik_nullspace_gain: typing.List[float] = field(
-        default_factory=lambda: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+    ik_joints_update_scaling: typing.List[float] = field(
+        default_factory=lambda: [1.0, 1.0, 1.0, 0.01, 1.0, 1.0]
     )

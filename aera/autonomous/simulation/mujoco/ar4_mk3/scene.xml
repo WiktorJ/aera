@@ -32,7 +32,6 @@
     <texture type="2d" name="light-gray-plaster" file="../../textures/light-gray-plaster.png"/>
     <texture type="2d" name="light-wood" file="../../textures/light-wood.png"/>
     <texture type="2d" name="metal" file="../../textures/metal.png"/>
-    <texture type="2d" name="metal-dark" file="../../textures/metal-dark.png"/>
     <texture type="2d" name="pink-plaster" file="../../textures/pink-plaster.png"/>
     <texture type="2d" name="red-wood" file="../../textures/red-wood.png"/>
     <texture type="2d" name="soda" file="../../textures/soda.png"/>

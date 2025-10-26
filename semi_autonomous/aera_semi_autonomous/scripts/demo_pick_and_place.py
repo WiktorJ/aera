@@ -74,7 +74,7 @@ def get_object_pose(env) -> Optional[Pose]:
             # If the object is longer along its y-axis (dy > dx), we want to
             # align the gripper with the object's y-axis. This requires an
             # additional 90-degree rotation.
-            if geom_size[1] > geom_size[0]:
+            if geom_size[1] < geom_size[0]:
                 additional_yaw = 90.0
 
         # MuJoCo quat is w,x,y,z. Scipy is x,y,z,w
@@ -212,21 +212,12 @@ def main():
                 ),
                 # --- Dynamics Properties ---
                 object_dynamics=DynamicsConfig(
-                    mass=0.2,
-                    friction=(1.2, 0.01, 0.01),
-                    damping=0.02,
-                    size=(0.01, 0.015, 0.012),
+                    size=(0.012, 0.01, 0.012),
                 ),
                 object_distractor1_dynamics=DynamicsConfig(
-                    mass=0.2,
-                    friction=(1.2, 0.01, 0.01),
-                    damping=0.02,
                     size=(0.015, 0.01, 0.012),
                 ),
                 object_distractor2_dynamics=DynamicsConfig(
-                    mass=0.2,
-                    friction=(1.2, 0.01, 0.01),
-                    damping=0.02,
                     size=(0.01, 0.01, 0.012),
                 ),
             )

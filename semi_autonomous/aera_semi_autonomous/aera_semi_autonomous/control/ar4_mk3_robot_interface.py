@@ -194,7 +194,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         success = False
         steps = 0
         failure_reason = "Unknown"
-        nullspace_gain = np.asarray(self.config.ik_nullspace_gain)
+        joints_update_scaling = np.asarray(self.config.ik_joints_update_scaling)
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
@@ -227,9 +227,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
             mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())  # type: ignore
-            self.logger.debug(
-                f"IK step {steps}: current pose: pos={site_xpos}, quat={site_quat}"
-            )
             neg_site_quat = np.empty(4, dtype=dtype)
             mujoco.mju_negQuat(neg_site_quat, site_quat)  # type: ignore
             err_rot_quat = np.empty(4, dtype=dtype)
@@ -255,15 +252,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
-            # Nullspace projection for redundancy resolution, pulling towards home config
-            nullspace_projector = (
-                np.eye(len(dof_indices)) - np.linalg.pinv(jac_joints) @ jac_joints
-            )
-            nullspace_term = nullspace_projector @ (
-                nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
-            )
-            update_joints += nullspace_term
-            update_joints[3] = 0
+            update_joints *= joints_update_scaling
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm > self.config.ik_max_update_norm:

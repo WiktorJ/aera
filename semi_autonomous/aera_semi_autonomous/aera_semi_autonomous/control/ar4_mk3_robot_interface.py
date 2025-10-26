@@ -59,10 +59,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Sets the data collector for recording trajectories."""
         self.data_collector = data_collector
 
-    def _create_joint_state_msg(self) -> JointState:
+    def _create_joint_state_msg(self, now: float) -> JointState:
         """Creates a JointState message from the current simulation state."""
         msg = JointState()
-        now = time.time()
         sec = int(now)
         nanosec = int((now - sec) * 1e9)
         # Create a mock stamp object that has sec and nanosec attributes
@@ -87,9 +86,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         return msg
 
-    def _create_image_msg(self, image_array: np.ndarray, encoding: str) -> Image:
+    def _create_image_msg(self, image_array: np.ndarray, encoding: str, now: float) -> Image:
         """Creates an Image message from a numpy array."""
-        now = time.time()
         sec = int(now)
         nanosec = int((now - sec) * 1e9)
         # Create a mock stamp object that has sec and nanosec attributes
@@ -108,7 +106,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _record_step(self):
         """Records a single step of simulation data if a data collector is set."""
         if self.data_collector:
-            joint_state_msg = self._create_joint_state_msg()
+            now = time.time()
+            joint_state_msg = self._create_joint_state_msg(now)
             self.data_collector.record_joint_state(joint_state_msg)
 
             ros_timestamp = (
@@ -118,12 +117,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             rgb_img = self.get_latest_rgb_image()
             if rgb_img is not None:
-                rgb_msg = self._create_image_msg(rgb_img, "rgb8")
+                rgb_msg = self._create_image_msg(rgb_img, "rgb8", now)
                 self.data_collector.record_rgb_image(rgb_msg)
 
             depth_img = self.get_latest_depth_image()
             if depth_img is not None:
-                depth_msg = self._create_image_msg(depth_img, "32FC1")
+                depth_msg = self._create_image_msg(depth_img, "32FC1", now)
                 self.data_collector.record_depth_image(depth_msg)
 
             pose = self.get_end_effector_pose()

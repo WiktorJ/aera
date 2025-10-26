@@ -216,7 +216,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
         for steps in range(self.config.ik_max_steps):
-            # Log ccurrent poste AI!
             site_xpos = data.site_xpos[site_id]
 
             err_pos[:] = (
@@ -228,6 +227,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
             site_quat = np.empty(4, dtype=dtype)
             mujoco.mju_mat2Quat(site_quat, site_xmat.flatten())  # type: ignore
+            self.logger.debug(
+                f"IK step {steps}: current pose: pos={site_xpos}, quat={site_quat}"
+            )
             neg_site_quat = np.empty(4, dtype=dtype)
             mujoco.mju_negQuat(neg_site_quat, site_quat)  # type: ignore
             err_rot_quat = np.empty(4, dtype=dtype)

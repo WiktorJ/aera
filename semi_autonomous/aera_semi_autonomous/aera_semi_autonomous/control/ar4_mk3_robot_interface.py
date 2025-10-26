@@ -194,8 +194,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         success = False
         steps = 0
         failure_reason = "Unknown"
-        # Increased nullspace gain to encourage solutions closer to the home configuration,
-        # which helps avoid undesirable solutions like the arm going through the floor.
         nullspace_gain = np.asarray(self.config.ik_nullspace_gain)
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
@@ -218,6 +216,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
         for steps in range(self.config.ik_max_steps):
+            # Log ccurrent poste AI!
             site_xpos = data.site_xpos[site_id]
 
             err_pos[:] = (
@@ -235,11 +234,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)  # type: ignore
             mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
             err_norm = np.linalg.norm(target_pos - site_xpos)
+            err_rot *= self.config.ik_orientation_gain / self.config.ik_integration_dt
 
             if self.config.ik_include_rotation_in_target_error_measure:
                 err_norm += np.linalg.norm(err_rot)
-
-            err_rot *= self.config.ik_orientation_gain / self.config.ik_integration_dt
 
             if err_norm < ik_tol:
                 success = True
@@ -263,6 +261,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 nullspace_gain * (home_joint_configuration - data.qpos[qpos_indices])
             )
             update_joints += nullspace_term
+            update_joints[3] = 0
             update_norm = np.linalg.norm(update_joints)
 
             if update_norm > self.config.ik_max_update_norm:

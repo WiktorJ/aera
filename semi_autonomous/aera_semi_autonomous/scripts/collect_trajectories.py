@@ -179,18 +179,19 @@ def main():
     parser.add_argument(
         "--num-trajectories",
         type=int,
-        default=10,
+        default=1,
         help="Number of trajectories to collect",
     )
     parser.add_argument(
-        "--save-dir", type=str, default="rl_training_data", help="Directory to save data"
+        "--save-dir",
+        type=str,
+        default="rl_training_data",
+        help="Directory to save data",
     )
     args = parser.parse_args()
 
     logger = setup_logging(args.debug)
-    logger.info(
-        f"Starting trajectory collection for {args.num_trajectories} episodes."
-    )
+    logger.info(f"Starting trajectory collection for {args.num_trajectories} episodes.")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
@@ -204,7 +205,7 @@ def main():
 
     successful_collections = 0
     for i in range(args.num_trajectories):
-        logger.info(f"--- Starting trajectory {i+1}/{args.num_trajectories} ---")
+        logger.info(f"--- Starting trajectory {i + 1}/{args.num_trajectories} ---")
         env = None
         try:
             (
@@ -257,7 +258,7 @@ def main():
 
         except Exception as e:
             logger.error(
-                f"Trajectory {i+1} failed with exception: {e}", exc_info=True
+                f"Trajectory {i + 1} failed with exception: {e}", exc_info=True
             )
         finally:
             if env:

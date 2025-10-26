@@ -43,3 +43,19 @@ https://github.com/wiktorj/sim-robotic-arm-rl/
 https://www.anninrobotics.com/ - For arm design
 
 https://github.com/ycheng517 - for AR4 MK3 arm drivers and calibration software
+
+
+# Installation tips:
+
+When using mamba run the following:
+
+`mamba install -c conda-forge numpy scipy opencv`
+
+`mamba install -c conda-forge compilers cmake pkg-config make ninja colcon-common-extensions catkin_tools rosdep`
+
+`mamba install -c robostack-jazzy -c conda-forge ros-jazzy-geometry-msgs`
+
+`pip install -e .`
+
+
+

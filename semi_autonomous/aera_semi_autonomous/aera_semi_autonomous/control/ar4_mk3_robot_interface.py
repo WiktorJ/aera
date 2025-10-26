@@ -6,14 +6,18 @@ from typing import Any, Dict, Optional
 import mujoco
 import numpy as np
 import open3d as o3d
+from cv_bridge import CvBridge
 from geometry_msgs.msg import Pose
 from scipy.spatial.transform import Rotation
+from sensor_msgs.msg import Image, JointState
+from std_msgs.msg import Header
 
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
 )
 from aera_semi_autonomous.control.robot_interface import RobotInterface
+from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 
 
 class Ar4Mk3RobotInterface(RobotInterface):
@@ -26,6 +30,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.env = env
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.data_collector: Optional[TrajectoryDataCollector] = None
+        self.cv_bridge = CvBridge()
 
         # Camera configuration
         self.camera_config = self.config.camera_config
@@ -48,6 +54,81 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
         self.actuator_names = [f"act{i}" for i in range(1, 7)]
+
+    def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
+        """Sets the data collector for recording trajectories."""
+        self.data_collector = data_collector
+
+    def _create_joint_state_msg(self) -> JointState:
+        """Creates a JointState message from the current simulation state."""
+        msg = JointState()
+        now = time.time()
+        sec = int(now)
+        nanosec = int((now - sec) * 1e9)
+        # Create a mock stamp object that has sec and nanosec attributes
+        stamp = type("stamp", (), {"sec": sec, "nanosec": nanosec})()
+        msg.header = Header(stamp=stamp)
+
+        # Arm joints
+        arm_joint_names = [f"joint_{i}" for i in range(1, 7)]
+        qpos_indices = self._get_qpos_indices(self.env.model, arm_joint_names)
+        dof_indices = self._get_dof_indices(self.env.model, arm_joint_names)
+        msg.name.extend(arm_joint_names)
+        msg.position.extend(self.env.data.qpos[qpos_indices])
+        msg.velocity.extend(self.env.data.qvel[dof_indices])
+
+        # Gripper joints
+        gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
+        qpos_indices = self._get_qpos_indices(self.env.model, gripper_joint_names)
+        dof_indices = self._get_dof_indices(self.env.model, gripper_joint_names)
+        msg.name.extend(gripper_joint_names)
+        msg.position.extend(self.env.data.qpos[qpos_indices])
+        msg.velocity.extend(self.env.data.qvel[dof_indices])
+
+        return msg
+
+    def _create_image_msg(self, image_array: np.ndarray, encoding: str) -> Image:
+        """Creates an Image message from a numpy array."""
+        now = time.time()
+        sec = int(now)
+        nanosec = int((now - sec) * 1e9)
+        # Create a mock stamp object that has sec and nanosec attributes
+        stamp = type("stamp", (), {"sec": sec, "nanosec": nanosec})()
+        header = Header(stamp=stamp)
+
+        # The cv_bridge in trajectory_data_collector expects bgr8 for rgb
+        if encoding == "rgb8":
+            image_array = image_array[..., ::-1]  # RGB to BGR
+            encoding = "bgr8"
+
+        img_msg = self.cv_bridge.cv2_to_imgmsg(image_array, encoding=encoding)
+        img_msg.header = header
+        return img_msg
+
+    def _record_step(self):
+        """Records a single step of simulation data if a data collector is set."""
+        if self.data_collector:
+            joint_state_msg = self._create_joint_state_msg()
+            self.data_collector.record_joint_state(joint_state_msg)
+
+            ros_timestamp = (
+                joint_state_msg.header.stamp.sec
+                + joint_state_msg.header.stamp.nanosec * 1e-9
+            )
+
+            rgb_img = self.get_latest_rgb_image()
+            if rgb_img is not None:
+                rgb_msg = self._create_image_msg(rgb_img, "rgb8")
+                self.data_collector.record_rgb_image(rgb_msg)
+
+            depth_img = self.get_latest_depth_image()
+            if depth_img is not None:
+                depth_msg = self._create_image_msg(depth_img, "32FC1")
+                self.data_collector.record_depth_image(depth_msg)
+
+            pose = self.get_end_effector_pose()
+            if pose:
+                self.data_collector.record_pose(pose, ros_timestamp)
 
     def _nullspace_method(
         self,
@@ -153,6 +234,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
 
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+                self._record_step()
                 self.env.render()
 
             # Verify final position
@@ -279,6 +361,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             previous_site_xpos = site_xpos.copy()
             mujoco.mj_step(model, data)  # type: ignore
+            self._record_step()
 
             new_site_xpos = data.site_xpos[site_id]
             if new_site_xpos[2] < self.config.ik_min_height:
@@ -370,6 +453,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 interpolated_qpos = (1 - alpha) * start_qpos + alpha * target_qpos
                 self.env.data.ctrl[actuator_ids] = interpolated_qpos
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+                self._record_step()
                 self.env.render()
 
             # Verify final joint positions

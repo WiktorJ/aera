@@ -30,7 +30,7 @@ class Ar4Mk3InterfaceConfig:
     ik_integration_dt: float = 0.1
     ik_pos_gain: float = 0.95
     ik_orientation_gain: float = 0.95
-    ik_max_steps: int = 5000
+    ik_max_steps: int = 1000
     ik_min_height: float = 0.005
     ik_include_rotation_in_target_error_measure: bool = False
     ik_joints_update_scaling: typing.List[float] = field(

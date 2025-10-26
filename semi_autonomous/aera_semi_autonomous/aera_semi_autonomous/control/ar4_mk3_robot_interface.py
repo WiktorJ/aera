@@ -86,7 +86,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         return msg
 
-    def _create_image_msg(self, image_array: np.ndarray, encoding: str, now: float) -> Image:
+    def _create_image_msg(
+        self, image_array: np.ndarray, encoding: str, now: float
+    ) -> Image:
         """Creates an Image message from a numpy array."""
         sec = int(now)
         nanosec = int((now - sec) * 1e9)

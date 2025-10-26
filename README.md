@@ -49,13 +49,12 @@ https://github.com/ycheng517 - for AR4 MK3 arm drivers and calibration software
 
 When using mamba run the following:
 
-`mamba install -c conda-forge numpy scipy opencv`
-
 `mamba install -c conda-forge compilers cmake pkg-config make ninja colcon-common-extensions catkin_tools rosdep`
 
-`mamba install -c robostack-jazzy -c conda-forge ros-jazzy-geometry-msgs`
+`mamba install -c robostack-jazzy -c conda-forge ros-jazzy-geometry-msgs ros-jazzy-sensor-msgs open3d glfw  numpy scipy opencv`
 
 `pip install -e .`
 
-
+In semi-autonomous/aera_semi_autonomous:
+`pip install -e . --use-pep517`
 

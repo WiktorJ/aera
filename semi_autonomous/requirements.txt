@@ -6,3 +6,5 @@ torchvision
 supervision
 scipy
 segment-anything
+sortedcontainers
+cv-bridge

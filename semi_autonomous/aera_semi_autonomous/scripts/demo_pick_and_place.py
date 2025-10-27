@@ -243,7 +243,7 @@ def main():
 
         # Initialize robot interface
         logger.info("Initializing robot interface...")
-        interface_config = Ar4Mk3InterfaceConfig()
+        interface_config = Ar4Mk3InterfaceConfig(render_steps=True)
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")
 

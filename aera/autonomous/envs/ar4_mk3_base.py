@@ -383,6 +383,8 @@ class Ar4Mk3Env(BaseEnv):
             "target_material": "target_mat",
             "distractor1_material": "distractor1_mat",
             "distractor2_material": "distractor2_mat",
+            "object_distractor1_material": "object_distractor1_mat",
+            "object_distractor2_material": "object_distractor2_mat",
             "floor_material": "groundplane",
             "wall_material": "wallmaterial",
             "base_link_material": "base_link_mat",
@@ -441,7 +443,11 @@ class Ar4Mk3Env(BaseEnv):
                         self.model.mat_reflectance[mat_id] = mat_config.reflectance
 
         # --- Apply Light Properties ---
-        lights_map = {"top_light": "top", "scene_light": "scene_light"}
+        lights_map = {
+            "top_light": "top",
+            "scene_light": "scene_lighta",
+            "headlight": "scene_light",
+        }
         for config_key, light_name in lights_map.items():
             light_config = getattr(dr_config, config_key)
             if light_config:
@@ -494,9 +500,9 @@ class Ar4Mk3Env(BaseEnv):
                     if joint_id != -1:
                         dof_adr = self.model.jnt_dofadr[joint_id]
                         # A free joint has 6 DoFs
-                        self.model.dof_damping[
-                            dof_adr : dof_adr + 6
-                        ] = dyn_config.damping
+                        self.model.dof_damping[dof_adr : dof_adr + 6] = (
+                            dyn_config.damping
+                        )
                 if dyn_config.friction is not None:
                     geom_id = self._mujoco.mj_name2id(
                         self.model, self._mujoco.mjtObj.mjOBJ_GEOM, object_name
@@ -580,16 +586,12 @@ class Ar4Mk3Env(BaseEnv):
             while np.linalg.norm(object_xpos - self.initial_gripper_xpos[:2]) < 0.05:
                 object_xpos[0] = (
                     self.initial_gripper_xpos[0]
-                    + self.np_random.uniform(
-                        -self.obj_range[0], self.obj_range[0]
-                    )
+                    + self.np_random.uniform(-self.obj_range[0], self.obj_range[0])
                     + self.obj_offset[0]
                 )
                 object_xpos[1] = (
                     self.initial_gripper_xpos[1]
-                    + self.np_random.uniform(
-                        -self.obj_range[1], self.obj_range[1]
-                    )
+                    + self.np_random.uniform(-self.obj_range[1], self.obj_range[1])
                     + self.obj_offset[1]
                 )
             placed_object_positions_2d.append(object_xpos)

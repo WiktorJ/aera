@@ -43,6 +43,14 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         target_distractor1_color_name,
         target_distractor2_color_name,
     ) = random.sample(list(NAMED_COLORS.keys()), 6)
+    print(
+        f"Object color: {object_color_name}\n"
+        f"Target color: {target_color_name}\n"
+        f"Object distractor 1 color: {object_distractor1_color_name}\n"
+        f"Object distractor 2 color: {object_distractor2_color_name}\n"
+        f"Target distractor 1 color: {target_distractor1_color_name}\n"
+        f"Target distractor 2 color: {target_distractor2_color_name}"
+    )
 
     object_rgba = NAMED_COLORS[object_color_name]
     target_rgba = NAMED_COLORS[target_color_name]
@@ -53,8 +61,18 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
 
     # Make target and its distractors semi-transparent
     target_rgba = (target_rgba[0], target_rgba[1], target_rgba[2], 0.5)
-    target_distractor1_rgba = (target_distractor1_rgba[0], target_distractor1_rgba[1], target_distractor1_rgba[2], 0.5)
-    target_distractor2_rgba = (target_distractor2_rgba[0], target_distractor2_rgba[1], target_distractor2_rgba[2], 0.5)
+    target_distractor1_rgba = (
+        target_distractor1_rgba[0],
+        target_distractor1_rgba[1],
+        target_distractor1_rgba[2],
+        0.5,
+    )
+    target_distractor2_rgba = (
+        target_distractor2_rgba[0],
+        target_distractor2_rgba[1],
+        target_distractor2_rgba[2],
+        0.5,
+    )
 
     # --- Material Randomization ---
     object_material = MaterialConfig(
@@ -134,7 +152,9 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         return DynamicsConfig(
             size=np.random.uniform([0.01, 0.01, 0.01], [0.015, 0.015, 0.015]).tolist(),
             mass=random.uniform(0.05, 0.15),
-            friction=np.random.uniform([1.5, 0.005, 0.005], [2.5, 0.015, 0.015]).tolist(),
+            friction=np.random.uniform(
+                [1.5, 0.005, 0.005], [2.5, 0.015, 0.015]
+            ).tolist(),
             damping=random.uniform(0.005, 0.015),
         )
 

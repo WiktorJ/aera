@@ -176,7 +176,10 @@ def main():
     parser = argparse.ArgumentParser(description="AR4 MK3 Trajectory Collection")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument(
-        "--render", default="human", action="store_true", help="Enable rendering"
+        "--render",
+        type=bool,
+        default=False,
+        help="Enable rendering",
     )
     parser.add_argument(
         "--num-trajectories",
@@ -232,7 +235,7 @@ def main():
             )
             _, _ = env.reset()
 
-            interface_config = Ar4Mk3InterfaceConfig()
+            interface_config = Ar4Mk3InterfaceConfig(render_steps=args.render)
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
 
             data_collector = TrajectoryDataCollector(

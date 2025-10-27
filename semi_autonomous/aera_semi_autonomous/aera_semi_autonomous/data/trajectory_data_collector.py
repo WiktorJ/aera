@@ -47,7 +47,7 @@ class TrajectoryDataCollector:
         # Data collection state
         self.is_collecting = False
         self.current_episode_data = {}
-        self.episode_id = None
+        self.episode_id = self._generate_episode_id()
         self.episode_directory = None
 
         # Synchronized data buffers using SortedDict for O(log n) operations
@@ -86,7 +86,6 @@ class TrajectoryDataCollector:
             self.stop_episode()
 
         self.episode_id = episode_id if episode_id else self._generate_episode_id()
-        self.episode_directory = self._create_episode_directory(self.episode_id)
         self.current_prompt = None
 
         self.current_episode_data = {
@@ -149,6 +148,7 @@ class TrajectoryDataCollector:
 
         self.logger.info(f"Stopped RL data collection for episode: {self.episode_id}.")
         if save_data:
+            self.episode_directory = self._create_episode_directory(self.episode_id)
             episode_file = self.save_episode_data()
             self.logger.info(
                 f"Saved episode data to: {episode_file}"

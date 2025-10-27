@@ -23,6 +23,7 @@ class Ar4Mk3InterfaceConfig:
     go_home_interpolation_steps: int = 100
     home_qpos_error_tolerance: float = 1e-3
     gripper_pos_tolerance: float = 1e-3
+    render_steps: bool = False
     ik_tolerance: float = 1e-3
     ik_regularization_threshold: float = 1e-5
     ik_regularization_strength: float = 1e-3

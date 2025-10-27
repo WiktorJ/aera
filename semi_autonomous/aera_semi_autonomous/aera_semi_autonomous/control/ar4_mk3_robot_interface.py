@@ -236,7 +236,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self._record_step()
-                self.env.render()
+                if self.config.render_steps:
+                    self.env.render()
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
@@ -370,7 +371,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {self.config.ik_min_height})"
                 break
 
-            self.env.render()
+            if self.config.render_steps:
+                self.env.render()
         else:
             success = False
             failure_reason = f"Max steps ({self.config.ik_max_steps}) reached"
@@ -455,7 +457,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.env.data.ctrl[actuator_ids] = interpolated_qpos
                 mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
                 self._record_step()
-                self.env.render()
+                if self.config.render_steps:
+                    self.env.render()
 
             # Verify final joint positions
             final_qpos = self.env.data.qpos[qpos_indices]
@@ -599,6 +602,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.warning(
                     "Release succeeded, but failed to move up afterwards."
                 )
+                return False
 
             return True
         except Exception as e:

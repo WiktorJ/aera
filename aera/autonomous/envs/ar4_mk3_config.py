@@ -108,7 +108,7 @@ class Ar4Mk3EnvConfig:
     block_gripper: bool = False
     has_object: bool = True
     target_in_the_air: bool = False
-    target_offset: tuple[float, float, float] = (0.0, -0.04, 0.02)
+    target_offset: tuple[float, float, float] = (0.0, -0.04, 0.03)
     obj_range: tuple[float, float] = (0.09, 0.08)
     obj_offset: tuple[float, float] = (0.0, -0.04)
     target_range: float = 0.13

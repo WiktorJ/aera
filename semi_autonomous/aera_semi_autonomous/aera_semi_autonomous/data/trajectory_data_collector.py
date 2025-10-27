@@ -121,7 +121,7 @@ class TrajectoryDataCollector:
         self.logger.info(f"Started RL data collection for episode: {self.episode_id}")
         return self.episode_id
 
-    def stop_episode(self) -> None:
+    def stop_episode(self, save_data: bool = True) -> None:
         """
         Stop the current data collection episode and return collected data.
 
@@ -147,14 +147,15 @@ class TrajectoryDataCollector:
             self._compute_sync_statistics()
         )
 
-        # Save episode data
-        episode_file = self.save_episode_data()
-
-        self.logger.info(
-            f"Stopped RL data collection for episode: {self.episode_id}. "
-            f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
-            f"Saved to: {episode_file}"
-        )
+        self.logger.info(f"Stopped RL data collection for episode: {self.episode_id}.")
+        if save_data:
+            episode_file = self.save_episode_data()
+            self.logger.info(
+                f"Saved episode data to: {episode_file}"
+                f"Collected {len(self.current_episode_data['trajectory_data'])} trajectory points. "
+            )
+        else:
+            self.logger.info(f"Eposied data for episode: {self.episode_id} not saved")
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """

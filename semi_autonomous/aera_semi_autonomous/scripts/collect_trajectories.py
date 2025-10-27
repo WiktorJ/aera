@@ -6,7 +6,6 @@ Script for collecting pick-and-place trajectories with domain randomization.
 import argparse
 import logging
 import os
-import uuid
 from typing import Optional
 
 import numpy as np
@@ -25,11 +24,13 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
-Q = (
-    -0.36336720179946663,
-    -0.8203835174702869,
-    0.22865474664402222,
-    0.37769321910336584,
+Q = np.array(
+    [
+        -0.36336720179946663,
+        -0.8203835174702869,
+        0.22865474664402222,
+        0.37769321910336584,
+    ]
 )
 
 
@@ -150,25 +151,24 @@ def run_pick_and_place_and_collect(
     data_collector.record_current_prompt("go home")
     robot.go_home()
 
-    # Stop episode and save data
-    data_collector.stop_episode()
-    data_collector.log_trajectory_summary()
-
     # Check success condition (e.g., object is close to target)
     object_final_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
     distance_to_target = np.linalg.norm(object_final_pos - target_pos)
 
-    success = distance_to_target < env.distance_threshold
-    if success:
-        logger.info(
-            f"Trajectory collection successful! Object is at target. Distance: {distance_to_target:.4f}"
-        )
-    else:
+    success = bool(distance_to_target < env.distance_threshold)
+    data_collector.stop_episode(success)
+    data_collector.log_trajectory_summary()
+
+    if not success:
         logger.warning(
             f"Trajectory collection finished, but object not at target. Distance: {distance_to_target:.4f}"
         )
+        return False
+    logger.info(
+        f"Trajectory collection successful! Object is at target. Distance: {distance_to_target:.4f}"
+    )
 
-    return success
+    return True
 
 
 def main():
@@ -230,7 +230,7 @@ def main():
                 render_mode="human" if args.render else None,
                 config=env_config,
             )
-            obs, info = env.reset()
+            _, _ = env.reset()
 
             interface_config = Ar4Mk3InterfaceConfig()
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
@@ -246,17 +246,7 @@ def main():
             success = run_pick_and_place_and_collect(
                 robot, data_collector, object_color, target_color
             )
-
-            if success:
-                successful_collections += 1
-            else:
-                # Optional: delete unsuccessful trajectory data
-                episode_dir = os.path.join(args.save_dir, data_collector.episode_id)
-                if os.path.exists(episode_dir):
-                    logger.warning(
-                        f"Deleting data for unsuccessful trajectory: {data_collector.episode_id}"
-                    )
-                    # import shutil; shutil.rmtree(episode_dir) # Be careful with this
+            successful_collections += int(success)
 
         except Exception as e:
             logger.error(

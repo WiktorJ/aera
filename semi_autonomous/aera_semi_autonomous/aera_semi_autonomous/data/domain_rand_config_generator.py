@@ -35,11 +35,26 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         - The name of the color used for the target.
     """
     # --- Color Selection ---
-    object_color_name, target_color_name = random.sample(list(NAMED_COLORS.keys()), 2)
+    (
+        object_color_name,
+        target_color_name,
+        object_distractor1_color_name,
+        object_distractor2_color_name,
+        target_distractor1_color_name,
+        target_distractor2_color_name,
+    ) = random.sample(list(NAMED_COLORS.keys()), 6)
+
     object_rgba = NAMED_COLORS[object_color_name]
     target_rgba = NAMED_COLORS[target_color_name]
-    # Make target semi-transparent
+    object_distractor1_rgba = NAMED_COLORS[object_distractor1_color_name]
+    object_distractor2_rgba = NAMED_COLORS[object_distractor2_color_name]
+    target_distractor1_rgba = NAMED_COLORS[target_distractor1_color_name]
+    target_distractor2_rgba = NAMED_COLORS[target_distractor2_color_name]
+
+    # Make target and its distractors semi-transparent
     target_rgba = (target_rgba[0], target_rgba[1], target_rgba[2], 0.5)
+    target_distractor1_rgba = (target_distractor1_rgba[0], target_distractor1_rgba[1], target_distractor1_rgba[2], 0.5)
+    target_distractor2_rgba = (target_distractor2_rgba[0], target_distractor2_rgba[1], target_distractor2_rgba[2], 0.5)
 
     # --- Material Randomization ---
     object_material = MaterialConfig(
@@ -50,12 +65,46 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         reflectance=random.uniform(0.0, 0.2),
     )
     target_material = MaterialConfig(rgba=target_rgba)
+    distractor1_material = MaterialConfig(rgba=target_distractor1_rgba)
+    distractor2_material = MaterialConfig(rgba=target_distractor2_rgba)
+    object_distractor1_material = MaterialConfig(
+        texture_name=random.choice(AVAILABLE_TEXTURES),
+        rgba=object_distractor1_rgba,
+        specular=random.uniform(0.5, 1.0),
+        shininess=random.uniform(0.5, 1.0),
+        reflectance=random.uniform(0.0, 0.2),
+    )
+    object_distractor2_material = MaterialConfig(
+        texture_name=random.choice(AVAILABLE_TEXTURES),
+        rgba=object_distractor2_rgba,
+        specular=random.uniform(0.5, 1.0),
+        shininess=random.uniform(0.5, 1.0),
+        reflectance=random.uniform(0.0, 0.2),
+    )
     floor_material = MaterialConfig(
         texture_name=random.choice(AVAILABLE_TEXTURES),
         specular=random.uniform(0.1, 0.8),
         shininess=random.uniform(0.1, 0.7),
     )
     wall_material = MaterialConfig(texture_name=random.choice(AVAILABLE_TEXTURES))
+
+    def _create_random_robot_part_material():
+        return MaterialConfig(
+            texture_name=random.choice(AVAILABLE_TEXTURES),
+            specular=random.uniform(0.1, 0.8),
+            shininess=random.uniform(0.1, 0.7),
+        )
+
+    base_link_material = _create_random_robot_part_material()
+    link_1_material = _create_random_robot_part_material()
+    link_2_material = _create_random_robot_part_material()
+    link_3_material = _create_random_robot_part_material()
+    link_4_material = _create_random_robot_part_material()
+    link_5_material = _create_random_robot_part_material()
+    link_6_material = _create_random_robot_part_material()
+    gripper_base_link_material = _create_random_robot_part_material()
+    gripper_jaw1_material = _create_random_robot_part_material()
+    gripper_jaw2_material = _create_random_robot_part_material()
 
     # --- Light Randomization ---
     headlight = LightConfig(
@@ -71,23 +120,53 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         ambient=np.random.uniform(0.2, 0.4, 3).tolist(),
         specular=np.random.uniform(0.5, 0.7, 3).tolist(),
     )
+    top_light = LightConfig(
+        active=True,
+        pos=np.random.uniform([-1, -1, 1.5], [1, 1, 2.5]).tolist(),
+        dir=np.random.uniform([-0.5, -0.5, -1.0], [0.5, 0.5, -0.8]).tolist(),
+        diffuse=np.random.uniform(0.5, 0.7, 3).tolist(),
+        ambient=np.random.uniform(0.2, 0.4, 3).tolist(),
+        specular=np.random.uniform(0.5, 0.7, 3).tolist(),
+    )
 
     # --- Dynamics Randomization ---
-    object_dynamics = DynamicsConfig(
-        size=np.random.uniform([0.01, 0.01, 0.01], [0.015, 0.015, 0.015]).tolist(),
-        mass=random.uniform(0.05, 0.15),
-        friction=np.random.uniform([1.5, 0.005, 0.005], [2.5, 0.015, 0.015]).tolist(),
-        damping=random.uniform(0.005, 0.015),
-    )
+    def _create_random_dynamics_config():
+        return DynamicsConfig(
+            size=np.random.uniform([0.01, 0.01, 0.01], [0.015, 0.015, 0.015]).tolist(),
+            mass=random.uniform(0.05, 0.15),
+            friction=np.random.uniform([1.5, 0.005, 0.005], [2.5, 0.015, 0.015]).tolist(),
+            damping=random.uniform(0.005, 0.015),
+        )
+
+    object_dynamics = _create_random_dynamics_config()
+    object_distractor1_dynamics = _create_random_dynamics_config()
+    object_distractor2_dynamics = _create_random_dynamics_config()
 
     domain_rand_config = DomainRandConfig(
         object_material=object_material,
         target_material=target_material,
+        distractor1_material=distractor1_material,
+        distractor2_material=distractor2_material,
+        object_distractor1_material=object_distractor1_material,
+        object_distractor2_material=object_distractor2_material,
         floor_material=floor_material,
         wall_material=wall_material,
+        base_link_material=base_link_material,
+        link_1_material=link_1_material,
+        link_2_material=link_2_material,
+        link_3_material=link_3_material,
+        link_4_material=link_4_material,
+        link_5_material=link_5_material,
+        link_6_material=link_6_material,
+        gripper_base_link_material=gripper_base_link_material,
+        gripper_jaw1_material=gripper_jaw1_material,
+        gripper_jaw2_material=gripper_jaw2_material,
         headlight=headlight,
+        top_light=top_light,
         scene_light=scene_light,
         object_dynamics=object_dynamics,
+        object_distractor1_dynamics=object_distractor1_dynamics,
+        object_distractor2_dynamics=object_distractor2_dynamics,
     )
 
     return domain_rand_config, object_color_name, target_color_name

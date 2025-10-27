@@ -59,17 +59,17 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
 
     # --- Light Randomization ---
     headlight = LightConfig(
-        diffuse=np.random.uniform(0.6, 0.8, 3).tolist(),
-        ambient=np.random.uniform(0.1, 0.3, 3).tolist(),
-        specular=np.random.uniform(0.4, 0.6, 3).tolist(),
+        diffuse=np.random.uniform(0.4, 0.6, 3).tolist(),
+        ambient=np.random.uniform(0.1, 0.2, 3).tolist(),
+        specular=np.random.uniform(0.2, 0.4, 3).tolist(),
     )
     scene_light = LightConfig(
         active=True,
         pos=np.random.uniform([-1, -1, 2.5], [1, 1, 3.5]).tolist(),
         dir=np.random.uniform([-0.5, -0.5, -1.0], [0.5, 0.5, -0.8]).tolist(),
-        diffuse=np.random.uniform(0.8, 1.0, 3).tolist(),
-        ambient=np.random.uniform(0.3, 0.5, 3).tolist(),
-        specular=np.random.uniform(0.8, 1.0, 3).tolist(),
+        diffuse=np.random.uniform(0.5, 0.7, 3).tolist(),
+        ambient=np.random.uniform(0.2, 0.4, 3).tolist(),
+        specular=np.random.uniform(0.5, 0.7, 3).tolist(),
     )
 
     # --- Dynamics Randomization ---

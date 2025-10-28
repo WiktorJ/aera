@@ -55,6 +55,10 @@ When using mamba run the following:
 
 `pip install -e .`
 
+In semi-autonomous:
+`pip install -r requirements.txt`
+`pip install --no-build-isolation -e GroundingDINO`
+
 In semi-autonomous/aera_semi_autonomous:
 `pip install -e . --use-pep517`
 

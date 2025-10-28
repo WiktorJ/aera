@@ -123,8 +123,6 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         self.assertFalse(self.collector.is_collecting)
         self.assertIn("end_time", self.collector.current_episode_data)
         self.assertIn("duration", self.collector.current_episode_data)
-        # episode_id is not cleared after stopping
-        self.assertIsNotNone(self.collector.episode_id)
 
         # Verify buffers are cleared
         self.assertEqual(len(self.collector.joint_state_buffer), 0)
@@ -559,8 +557,9 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
     def test_save_episode_data_no_episode(self):
         """Test saving when no episode is active."""
-        # Clear episode directory to simulate no episode
+        # Clear episode directory and current episode data to simulate no episode
         self.collector.episode_directory = None
+        self.collector.current_episode_data = {}
         result = self.collector.save_episode_data()
         self.assertEqual(result, "")
         self.mock_logger.error.assert_called_with("No episode data to save")

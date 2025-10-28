@@ -77,9 +77,21 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         mock_actuator.id = 0
         self.mock_env.model.actuator.return_value = mock_actuator
         
+        # Mock the ctrl array to be writable
+        self.mock_env.data.ctrl = np.zeros(10)
+        
         with patch.object(
             self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
+        ), patch.object(
+            self.robot_interface, "_record_step"
         ):
+            # Mock the convergence check by making qpos converge after a few steps
+            def mock_qpos_convergence(*args):
+                # After a few calls, make qpos equal to target
+                self.mock_env.data.qpos[:6] = self.mock_env.initial_qpos[:6]
+            
+            mock_mujoco.mj_step.side_effect = mock_qpos_convergence
+            
             result = self.robot_interface.go_home()
 
         self.assertTrue(result)

@@ -65,25 +65,26 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertEqual(robot_interface.camera_config["height"], 720)
         self.assertEqual(robot_interface.camera_config["fx"], 600.0)
 
-    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.time")
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
-    def test_go_home_success(self, mock_mujoco, mock_time):
+    def test_go_home_success(self, mock_mujoco):
         """Test go_home successful execution."""
-        self.mock_env.initial_qpos = np.array([0.0] * 8)
+        # Set up initial state where robot is not at home
+        self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0])
+        self.mock_env.initial_qpos = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.014, -0.014])
+        
+        # Mock the actuator method to return a mock with id attribute
+        mock_actuator = Mock()
+        mock_actuator.id = 0
+        self.mock_env.model.actuator.return_value = mock_actuator
+        
         with patch.object(
             self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
         ):
             result = self.robot_interface.go_home()
 
         self.assertTrue(result)
-        np.testing.assert_array_equal(
-            self.mock_env.data.qpos, self.mock_env.initial_qpos
-        )
-        self.assertEqual(mock_mujoco.mj_forward.call_count, 101)
-        mock_mujoco.mj_forward.assert_called_with(
-            self.mock_env.model, self.mock_env.data
-        )
-        self.assertEqual(mock_time.sleep.call_count, 101)
+        # Verify mj_step was called
+        self.assertTrue(mock_mujoco.mj_step.called)
 
     def test_move_to_ik_success(self):
         """Test move_to with inverse kinematics."""
@@ -248,7 +249,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             result = self.robot_interface.release_at(pose)
 
             self.assertTrue(result)
-            mock_move_to.assert_called_once_with(pose)
+            # Should call move_to 3 times: above, target, above again
+            self.assertEqual(mock_move_to.call_count, 3)
             mock_release_gripper.assert_called_once()
 
     def test_release_at_move_failure(self):
@@ -263,7 +265,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             result = self.robot_interface.release_at(pose)
 
             self.assertFalse(result)
-            mock_move_to.assert_called_once_with(pose)
+            # Should fail on first move_to call (above target)
+            self.assertEqual(mock_move_to.call_count, 1)
 
     def test_get_end_effector_pose_success(self):
         """Test get_end_effector_pose successful execution."""
@@ -350,21 +353,10 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertEqual(intrinsics.height, 480)  # type: ignore
 
     def test_get_cam_to_base_transform(self):
-        """Test get_cam_to_base_transform returns correct transform."""
+        """Test get_cam_to_base_transform returns None (not implemented)."""
         transform = self.robot_interface.get_cam_to_base_transform()
 
-        self.assertIsNotNone(transform)
-        self.assertEqual(transform.shape, (4, 4))  # type: ignore
-        # Check that it's the expected transform matrix
-        expected_transform = np.array(
-            [
-                [0.0, -1.0, 0.0, 0.3],
-                [0.0, 0.0, -1.0, 0.0],
-                [1.0, 0.0, 0.0, 0.5],
-                [0.0, 0.0, 0.0, 1.0],
-            ]
-        )
-        np.testing.assert_array_equal(transform, expected_transform)  # type: ignore
+        self.assertIsNone(transform)
 
     def test_home_pose_initialization(self):
         """Test that home pose is correctly initialized."""

@@ -33,8 +33,8 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.initial_gripper_xpos = np.array([0.1, 0.2, 0.3])
         self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
-        # Create the robot interface
-        self.robot_interface = Ar4Mk3RobotInterface(self.mock_env)
+        # Create the robot interface with default config
+        self.robot_interface = Ar4Mk3RobotInterface(self.mock_env, {})
 
     def test_init_default_camera_config(self):
         """Test initialization with default camera configuration."""

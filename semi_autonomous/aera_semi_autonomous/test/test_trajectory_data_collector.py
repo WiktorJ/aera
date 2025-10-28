@@ -100,7 +100,8 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         # Test initial state
         self.assertFalse(self.collector.is_collecting)
         self.assertEqual(len(self.collector.current_episode_data), 0)
-        self.assertIsNone(self.collector.episode_id)
+        # episode_id is initialized in __init__, not None
+        self.assertIsNotNone(self.collector.episode_id)
 
         # Test starting an episode
         input_message = "pick up the red block"
@@ -538,6 +539,9 @@ class TestTrajectoryDataCollector(unittest.TestCase):
                 "action": {"joint_state": [0.2, 0.3, 0.4]},
             }
         ]
+
+        # Set episode directory (normally done in stop_episode)
+        self.collector.episode_directory = self.collector._create_episode_directory(self.collector.episode_id)
 
         # Mock synchronization to avoid complex setup
         with patch.object(self.collector, "_synchronize_all_data", return_value=[]):

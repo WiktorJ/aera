@@ -7,6 +7,9 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import (
     Ar4Mk3RobotInterface,
 )
+from aera_semi_autonomous.control.ar4_mk3_interface_config import (
+    Ar4Mk3InterfaceConfig,
+)
 
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 
@@ -34,7 +37,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
         # Create the robot interface with default config
-        self.robot_interface = Ar4Mk3RobotInterface(self.mock_env, {})
+        self.robot_interface = Ar4Mk3RobotInterface(self.mock_env, Ar4Mk3InterfaceConfig())
 
     def test_init_default_camera_config(self):
         """Test initialization with default camera configuration."""
@@ -47,7 +50,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_init_custom_camera_config(self):
         """Test initialization with custom camera configuration."""
-        custom_config = {
+        custom_camera_config = {
             "width": 1280,
             "height": 720,
             "fx": 600.0,
@@ -55,6 +58,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             "cx": 640.0,
             "cy": 360.0,
         }
+        custom_config = Ar4Mk3InterfaceConfig(camera_config=custom_camera_config)
         robot_interface = Ar4Mk3RobotInterface(self.mock_env, custom_config)
 
         self.assertEqual(robot_interface.camera_config["width"], 1280)

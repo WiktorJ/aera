@@ -542,19 +542,18 @@ class TestTrajectoryDataCollector(unittest.TestCase):
             result_path = self.collector.save_episode_data()
 
         # Verify file was created
+        self.assertIsNotNone(result_path)
         self.assertNotEqual(result_path, "")
-        if result_path:
-            self.assertTrue(os.path.exists(result_path))
-            self.assertTrue(result_path.endswith("episode_data.json"))
+        self.assertTrue(os.path.exists(result_path))
+        self.assertTrue(result_path.endswith("episode_data.json"))
 
         # Verify file contents
-        if result_path:
-            with open(result_path, "r") as f:
-                saved_data = json.load(f)
+        with open(result_path, "r") as f:
+            saved_data = json.load(f)
 
-            self.assertEqual(saved_data["input_message"], "test episode")
-            self.assertIn("episode_id", saved_data)
-            self.assertIn("start_time", saved_data)
+        self.assertEqual(saved_data["input_message"], "test episode")
+        self.assertIn("episode_id", saved_data)
+        self.assertIn("start_time", saved_data)
 
     def test_save_episode_data_no_episode(self):
         """Test saving when no episode is active."""

@@ -651,8 +651,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Handle different return types from render()
             if render_result is not None and isinstance(render_result, np.ndarray):
-                self._latest_rgb_image = render_result
-                return render_result
+                # The image is rendered upside down, so we flip it.
+                self._latest_rgb_image = render_result[::-1, :, :]
+                return self._latest_rgb_image
             return self._latest_rgb_image
 
         except Exception as e:
@@ -670,8 +671,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             # Handle different return types from render()
             if render_result is not None and isinstance(render_result, np.ndarray):
-                self._latest_depth_image = render_result
-                return render_result
+                # The image is rendered upside down, so we flip it.
+                self._latest_depth_image = render_result[::-1, :]
+                return self._latest_depth_image
             return self._latest_depth_image
 
         except Exception as e:

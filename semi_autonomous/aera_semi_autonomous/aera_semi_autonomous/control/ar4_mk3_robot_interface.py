@@ -686,6 +686,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 extent = self.env.model.stat.extent
                 znear *= extent
                 zfar *= extent
+                print(f"znear: {znear}, zfar: {zfar}")
 
                 # The formula to convert is:
                 # dist = znear / (1 - depth_buffer * (1 - znear / zfar))

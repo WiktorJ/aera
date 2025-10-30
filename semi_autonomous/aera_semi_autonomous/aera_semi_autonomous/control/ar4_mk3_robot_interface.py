@@ -665,12 +665,36 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Temporarily set render mode to depth_array to get depth image
             original_render_mode = self.env.render_mode
             self.env.render_mode = "depth_array"
-            render_result = self.env.render()
+            # render() can return raw depth buffer or linearized distance.
+            # We will handle both cases to be robust.
+            depth_image = self.env.render()
             self.env.render_mode = original_render_mode
 
             # Handle different return types from render()
-            if render_result is not None and isinstance(render_result, np.ndarray):
-                self._latest_depth_image = render_result
+            if depth_image is not None and isinstance(depth_image, np.ndarray):
+                # If the values are already large (max > 1.0), they are likely
+                # already linearized distances in meters.
+                if np.max(depth_image) > 1.0:
+                    self._latest_depth_image = depth_image
+                    return self._latest_depth_image
+
+                # The depth buffer from MuJoCo is non-linear [0, 1].
+                # We convert it to a linear distance array (in meters).
+                znear = self.env.model.vis.map.znear
+                zfar = self.env.model.vis.map.zfar
+                # Correct for auto-scaling of znear and zfar
+                extent = self.env.model.stat.extent
+                znear *= extent
+                zfar *= extent
+
+                # The formula to convert is:
+                # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
+                # To avoid division by zero for values at zfar, we clip.
+                epsilon = 1e-6
+                depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
+                dist = znear / (1 - depth_image * (1 - znear / zfar))
+
+                self._latest_depth_image = dist
                 return self._latest_depth_image
             return self._latest_depth_image
 

@@ -541,7 +541,9 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         ]
 
         # Set episode directory (normally done in stop_episode)
-        self.collector.episode_directory = self.collector._create_episode_directory(self.collector.episode_id)
+        self.collector.episode_directory = self.collector._create_episode_directory(
+            self.collector.episode_id
+        )
 
         # Mock synchronization to avoid complex setup
         with patch.object(self.collector, "_synchronize_all_data", return_value=[]):
@@ -570,7 +572,7 @@ class TestTrajectoryDataCollector(unittest.TestCase):
             self.gripper_joint_names,
             save_directory=self.test_dir,
         )
-        
+
         result = fresh_collector.save_episode_data()
         self.assertEqual(result, "")
         self.mock_logger.error.assert_called_with("No episode data to save")

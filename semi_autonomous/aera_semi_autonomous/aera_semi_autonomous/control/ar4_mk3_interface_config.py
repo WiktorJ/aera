@@ -2,21 +2,9 @@ import dataclasses
 import typing
 from dataclasses import field
 
-DEFAULT_CAMERA_CONFIG: typing.Dict[str, typing.Any] = {
-    "width": 640,
-    "height": 480,
-    "fx": 525.0,
-    "fy": 525.0,
-    "cx": 320.0,
-    "cy": 240.0,
-}
-
 
 @dataclasses.dataclass
 class Ar4Mk3InterfaceConfig:
-    camera_config: typing.Dict[str, typing.Any] = field(
-        default_factory=lambda: DEFAULT_CAMERA_CONFIG
-    )
     move_to_pos_tolerance: float = 1e-3
     above_target_offset: float = 0.05
     gripper_action_steps: int = 50

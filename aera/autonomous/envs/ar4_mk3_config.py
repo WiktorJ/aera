@@ -9,6 +9,8 @@ DEFAULT_CAMERA_CONFIG = {
     "azimuth": -133,
     "elevation": -26,
     "lookat": np.array([0, 0, 0]),
+    "image_width": 240,
+    "image_height": 240,
 }
 
 AVAILABLE_TEXTURES = [

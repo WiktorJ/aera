@@ -37,61 +37,40 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env._utils.get_site_xmat.return_value = np.eye(3).flatten()
 
         # Create the robot interface with default config
-        self.robot_interface = Ar4Mk3RobotInterface(self.mock_env, Ar4Mk3InterfaceConfig())
-
-    def test_init_default_camera_config(self):
-        """Test initialization with default camera configuration."""
-        self.assertEqual(self.robot_interface.camera_config["width"], 640)
-        self.assertEqual(self.robot_interface.camera_config["height"], 480)
-        self.assertEqual(self.robot_interface.camera_config["fx"], 525.0)
-        self.assertEqual(self.robot_interface.camera_config["fy"], 525.0)
-        self.assertEqual(self.robot_interface.camera_config["cx"], 320.0)
-        self.assertEqual(self.robot_interface.camera_config["cy"], 240.0)
-
-    def test_init_custom_camera_config(self):
-        """Test initialization with custom camera configuration."""
-        custom_camera_config = {
-            "width": 1280,
-            "height": 720,
-            "fx": 600.0,
-            "fy": 600.0,
-            "cx": 640.0,
-            "cy": 360.0,
-        }
-        custom_config = Ar4Mk3InterfaceConfig(camera_config=custom_camera_config)
-        robot_interface = Ar4Mk3RobotInterface(self.mock_env, custom_config)
-
-        self.assertEqual(robot_interface.camera_config["width"], 1280)
-        self.assertEqual(robot_interface.camera_config["height"], 720)
-        self.assertEqual(robot_interface.camera_config["fx"], 600.0)
+        self.robot_interface = Ar4Mk3RobotInterface(
+            self.mock_env, Ar4Mk3InterfaceConfig()
+        )
 
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
     def test_go_home_success(self, mock_mujoco):
         """Test go_home successful execution."""
         # Set up initial state where robot is not at home
         self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0])
-        self.mock_env.initial_qpos = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.014, -0.014])
-        
+        self.mock_env.initial_qpos = np.array(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.014, -0.014]
+        )
+
         # Mock the actuator method to return a mock with id attribute
         mock_actuator = Mock()
         mock_actuator.id = 0
         self.mock_env.model.actuator.return_value = mock_actuator
-        
+
         # Mock the ctrl array to be writable
         self.mock_env.data.ctrl = np.zeros(10)
-        
-        with patch.object(
-            self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
-        ), patch.object(
-            self.robot_interface, "_record_step"
+
+        with (
+            patch.object(
+                self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
+            ),
+            patch.object(self.robot_interface, "_record_step"),
         ):
             # Mock the convergence check by making qpos converge after a few steps
             def mock_qpos_convergence(*args):
                 # After a few calls, make qpos equal to target
                 self.mock_env.data.qpos[:6] = self.mock_env.initial_qpos[:6]
-            
+
             mock_mujoco.mj_step.side_effect = mock_qpos_convergence
-            
+
             result = self.robot_interface.go_home()
 
         self.assertTrue(result)
@@ -160,12 +139,14 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             expected_qpos = self.mock_env.initial_qpos[-2:]
             called_qpos = mock_interpolate.call_args[0][0]
             np.testing.assert_array_equal(called_qpos, expected_qpos)
-    
+
     def test_release_gripper_with_invalid_initial_qpos(self):
         """Test release_gripper when initial_qpos has invalid gripper values."""
         # Set initial_qpos to have non-negative gripper values (should be negative for open)
-        self.mock_env.initial_qpos = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.01])
-        
+        self.mock_env.initial_qpos = np.array(
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.01, 0.01]
+        )
+
         with patch.object(
             self.robot_interface, "_interpolate_gripper", return_value=True
         ) as mock_interpolate:
@@ -191,13 +172,17 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_grasp_at_success(self):
         """Test grasp_at successful execution."""
-        with patch.object(
-            self.robot_interface, "move_to", return_value=True
-        ) as mock_move_to, patch.object(
-            self.robot_interface, "_interpolate_gripper", return_value=True
-        ) as mock_interpolate_gripper, patch.object(
-            self.robot_interface, "release_gripper", return_value=True
-        ) as mock_release_gripper:
+        with (
+            patch.object(
+                self.robot_interface, "move_to", return_value=True
+            ) as mock_move_to,
+            patch.object(
+                self.robot_interface, "_interpolate_gripper", return_value=True
+            ) as mock_interpolate_gripper,
+            patch.object(
+                self.robot_interface, "release_gripper", return_value=True
+            ) as mock_release_gripper,
+        ):
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
@@ -219,21 +204,22 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         pose = Pose()
         pose.position = Point(x=0.1, y=0.1, z=0.1)
         pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
-        
+
         # Test with gripper_pos outside valid range
         invalid_gripper_pos = 0.5  # Should be in [-0.014, 0]
-        
+
         result = self.robot_interface.grasp_at(pose, invalid_gripper_pos)
-        
+
         self.assertFalse(result)
 
     def test_grasp_at_move_failure(self):
         """Test grasp_at when move_to fails."""
-        with patch.object(
-            self.robot_interface, "release_gripper", return_value=True
-        ), patch.object(
-            self.robot_interface, "move_to", return_value=False
-        ) as mock_move_to:
+        with (
+            patch.object(self.robot_interface, "release_gripper", return_value=True),
+            patch.object(
+                self.robot_interface, "move_to", return_value=False
+            ) as mock_move_to,
+        ):
             pose = Pose()
             pose.position = Point(x=0.1, y=0.1, z=0.1)
             pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
@@ -359,10 +345,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
     def test_get_camera_intrinsics(self):
         """Test get_camera_intrinsics returns correct intrinsics."""
         intrinsics = self.robot_interface.get_camera_intrinsics()
-
-        self.assertIsInstance(intrinsics, o3d.camera.PinholeCameraIntrinsic)
-        self.assertEqual(intrinsics.width, 640)  # type: ignore
-        self.assertEqual(intrinsics.height, 480)  # type: ignore
+        self.assertIsNone(intrinsics)
 
     def test_get_cam_to_base_transform(self):
         """Test get_cam_to_base_transform returns None (not implemented)."""

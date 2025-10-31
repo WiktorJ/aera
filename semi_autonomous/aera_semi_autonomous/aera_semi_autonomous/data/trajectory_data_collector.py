@@ -270,7 +270,6 @@ class TrajectoryDataCollector:
 
             # Convert depth image to bytes
             depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
-            # _, depth_encoded = cv2.imencode(".png", depth_cv_image)
             depth_bytes = depth_cv_image.tobytes()
 
             # Store metadata at episode level if not already set

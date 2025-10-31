@@ -34,17 +34,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.cv_bridge = CvBridge()
 
         # Camera configuration
-        self.camera_config = self.config.camera_config
-
-        # Create camera intrinsics
-        self.camera_intrinsics = o3d.camera.PinholeCameraIntrinsic(
-            width=self.camera_config["width"],
-            height=self.camera_config["height"],
-            fx=self.camera_config["fx"],
-            fy=self.camera_config["fy"],
-            cx=self.camera_config["cx"],
-            cy=self.camera_config["cy"],
-        )
 
         # Store latest images
         self._latest_rgb_image: Optional[np.ndarray] = None
@@ -704,7 +693,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
     def get_camera_intrinsics(self) -> Optional[o3d.camera.PinholeCameraIntrinsic]:
         """Get camera intrinsic parameters."""
-        return self.camera_intrinsics
+        return None
 
     def get_cam_to_base_transform(self) -> Optional[np.ndarray]:
         """Get camera to base frame transformation."""

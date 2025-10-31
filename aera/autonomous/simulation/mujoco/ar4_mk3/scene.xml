@@ -4,7 +4,7 @@
   <statistic center="0.2 0 0.4" extent=".65"/>
 
   <visual>
-    <map znear="0.01" zfar="7.0"/>
+    <map znear="0.1" zfar="10.0"/>
     <headlight diffuse="0.8 0.8 0.8" ambient="0.3 0.3 0.3" specular="0 0 0"/>
     <rgba haze="0.15 0.25 0.35 1"/>
     <global azimuth="150" elevation="-20"/>

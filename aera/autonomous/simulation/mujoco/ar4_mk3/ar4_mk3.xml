@@ -3,7 +3,7 @@
     <option timestep="0.002" integrator="implicitfast">
         <flag contact="enable" multiccd="enable"/>
     </option>
-    <statistic meansize="0.116999" extent="0.779996" center="0.0273132 -0.0950417 0.259419"/>
+    <!-- <statistic meansize="0.116999" extent="0.779996" center="0.0273132 -0.0950417 0.259419"/> -->
     <asset>
         <material name="white" rgba="1 1 1 1"/>
         <material name="red" rgba="1 0 0 1"/>

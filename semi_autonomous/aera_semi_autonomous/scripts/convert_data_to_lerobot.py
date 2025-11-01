@@ -11,7 +11,6 @@ The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 """
 
 import json
-import os
 import shutil
 from pathlib import Path
 from typing import Optional

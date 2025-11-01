@@ -7,32 +7,36 @@ and actions, and converts it into a format compatible with LeRobot for training 
 Usage:
 python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py --data_dir /path/to/your/rl_training_data
 
-The resulting dataset will be saved to the $HF_LEROBOT_HOME directory.
+The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 """
 
 import json
 import os
 import shutil
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
 import tyro
-from lerobot.common.datasets.lerobot_dataset import HF_LEROBOT_HOME, LeRobotDataset
+from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
 
 REPO_NAME = "aera-bot/ar4_mk3_pick_and_place"
 
 
-def main(data_dir: str):
+def main(data_dir: str, output_dir: Optional[str] = None):
     """
     Main function to convert trajectory data to LeRobot format.
 
     Args:
         data_dir: Path to the root directory containing episode data folders.
-        push_to_hub: If True, push the converted dataset to the Hugging Face Hub.
+        output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
     """
+    if output_dir is None:
+        output_dir = f"{data_dir}_lerobot"
+
     # Clean up any existing dataset in the output directory
-    output_path = HF_LEROBOT_HOME / REPO_NAME
+    output_path = Path(output_dir)
     if output_path.exists():
         print(f"Removing existing dataset at {output_path}")
         shutil.rmtree(output_path)
@@ -62,35 +66,38 @@ def main(data_dir: str):
     print(f"Calculated average FPS: {fps}")
 
     # Create LeRobot dataset and define features
-    dataset = LeRobotDataset.create(
-        repo_id=REPO_NAME,
-        robot_type="ar4_mk3",
-        fps=fps,
-        features={
-            "image": {
-                "dtype": "image",
-                "shape": (height, width, 3),
-                "names": ["height", "width", "channel"],
-            },
-            "depth_image": {
-                "dtype": "image",
-                "shape": (height, width, 1),
-                "names": ["height", "width", "channel"],
-            },
-            "state": {
-                "dtype": "float32",
-                "shape": (8,),  # 6 arm joints + 2 gripper joints
-                "names": ["state"],
-            },
-            "actions": {
-                "dtype": "float32",
-                "shape": (8,),  # 6 arm joints + 2 gripper joints
-                "names": ["actions"],
-            },
+    features = {
+        "image": {
+            "dtype": "image",
+            "shape": (height, width, 3),
+            "names": ["height", "width", "channel"],
         },
+        "depth_image": {
+            "dtype": "image",
+            "shape": (height, width, 1),
+            "names": ["height", "width", "channel"],
+        },
+        "state": {
+            "dtype": "float32",
+            "shape": (8,),  # 6 arm joints + 2 gripper joints
+            "names": ["state"],
+        },
+        "actions": {
+            "dtype": "float32",
+            "shape": (8,),  # 6 arm joints + 2 gripper joints
+            "names": ["actions"],
+        },
+    }
+    dataset = LeRobotDataset(
+        repo_id=output_path.name,
+        root=output_path.parent,
         image_writer_threads=10,
         image_writer_processes=5,
     )
+    dataset.info["robot_type"] = "ar4_mk3"
+    dataset.info["fps"] = fps
+    dataset.info["features"] = features
+    dataset.save_info()
 
     # Loop over raw episode data and write to the LeRobot dataset
     for episode_dir in episode_dirs:

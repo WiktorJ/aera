@@ -94,7 +94,7 @@ def main(data_dir: str, output_dir: Optional[str] = None):
     }
     dataset = LeRobotDataset(
         repo_id=output_path.name,
-        root=output_path.parent,
+        root=output_path,
     )
     dataset.info["robot_type"] = "ar4_mk3"
     dataset.info["fps"] = fps

@@ -18,7 +18,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import tyro
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import CODEBASE_VERSION, LeRobotDataset
 
 
 def main(data_dir: str, output_dir: Optional[str] = None):
@@ -34,16 +34,6 @@ def main(data_dir: str, output_dir: Optional[str] = None):
 
     # Clean up any existing dataset in the output directory
     output_path = Path(output_dir)
-
-    # Create a dummy info.json to prevent LeRobotDataset from trying to download from hub
-    # when creating a new dataset locally.
-    # meta_path = output_path / "meta"
-    # meta_path.mkdir(parents=True, exist_ok=True)
-    # info_path = meta_path / "info.json"
-    # if not info_path.exists():
-    #     # An empty info file is enough to signal a local dataset.
-    #     with info_path.open("w") as f:
-    #         json.dump({}, f)
 
     episode_dirs = sorted([p for p in Path(data_dir).iterdir() if p.is_dir()])
     if not episode_dirs:
@@ -97,14 +87,12 @@ def main(data_dir: str, output_dir: Optional[str] = None):
     info_path = meta_path / "info.json"
     if not info_path.exists():
         with info_path.open("w") as f:
-            json.dump({"features": features, "fps": fps}, f)
+            json.dump({"features": features, "fps": fps, "codebase_version": CODEBASE_VERSION}, f)
     dataset = LeRobotDataset(
         repo_id=output_path.name,
         root=output_path,
     )
     dataset.info["robot_type"] = "ar4_mk3"
-    dataset.info["fps"] = fps
-    dataset.info["features"] = features
     dataset.save_info()
 
     # Loop over raw episode data and write to the LeRobot dataset

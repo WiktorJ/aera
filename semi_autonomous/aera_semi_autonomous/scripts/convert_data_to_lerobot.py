@@ -34,9 +34,6 @@ def main(data_dir: str, output_dir: Optional[str] = None):
 
     # Clean up any existing dataset in the output directory
     output_path = Path(output_dir)
-    if output_path.exists():
-        print(f"Removing existing dataset at {output_path}")
-        shutil.rmtree(output_path)
 
     episode_dirs = sorted([p for p in Path(data_dir).iterdir() if p.is_dir()])
     if not episode_dirs:

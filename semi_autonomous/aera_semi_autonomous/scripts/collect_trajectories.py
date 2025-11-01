@@ -232,8 +232,6 @@ def main():
             env = Ar4Mk3PickAndPlaceEnv(
                 render_mode="human" if args.render else None,
                 config=env_config,
-                width=env_config.default_camera_config["image_width"],
-                height=env_config.default_camera_config["image_height"],
             )
             _, _ = env.reset()
 

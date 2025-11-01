@@ -63,6 +63,8 @@ class BaseEnv(MujocoRobotEnv):
             model_path=config.model_path,
             n_substeps=config.n_substeps,
             n_actions=4 if config.use_eef_control else 7,
+            width=config.image_width,
+            height=config.image_height,
             **kwargs,
         )
 

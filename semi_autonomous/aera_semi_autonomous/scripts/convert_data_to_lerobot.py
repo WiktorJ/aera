@@ -7,12 +7,6 @@ and actions, and converts it into a format compatible with LeRobot for training 
 Usage:
 python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py --data_dir /path/to/your/rl_training_data
 
-To push the dataset to the Hugging Face Hub, use the --push_to_hub flag:
-python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py --data_dir /path/to/your/rl_training_data --push_to_hub
-
-Note: to run the script, you need to install lerobot, tyro and opencv-python:
-`pip install lerobot tyro opencv-python`
-
 The resulting dataset will be saved to the $HF_LEROBOT_HOME directory.
 """
 
@@ -29,7 +23,7 @@ from lerobot.common.datasets.lerobot_dataset import HF_LEROBOT_HOME, LeRobotData
 REPO_NAME = "aera-bot/ar4_mk3_pick_and_place"
 
 
-def main(data_dir: str, *, push_to_hub: bool = False):
+def main(data_dir: str):
     """
     Main function to convert trajectory data to LeRobot format.
 
@@ -146,17 +140,6 @@ def main(data_dir: str, *, push_to_hub: bool = False):
         dataset.save_episode()
 
     print(f"Finished converting dataset. Saved to {output_path}")
-
-    # Optionally push to the Hugging Face Hub
-    if push_to_hub:
-        print(f"Pushing dataset to Hugging Face Hub: {REPO_NAME}")
-        dataset.push_to_hub(
-            tags=["ar4_mk3", "pick-and-place", "teleoperation"],
-            private=False,
-            push_videos=True,
-            license="apache-2.0",
-        )
-        print("Push to hub complete.")
 
 
 if __name__ == "__main__":

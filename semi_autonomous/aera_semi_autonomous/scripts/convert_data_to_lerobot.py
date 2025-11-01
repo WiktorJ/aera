@@ -21,8 +21,6 @@ import numpy as np
 import tyro
 from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
 
-REPO_NAME = "aera-bot/ar4_mk3_pick_and_place"
-
 
 def main(data_dir: str, output_dir: Optional[str] = None):
     """

@@ -18,7 +18,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import tyro
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 
 def main(data_dir: str, output_dir: Optional[str] = None):

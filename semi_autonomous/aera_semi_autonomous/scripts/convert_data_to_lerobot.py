@@ -85,9 +85,8 @@ def main(data_dir: str, output_dir: Optional[str] = None):
     meta_path = output_path / "meta"
     meta_path.mkdir(parents=True, exist_ok=True)
     info_path = meta_path / "info.json"
-    if not info_path.exists():
-        with info_path.open("w") as f:
-            json.dump({"features": features, "fps": fps, "codebase_version": CODEBASE_VERSION}, f)
+    with info_path.open("w") as f:
+        json.dump({"features": features, "fps": fps, "codebase_version": CODEBASE_VERSION}, f)
     dataset = LeRobotDataset(
         repo_id=output_path.name,
         root=output_path,

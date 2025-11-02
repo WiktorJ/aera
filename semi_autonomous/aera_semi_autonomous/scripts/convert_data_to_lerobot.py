@@ -11,7 +11,6 @@ The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 """
 
 import json
-import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -66,11 +65,11 @@ def main(data_dir: str, output_dir: Optional[str] = None):
             "shape": (height, width, 3),
             "names": ["height", "width", "channel"],
         },
-        "depth_image": {
-            "dtype": "image",
-            "shape": (height, width, 1),
-            "names": ["height", "width", "channel"],
-        },
+        # "depth_image": {
+        #     "dtype": "image",
+        #     "shape": (height, width, 1),
+        #     "names": ["height", "width", "channel"],
+        # },
         "state": {
             "dtype": "float32",
             "shape": (8,),  # 6 arm joints + 2 gripper joints
@@ -82,17 +81,15 @@ def main(data_dir: str, output_dir: Optional[str] = None):
             "names": ["actions"],
         },
     }
-    meta_path = output_path / "meta"
-    meta_path.mkdir(parents=True, exist_ok=True)
-    info_path = meta_path / "info.json"
-    with info_path.open("w") as f:
-        json.dump({"features": features, "fps": fps, "codebase_version": CODEBASE_VERSION}, f)
-    dataset = LeRobotDataset(
+    dataset = LeRobotDataset.create(
         repo_id=output_path.name,
         root=output_path,
+        robot_type="AR4_MK3",
+        features=features,
+        fps=fps,
+        image_writer_processes=5,
+        image_writer_threads=10,
     )
-    dataset.info["robot_type"] = "ar4_mk3"
-    dataset.save_info()
 
     # Loop over raw episode data and write to the LeRobot dataset
     for episode_dir in episode_dirs:
@@ -129,14 +126,14 @@ def main(data_dir: str, output_dir: Optional[str] = None):
             dataset.add_frame(
                 {
                     "image": rgb_img,
-                    "depth_image": depth_image,
+                    # "depth_image": depth_image,
                     "state": state,
                     "actions": action,
                     "task": step["prompt"],
-                    "is_first": step["is_first"],
-                    "is_last": step["is_last"],
-                    "is_terminal": step["is_terminal"],
-                    "reward": step["default_reward"],
+                    # "is_first": step["is_first"],
+                    # "is_last": step["is_last"],
+                    # "is_terminal": step["is_terminal"],
+                    # "reward": step["default_reward"],
                 }
             )
         dataset.save_episode()

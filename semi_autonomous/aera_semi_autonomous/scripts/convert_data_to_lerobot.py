@@ -163,7 +163,7 @@ def main(
                     # "depth_image": depth_image,
                     "state": state,
                     "actions": actions_array,
-                    "prompt": step["prompt"],
+                    "task": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],
                     # "is_terminal": step["is_terminal"],

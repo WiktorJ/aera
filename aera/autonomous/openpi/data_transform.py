@@ -26,7 +26,7 @@ def _parse_image(image) -> np.ndarray:
 
 
 @dataclasses.dataclass(frozen=True)
-class Ar4mk3Inputs(transforms.DataTransformFn):
+class Ar4Mk3Inputs(transforms.DataTransformFn):
     """
     This class is used to convert inputs to the model to the expected format. It is used for both training and inference.
 
@@ -76,14 +76,14 @@ class Ar4mk3Inputs(transforms.DataTransformFn):
         # Pass the prompt (aka language instruction) to the model.
         # Keep this for your own dataset (but modify the key if the instruction is not
         # stored in "prompt"; the output dict always needs to have the key "prompt").
-        if "prompt" in data:
-            inputs["prompt"] = data["prompt"]
+        if "task" in data:
+            inputs["prompt"] = data["task"]
 
         return inputs
 
 
 @dataclasses.dataclass(frozen=True)
-class Ar4mk3Outputs(transforms.DataTransformFn):
+class Ar4Mk3Outputs(transforms.DataTransformFn):
     """
     This class is used to convert outputs from the model back the the dataset specific format. It is
     used for inference only.

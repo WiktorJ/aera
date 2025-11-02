@@ -20,13 +20,14 @@ import tyro
 from lerobot.datasets.lerobot_dataset import CODEBASE_VERSION, LeRobotDataset
 
 
-def main(data_dir: str, output_dir: Optional[str] = None):
+def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 10):
     """
     Main function to convert trajectory data to LeRobot format.
 
     Args:
         data_dir: Path to the root directory containing episode data folders.
         output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
+        action_horizon: Number of future actions to include at each step.
     """
     if output_dir is None:
         output_dir = f"{data_dir}_lerobot"
@@ -77,8 +78,8 @@ def main(data_dir: str, output_dir: Optional[str] = None):
         },
         "actions": {
             "dtype": "float32",
-            "shape": (8,),  # 6 arm joints + 2 gripper joints
-            "names": ["actions"],
+            "shape": (action_horizon, 8),  # H future actions, 6 arm joints + 2 gripper joints
+            "names": ["horizon", "action_dim"],
         },
     }
     dataset = LeRobotDataset.create(
@@ -97,7 +98,11 @@ def main(data_dir: str, output_dir: Optional[str] = None):
         with open(episode_dir / "episode_data.json") as f:
             episode_data = json.load(f)
 
-        for step in episode_data["trajectory_data"]:
+        trajectory = episode_data["trajectory_data"]
+        if not trajectory:
+            continue
+
+        for i, step in enumerate(trajectory):
             # Decode RGB image
             rgb_bytes = bytes.fromhex(step["observations"]["rgb_image"])
             rgb_np = np.frombuffer(rgb_bytes, np.uint8)
@@ -117,18 +122,29 @@ def main(data_dir: str, output_dir: Optional[str] = None):
                 dtype=np.float32,
             )
 
-            # Action is the next set of joint positions
-            action = np.array(
-                step["action"]["joint_state"] + step["action"]["gripper_state"],
-                dtype=np.float32,
-            )
+            # Action is a sequence of H future joint positions
+            future_actions = []
+            for j in range(action_horizon):
+                step_index = i + j
+                if step_index < len(trajectory):
+                    future_step = trajectory[step_index]
+                    action = np.array(
+                        future_step["action"]["joint_state"]
+                        + future_step["action"]["gripper_state"],
+                        dtype=np.float32,
+                    )
+                else:
+                    # Pad with the last available action
+                    action = future_actions[-1]
+                future_actions.append(action)
+            actions_array = np.array(future_actions)
 
             dataset.add_frame(
                 {
                     "image": rgb_img,
                     # "depth_image": depth_image,
                     "state": state,
-                    "actions": action,
+                    "actions": actions_array,
                     "task": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],

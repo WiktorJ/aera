@@ -3,10 +3,12 @@ import pathlib
 
 from typing_extensions import override
 
+import aera.autonomous.openpi.data_transform as data_transform
 import openpi.models.model as _model
-import openpi.transforms as _transforms
+import openpi.models.pi0_config as pi0_config
 import openpi.training.config as openpi_config
-import aera.autonomous.openpi.data_transform as ar4mk3_data_transform
+import openpi.training.weight_loaders as weight_loaders
+import openpi.transforms as _transforms
 
 
 @dataclasses.dataclass(frozen=True)
@@ -45,10 +47,8 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         # Below, we define the transforms for data going into the model (``inputs``) and the transforms
         # for data coming out of the model (``outputs``) (the latter is only used during inference).
         data_transforms = _transforms.Group(
-            inputs=[
-                ar4mk3_data_transform.Ar4mk3Inputs(model_type=model_config.model_type)
-            ],
-            outputs=[ar4mk3_data_transform.Ar4mk3Outputs()],
+            inputs=[data_transform.Ar4Mk3Inputs(model_type=model_config.model_type)],
+            outputs=[data_transform.Ar4Mk3Outputs()],
         )
 
         # One additional data transform: pi0 models are trained on delta actions (relative to the first
@@ -74,3 +74,40 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
         )
+
+
+_CONFIGS = [
+    openpi_config.TrainConfig(
+        name="pi0_ar4_mk3_low_mem_finetune",
+        # Here is an example of loading a pi0 model for LoRA fine-tuning.
+        model=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ),
+        data=Ar4Mk3DataConfig(
+            repo_id="rl_training_data_lerobot",
+            base_config=openpi_config.DataConfig(prompt_from_task=True),
+            extra_delta_transform=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi0_base/params"
+        ),
+        num_train_steps=30,
+        # The freeze filter defines which parameters should be frozen during training.
+        # We have a convenience function in the model config that returns the default freeze filter
+        # for the given model config for LoRA finetuning. Just make sure it matches the model config
+        # you chose above.
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+        ).get_freeze_filter(),
+        # Turn off EMA for LoRA finetuning.
+        ema_decay=None,
+    ),
+]
+
+
+_CONFIGS_DICT = {c.name: c for c in _CONFIGS}
+
+
+def get_config(config_name: str) -> openpi_config.TrainConfig:
+    """Get a config by name."""
+    return _CONFIGS_DICT[config_name]

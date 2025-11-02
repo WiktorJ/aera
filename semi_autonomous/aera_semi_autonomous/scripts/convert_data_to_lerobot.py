@@ -24,6 +24,7 @@ def main(
     data_dir: str,
     output_dir: Optional[str] = None,
     action_horizon: int = 10,
+    frame_skip: int = 1,
     squeeze_gripper: bool = True,
 ):
     """
@@ -33,6 +34,7 @@ def main(
         data_dir: Path to the root directory containing episode data folders.
         output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
         action_horizon: Number of future actions to include at each step.
+        frame_skip: How many steps to skip between each observation. Defaults to 1 (no skip).
         squeeze_gripper: If True, squeeze the 2D gripper state/action into 1D.
     """
     if output_dir is None:
@@ -113,7 +115,8 @@ def main(
         if not trajectory:
             continue
 
-        for i, step in enumerate(trajectory):
+        for i in range(0, len(trajectory), frame_skip):
+            step = trajectory[i]
             # Decode RGB image
             rgb_bytes = bytes.fromhex(step["observations"]["rgb_image"])
             rgb_np = np.frombuffer(rgb_bytes, np.uint8)

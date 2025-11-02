@@ -20,7 +20,12 @@ import tyro
 from lerobot.datasets.lerobot_dataset import CODEBASE_VERSION, LeRobotDataset
 
 
-def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 10):
+def main(
+    data_dir: str,
+    output_dir: Optional[str] = None,
+    action_horizon: int = 10,
+    squeeze_gripper: bool = False,
+):
     """
     Main function to convert trajectory data to LeRobot format.
 
@@ -28,6 +33,7 @@ def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 
         data_dir: Path to the root directory containing episode data folders.
         output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
         action_horizon: Number of future actions to include at each step.
+        squeeze_gripper: If True, squeeze the 2D gripper state/action into 1D.
     """
     if output_dir is None:
         output_dir = f"{data_dir}_lerobot"
@@ -59,6 +65,8 @@ def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 
     fps = round(total_points / total_duration) if total_duration > 0 else 30
     print(f"Calculated average FPS: {fps}")
 
+    action_dim = 7 if squeeze_gripper else 8
+
     # Create LeRobot dataset and define features
     features = {
         "image": {
@@ -73,12 +81,12 @@ def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 
         # },
         "state": {
             "dtype": "float32",
-            "shape": (8,),  # 6 arm joints + 2 gripper joints
+            "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
             "names": ["state"],
         },
         "actions": {
             "dtype": "float32",
-            "shape": (action_horizon, 8),  # H future actions, 6 arm joints + 2 gripper joints
+            "shape": (action_horizon, action_dim),  # H future actions, 6 arm joints + 1/2 gripper joints
             "names": ["horizon", "action_dim"],
         },
     }
@@ -116,9 +124,11 @@ def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 
             depth_image = np.expand_dims(depth_image, axis=-1)
 
             # State is current joint positions
+            gripper_state = step["observations"]["gripper_state"]
+            if squeeze_gripper:
+                gripper_state = [gripper_state[0]]
             state = np.array(
-                step["observations"]["joint_state"]
-                + step["observations"]["gripper_state"],
+                step["observations"]["joint_state"] + gripper_state,
                 dtype=np.float32,
             )
 
@@ -128,9 +138,11 @@ def main(data_dir: str, output_dir: Optional[str] = None, action_horizon: int = 
                 step_index = i + j
                 if step_index < len(trajectory):
                     future_step = trajectory[step_index]
+                    gripper_action = future_step["action"]["gripper_state"]
+                    if squeeze_gripper:
+                        gripper_action = [gripper_action[0]]
                     action = np.array(
-                        future_step["action"]["joint_state"]
-                        + future_step["action"]["gripper_state"],
+                        future_step["action"]["joint_state"] + gripper_action,
                         dtype=np.float32,
                     )
                 else:

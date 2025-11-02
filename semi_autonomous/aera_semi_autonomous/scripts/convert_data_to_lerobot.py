@@ -17,14 +17,14 @@ from typing import Optional
 import cv2
 import numpy as np
 import tyro
-from lerobot.datasets.lerobot_dataset import CODEBASE_VERSION, LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 
 def main(
     data_dir: str,
     output_dir: Optional[str] = None,
     action_horizon: int = 10,
-    squeeze_gripper: bool = False,
+    squeeze_gripper: bool = True,
 ):
     """
     Main function to convert trajectory data to LeRobot format.
@@ -86,7 +86,10 @@ def main(
         },
         "actions": {
             "dtype": "float32",
-            "shape": (action_horizon, action_dim),  # H future actions, 6 arm joints + 1/2 gripper joints
+            "shape": (
+                action_horizon,
+                action_dim,
+            ),  # H future actions, 6 arm joints + 1/2 gripper joints
             "names": ["horizon", "action_dim"],
         },
     }
@@ -157,7 +160,7 @@ def main(
                     # "depth_image": depth_image,
                     "state": state,
                     "actions": actions_array,
-                    "task": step["prompt"],
+                    "prompt": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],
                     # "is_terminal": step["is_terminal"],

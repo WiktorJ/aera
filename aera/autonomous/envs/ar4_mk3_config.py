@@ -129,5 +129,5 @@ class Ar4Mk3EnvConfig:
     distance_multiplier: float = 1.0
     domain_rand: Optional[DomainRandConfig] = None
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
-    image_width: int = 640
-    image_height: int = 360
+    image_width: int = 224
+    image_height: int = 224

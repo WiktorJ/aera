@@ -47,7 +47,7 @@ https://github.com/ycheng517 - for AR4 MK3 arm drivers and calibration software
 
 # Installation tips:
 
-When using mamba run the following:
+When using mamba run the following to install ros dependencies:
 
 `mamba install -c conda-forge compilers cmake pkg-config make ninja colcon-common-extensions catkin_tools rosdep`
 
@@ -62,3 +62,14 @@ In semi-autonomous:
 In semi-autonomous/aera_semi_autonomous:
 `pip install -e . --use-pep517`
 
+## Env for working with models
+Because of package conflicts, it is recommended to create a new environment for working with models.
+
+`uv venv`
+`source .venv/bin/activate`
+
+In different directory
+`git clone --recurse-submodules git@github.com:Physical-Intelligence/openpi.git`
+`GIT_LFS_SKIP_SMUDGE=1 uv sync`
+`GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .`
+`uv pip install --reinstall 'lerobot[all]'`

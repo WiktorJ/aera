@@ -10,6 +10,7 @@ import tqdm
 import tyro
 
 import aera.autonomous.openpi.training_config as _config
+import openpi.training.config as _openpi_config
 import openpi.models.model as _model
 import openpi.shared.normalize as normalize
 import openpi.training.data_loader as _data_loader
@@ -26,7 +27,7 @@ class RemoveStrings(transforms.DataTransformFn):
 
 
 def create_torch_dataloader(
-    data_config: _config.DataConfig,
+    data_config: _openpi_config.DataConfig,
     action_horizon: int,
     batch_size: int,
     model_config: _model.BaseModelConfig,
@@ -64,7 +65,7 @@ def create_torch_dataloader(
 
 
 def create_rlds_dataloader(
-    data_config: _config.DataConfig,
+    data_config: _openpi_config.DataConfig,
     action_horizon: int,
     batch_size: int,
     max_frames: int | None = None,

@@ -84,7 +84,7 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="rl_training_data_lerobot",
+            repo_id="rl_training_data",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
         ),

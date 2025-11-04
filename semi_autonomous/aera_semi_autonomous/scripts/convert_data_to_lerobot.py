@@ -11,6 +11,7 @@ The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 """
 
 import json
+from multiprocessing import process
 from pathlib import Path
 from typing import Optional
 
@@ -106,6 +107,7 @@ def main(
     )
 
     # Loop over raw episode data and write to the LeRobot dataset
+    processed_prompts = set()
     for episode_dir in episode_dirs:
         print(f"Processing episode: {episode_dir.name}")
         with open(episode_dir / "episode_data.json") as f:
@@ -156,6 +158,7 @@ def main(
                     action = future_actions[-1]
                 future_actions.append(action)
             actions_array = np.array(future_actions)
+            processed_prompts.add(step["prompt"])
 
             dataset.add_frame(
                 {
@@ -172,6 +175,7 @@ def main(
             )
         dataset.save_episode()
     print(f"Finished converting dataset. Saved to {output_path}")
+    print(f"Processed {processed_prompts} prompts")
 
 
 if __name__ == "__main__":

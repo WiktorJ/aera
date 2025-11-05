@@ -9,7 +9,7 @@ import numpy as np
 import tqdm
 import tyro
 
-import aera.autonomous.openpi.training_config as _config
+import aera.autonomous.openpi.training_config as _training_config
 import openpi.training.config as _openpi_config
 import openpi.models.model as _model
 import openpi.shared.normalize as normalize
@@ -33,7 +33,7 @@ def create_torch_dataloader(
     model_config: _model.BaseModelConfig,
     num_workers: int,
     max_frames: int | None = None,
-) -> tuple[_data_loader.Dataset, int]:
+) -> tuple[_data_loader.TorchDataLoader, int]:
     if data_config.repo_id is None:
         raise ValueError("Data config must have a repo_id")
     dataset = _data_loader.create_torch_dataset(
@@ -65,7 +65,7 @@ def create_torch_dataloader(
 
 
 def main(config_name: str, max_frames: int | None = None):
-    config = _config.get_config(config_name)
+    config = _training_config.get_config(config_name)
     data_config = config.data.create(config.assets_dirs, config.model)
 
     data_loader, num_batches = create_torch_dataloader(
@@ -86,7 +86,9 @@ def main(config_name: str, max_frames: int | None = None):
 
     norm_stats = {key: stats.get_statistics() for key, stats in stats.items()}
 
-    output_path = config.assets_dirs / data_config.repo_id
+    output_path = config.assets_dirs / (
+        data_config.repo_id if data_config.repo_id else ""
+    )
     print(f"Writing stats to: {output_path}")
     normalize.save(output_path, norm_stats)
 

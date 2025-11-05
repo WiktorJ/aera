@@ -72,4 +72,4 @@ In different directory
 `git clone --recurse-submodules git@github.com:Physical-Intelligence/openpi.git`
 `GIT_LFS_SKIP_SMUDGE=1 uv sync`
 `GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .`
-`uv pip install --reinstall 'lerobot[all]'`
+`uv pip install --reinstall 'lerobot[all]' mlflow`

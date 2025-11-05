@@ -13,7 +13,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import tqdm_loggable.auto as tqdm
-import wandb
+import mlflow
 
 import openpi.models.model as _model
 import openpi.shared.array_typing as at
@@ -52,7 +52,7 @@ def init_logging():
     logger.handlers[0].setFormatter(formatter)
 
 
-def init_wandb(
+def init_mlflow(
     config: _config.TrainConfig,
     *,
     resuming: bool,
@@ -60,25 +60,26 @@ def init_wandb(
     enabled: bool = True,
 ):
     if not enabled:
-        wandb.init(mode="disabled")
         return
+
+    mlflow.set_experiment(config.project_name)
 
     ckpt_dir = config.checkpoint_dir
     if not ckpt_dir.exists():
         raise FileNotFoundError(f"Checkpoint directory {ckpt_dir} does not exist.")
     if resuming:
-        run_id = (ckpt_dir / "wandb_id.txt").read_text().strip()
-        wandb.init(id=run_id, resume="must", project=config.project_name)
+        run_id = (ckpt_dir / "mlflow_run_id.txt").read_text().strip()
+        mlflow.start_run(run_id=run_id)
     else:
-        wandb.init(
-            name=config.exp_name,
-            config=dataclasses.asdict(config),
-            project=config.project_name,
-        )
-        (ckpt_dir / "wandb_id.txt").write_text(wandb.run.id)
+        mlflow.start_run(run_name=config.exp_name)
+        mlflow.log_params(dataclasses.asdict(config))
+        run_id = mlflow.active_run().info.run_id
+        (ckpt_dir / "mlflow_run_id.txt").write_text(run_id)
 
     if log_code:
-        wandb.run.log_code(epath.Path(__file__).parent.parent)
+        mlflow.log_artifacts(
+            epath.Path(__file__).parent.parent, artifact_path="code"
+        )
 
 
 def _load_weights_and_validate(
@@ -263,7 +264,7 @@ def main(config: _config.TrainConfig):
         overwrite=config.overwrite,
         resume=config.resume,
     )
-    init_wandb(config, resuming=resuming, enabled=config.wandb_enabled)
+    init_mlflow(config, resuming=resuming, enabled=config.mlflow_enabled)
 
     data_loader = _data_loader.create_data_loader(
         config,
@@ -277,15 +278,11 @@ def main(config: _config.TrainConfig):
     )
 
     # Log images from first batch to sanity check.
-    images_to_log = [
-        wandb.Image(
-            np.concatenate(
-                [np.array(img[i]) for img in batch[0].images.values()], axis=1
-            )
+    for i in range(min(5, len(next(iter(batch[0].images.values()))))):
+        image_np = np.concatenate(
+            [np.array(img[i]) for img in batch[0].images.values()], axis=1
         )
-        for i in range(min(5, len(next(iter(batch[0].images.values())))))
-    ]
-    wandb.log({"camera_views": images_to_log}, step=0)
+        mlflow.log_image(image_np, f"camera_views/view_{i}.png", step=0)
 
     train_state, train_state_sharding = init_train_state(
         config, init_rng, mesh, resume=resuming
@@ -325,7 +322,7 @@ def main(config: _config.TrainConfig):
             reduced_info = jax.device_get(jax.tree.map(jnp.mean, stacked_infos))
             info_str = ", ".join(f"{k}={v:.4f}" for k, v in reduced_info.items())
             pbar.write(f"Step {step}: {info_str}")
-            wandb.log(reduced_info, step=step)
+            mlflow.log_metrics(reduced_info, step=step)
             infos = []
         batch = next(data_iter)
 

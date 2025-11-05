@@ -6,15 +6,11 @@ from typing import Any
 
 import etils.epath as epath
 import flax.nnx as nnx
-from flax.training import common_utils
 import flax.traverse_util as traverse_util
 import jax
 import jax.numpy as jnp
-import numpy as np
-import optax
-import tqdm_loggable.auto as tqdm
 import mlflow
-
+import numpy as np
 import openpi.models.model as _model
 import openpi.shared.array_typing as at
 import openpi.shared.nnx_utils as nnx_utils
@@ -25,6 +21,11 @@ import openpi.training.optimizer as _optimizer
 import openpi.training.sharding as sharding
 import openpi.training.utils as training_utils
 import openpi.training.weight_loaders as _weight_loaders
+import optax
+import tqdm_loggable.auto as tqdm
+from flax.training import common_utils
+
+import aera.autonomous.openpi.training_config as _training_config
 
 
 def init_logging():
@@ -77,9 +78,7 @@ def init_mlflow(
         (ckpt_dir / "mlflow_run_id.txt").write_text(run_id)
 
     if log_code:
-        mlflow.log_artifacts(
-            epath.Path(__file__).parent.parent, artifact_path="code"
-        )
+        mlflow.log_artifacts(epath.Path(__file__).parent.parent, artifact_path="code")
 
 
 def _load_weights_and_validate(
@@ -264,7 +263,7 @@ def main(config: _config.TrainConfig):
         overwrite=config.overwrite,
         resume=config.resume,
     )
-    init_mlflow(config, resuming=resuming, enabled=config.mlflow_enabled)
+    init_mlflow(config, resuming=resuming, enabled=config.wandb_enabled)
 
     data_loader = _data_loader.create_data_loader(
         config,
@@ -336,4 +335,4 @@ def main(config: _config.TrainConfig):
 
 
 if __name__ == "__main__":
-    main(_config.cli())
+    main(_training_config.cli())

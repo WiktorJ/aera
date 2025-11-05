@@ -9,6 +9,7 @@ import openpi.models.pi0_config as pi0_config
 import openpi.training.config as openpi_config
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+import tyro
 
 
 @dataclasses.dataclass(frozen=True)
@@ -106,6 +107,12 @@ _CONFIGS = [
 
 
 _CONFIGS_DICT = {c.name: c for c in _CONFIGS}
+
+
+def cli() -> openpi_config.TrainConfig:
+    return tyro.extras.overridable_config_cli(
+        {k: (k, v) for k, v in _CONFIGS_DICT.items()}
+    )
 
 
 def get_config(config_name: str) -> openpi_config.TrainConfig:

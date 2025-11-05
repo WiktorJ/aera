@@ -281,7 +281,7 @@ def main(config: _config.TrainConfig):
         image_np = np.concatenate(
             [np.array(img[i]) for img in batch[0].images.values()], axis=1
         )
-        mlflow.log_image(image_np, f"camera_views/view_{i}.png", step=0)
+        mlflow.log_image(image_np, key=f"camera_views/view_{i}", step=0)
 
     train_state, train_state_sharding = init_train_state(
         config, init_rng, mesh, resume=resuming

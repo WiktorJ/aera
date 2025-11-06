@@ -11,7 +11,6 @@ The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 """
 
 import json
-from multiprocessing import process
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +23,6 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 def main(
     data_dir: str,
     output_dir: Optional[str] = None,
-    action_horizon: int = 10,
     frame_skip: int = 1,
     squeeze_gripper: bool = True,
 ):
@@ -34,7 +32,6 @@ def main(
     Args:
         data_dir: Path to the root directory containing episode data folders.
         output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
-        action_horizon: Number of future actions to include at each step.
         frame_skip: How many steps to skip between each observation. Defaults to 1 (no skip).
         squeeze_gripper: If True, squeeze the 2D gripper state/action into 1D.
     """
@@ -87,13 +84,10 @@ def main(
             "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
             "names": ["state"],
         },
-        "actions": {
+        "action": {
             "dtype": "float32",
-            "shape": (
-                action_horizon,
-                action_dim,
-            ),  # H future actions, 6 arm joints + 1/2 gripper joints
-            "names": ["horizon", "action_dim"],
+            "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
+            "names": ["action"],
         },
     }
     dataset = LeRobotDataset.create(
@@ -133,31 +127,19 @@ def main(
 
             # State is current joint positions
             gripper_state = step["observations"]["gripper_state"]
+            gripper_action = step["action"]["gripper_state"]
             if squeeze_gripper:
                 gripper_state = [gripper_state[0]]
+                gripper_action = [gripper_action[0]]
             state = np.array(
                 step["observations"]["joint_state"] + gripper_state,
                 dtype=np.float32,
             )
+            action = np.array(
+                step["action"]["joint_state"] + gripper_action,
+                dtype=np.float32,
+            )
 
-            # Action is a sequence of H future joint positions
-            future_actions = []
-            for j in range(action_horizon):
-                step_index = i + j
-                if step_index < len(trajectory):
-                    future_step = trajectory[step_index]
-                    gripper_action = future_step["action"]["gripper_state"]
-                    if squeeze_gripper:
-                        gripper_action = [gripper_action[0]]
-                    action = np.array(
-                        future_step["action"]["joint_state"] + gripper_action,
-                        dtype=np.float32,
-                    )
-                else:
-                    # Pad with the last available action
-                    action = future_actions[-1]
-                future_actions.append(action)
-            actions_array = np.array(future_actions)
             processed_prompts.add(step["prompt"])
 
             dataset.add_frame(
@@ -165,7 +147,7 @@ def main(
                     "image": rgb_img,
                     # "depth_image": depth_image,
                     "state": state,
-                    "actions": actions_array,
+                    "action": action,
                     "task": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],

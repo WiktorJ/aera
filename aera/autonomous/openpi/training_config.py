@@ -82,7 +82,9 @@ _CONFIGS = [
         name="pi0_ar4_mk3_low_mem_finetune",
         # Here is an example of loading a pi0 model for LoRA fine-tuning.
         model=pi0_config.Pi0Config(
-            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora"
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            action_horizon=5,
         ),
         data=Ar4Mk3DataConfig(
             repo_id="rl_training_data",

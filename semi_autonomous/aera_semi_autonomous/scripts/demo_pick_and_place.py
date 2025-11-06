@@ -50,7 +50,7 @@ def setup_logging(debug: bool = False) -> logging.Logger:
     return logging.getLogger(__name__)
 
 
-def get_object_pose(env) -> Optional[Pose]:
+def get_object_pose(env, logger: logging.Logger) -> Optional[Pose]:
     """Get the current pose of object0 from the environment."""
     try:
         # Get object pose from MuJoCo's joint state, which is randomized at reset
@@ -98,7 +98,7 @@ def get_object_pose(env) -> Optional[Pose]:
             z=2 * float(object_pos[2]),
         )
 
-        print(f"object_yaw_deg: {object_yaw_deg}")
+        logger.info(f"object_yaw_deg: {object_yaw_deg}")
         # Combine top-down orientation with object's yaw
         top_down_rot = Rotation.from_quat([0, 1, 0, 0])  # x, y, z, w
         z_rot = Rotation.from_euler("z", object_yaw_deg + additional_yaw, degrees=True)
@@ -114,7 +114,7 @@ def get_object_pose(env) -> Optional[Pose]:
 
         return pose
     except Exception as e:
-        logging.getLogger(__name__).error(f"Failed to get object pose: {e}")
+        logger.error(f"Failed to get object pose: {e}")
         return None
 
 
@@ -156,12 +156,12 @@ def main():
             break
 
     if model_path is None:
-        print(
-            "Error: Could not find AR4 MK3 model file. Please ensure the MuJoCo model exists."
+        logger.error(
+            "Could not find AR4 MK3 model file. Please ensure the MuJoCo model exists."
         )
-        print("Tried the following paths:")
+        logger.error("Tried the following paths:")
         for path in possible_model_paths:
-            print(f"  - {path}")
+            logger.error(f"  - {path}")
         return
 
     try:
@@ -256,7 +256,7 @@ def main():
 
         # Step 2: Get object position
         logger.info("Locating object...")
-        object_pose = get_object_pose(env)
+        object_pose = get_object_pose(env, logger)
         if object_pose is None:
             logger.error("Failed to locate object")
             return False

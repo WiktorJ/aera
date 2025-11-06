@@ -102,6 +102,7 @@ _CONFIGS = [
         ).get_freeze_filter(),
         # Turn off EMA for LoRA finetuning.
         ema_decay=None,
+        batch_size=2,
     ),
 ]
 

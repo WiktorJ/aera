@@ -447,8 +447,7 @@ class Ar4Mk3Env(BaseEnv):
         # --- Apply Light Properties ---
         lights_map = {
             "top_light": "top",
-            "scene_light": "scene_lighta",
-            "headlight": "scene_light",
+            "scene_light": "scene_light",
         }
         for config_key, light_name in lights_map.items():
             light_config = getattr(dr_config, config_key)

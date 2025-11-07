@@ -198,17 +198,19 @@ def main():
                 gripper_jaw2_material=MaterialConfig(texture_name="steel-scratched"),
                 # --- Light Properties ---
                 headlight=LightConfig(
-                    diffuse=(0.7, 0.7, 0.7),
-                    ambient=(0.2, 0.2, 0.2),
-                    specular=(0.5, 0.5, 0.5),
-                ),
-                top_light=LightConfig(active=False),
-                scene_light=LightConfig(
-                    pos=(0.0, 0.0, 3.0),
-                    dir=(0.0, 0.0, -1.0),
-                    diffuse=(0.9, 0.9, 0.9),
+                    active=True,
+                    diffuse=(0.6, 0.6, 0.6),
                     ambient=(0.4, 0.4, 0.4),
-                    specular=(0.9, 0.9, 0.9),
+                    specular=(0, 0, 0),
+                ),
+                top_light=LightConfig(active=True),
+                scene_light=LightConfig(
+                    active=True,
+                    pos=(0.0, 0.0, 1.5),
+                    dir=(0.0, 0.0, -1.0),
+                    diffuse=(0.2, 0.2, 0.2),
+                    ambient=(0, 0, 0),
+                    specular=(0, 0, 0),
                 ),
                 # --- Dynamics Properties ---
                 object_dynamics=DynamicsConfig(

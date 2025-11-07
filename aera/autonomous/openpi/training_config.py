@@ -1,15 +1,16 @@
 import dataclasses
 import pathlib
 
+import tyro
 from typing_extensions import override
 
 import aera.autonomous.openpi.data_transform as data_transform
 import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
+import openpi.models.pi0_fast as pi0_fast
 import openpi.training.config as openpi_config
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
-import tyro
 
 
 @dataclasses.dataclass(frozen=True)
@@ -84,7 +85,7 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
-            action_horizon=5,
+            action_horizon=50,
         ),
         data=Ar4Mk3DataConfig(
             repo_id="rl_training_data",
@@ -94,7 +95,7 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_base/params"
         ),
-        num_train_steps=30,
+        num_train_steps=30_000,
         # The freeze filter defines which parameters should be frozen during training.
         # We have a convenience function in the model config that returns the default freeze filter
         # for the given model config for LoRA finetuning. Just make sure it matches the model config
@@ -104,7 +105,40 @@ _CONFIGS = [
         ).get_freeze_filter(),
         # Turn off EMA for LoRA finetuning.
         ema_decay=None,
-        batch_size=2,
+        batch_size=32,
+        log_interval=100,
+    ),
+    openpi_config.TrainConfig(
+        name="pi0_fast_ar4_mk3_low_mem_finetune",
+        # Here is an example of loading a pi0-FAST model for LoRA finetuning.
+        # For setting action_dim, action_horizon, and max_token_len, see the comments above.
+        model=pi0_fast.Pi0FASTConfig(
+            action_dim=7,
+            action_horizon=10,
+            max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+        ),
+        data=Ar4Mk3DataConfig(
+            repo_id="rl_training_data",
+            base_config=openpi_config.DataConfig(prompt_from_task=True),
+            extra_delta_transform=True,
+        ),
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi0_fast_base/params"
+        ),
+        num_train_steps=30_000,
+        # Again, make sure to match the model config above when extracting the freeze filter
+        # that specifies which parameters should be frozen during LoRA finetuning.
+        freeze_filter=pi0_fast.Pi0FASTConfig(
+            action_dim=7,
+            action_horizon=10,
+            max_token_len=180,
+            paligemma_variant="gemma_2b_lora",
+        ).get_freeze_filter(),
+        # Turn off EMA for LoRA finetuning.
+        ema_decay=None,
+        batch_size=32,
+        log_interval=100,
     ),
 ]
 

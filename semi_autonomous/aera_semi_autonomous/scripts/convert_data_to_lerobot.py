@@ -84,10 +84,10 @@ def main(
             "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
             "names": ["state"],
         },
-        "action": {
+        "actions": {
             "dtype": "float32",
             "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
-            "names": ["action"],
+            "names": ["actions"],
         },
     }
     dataset = LeRobotDataset.create(
@@ -147,7 +147,7 @@ def main(
                     "image": rgb_img,
                     # "depth_image": depth_image,
                     "state": state,
-                    "action": action,
+                    "actions": action,
                     "task": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],

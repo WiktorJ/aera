@@ -128,7 +128,7 @@ def run_on_env(args: Args) -> None:
         done = False
 
         # Get initial joint positions for dummy action
-        joint_names = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
+        joint_names = RM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
         qpos_indices = [env.model.joint(name).qposadr[0] for name in joint_names]
         initial_qpos = env.data.qpos[qpos_indices]
 
@@ -139,8 +139,7 @@ def run_on_env(args: Args) -> None:
                     continue
 
                 # Get observations
-                img = env.render(camera_name="disembodied_camera")
-                wrist_img = env.render(camera_name="gripper_camera")
+                img = env.render()
                 eef_pos = env.data.site("grip_site").xpos
                 eef_mat = env.data.site("grip_site").xmat.reshape(3, 3)
                 eef_quat = Rotation.from_matrix(eef_mat).as_quat()  # (x,y,z,w)
@@ -149,23 +148,16 @@ def run_on_env(args: Args) -> None:
 
                 # Preprocess images (rotate 180 deg to match training data)
                 img = np.ascontiguousarray(img[::-1, ::-1])
-                wrist_img = np.ascontiguousarray(wrist_img[::-1, ::-1])
                 img = image_tools.convert_to_uint8(
                     image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
-                )
-                wrist_img = image_tools.convert_to_uint8(
-                    image_tools.resize_with_pad(
-                        wrist_img, args.resize_size, args.resize_size
-                    )
                 )
                 replay_images.append(img)
 
                 if not action_plan:
                     # Prepare observations dict
                     element: dict[str, Any] = {
-                        "observation/image": img,
-                        "observation/wrist_image": wrist_img,
-                        "observation/state": np.concatenate(
+                        "image": img,
+                        "state": np.concatenate(
                             (eef_pos, _quat2axisangle(eef_quat), gripper_qpos)
                         ),
                         "prompt": args.prompt,

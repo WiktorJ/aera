@@ -48,7 +48,6 @@
   </asset>
 
   <worldbody>
-    <camera name="disembodied_camera" pos="0.5 -0.5 0.8" quat="0.653 0.271 0.271 0.653" />
     <light name="scene_light" pos="0 0 1.5" dir="0 0 -1" directional="true" diffuse="0.2 0.2 0.2"/>
     <light name="top" pos="0 0 2" mode="trackcom" diffuse="0 0 0"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>

@@ -63,18 +63,6 @@ class Args:
     seed: int = 7
 
 
-def _quat2axisangle(quat: np.ndarray) -> np.ndarray:
-    """Converts a quaternion from (x, y, z, w) to axis-angle."""
-    if quat[3] > 1.0:
-        quat[3] = 1.0
-    elif quat[3] < -1.0:
-        quat[3] = -1.0
-    den = np.sqrt(1.0 - quat[3] * quat[3])
-    if math.isclose(den, 0.0):
-        return np.zeros(3)
-    return (quat[:3] * 2.0 * math.acos(quat[3])) / den
-
-
 def run_on_env(args: Args) -> None:
     """Runs the policy on the AR4 MK3 environment."""
     logging.basicConfig(level=logging.INFO)
@@ -131,6 +119,10 @@ def run_on_env(args: Args) -> None:
         joint_names = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
         qpos_indices = [env.model.joint(name).qposadr[0] for name in joint_names]
         initial_qpos = env.data.qpos[qpos_indices]
+        gripper_qpos_addr = env.model.joint(GRIPPER_JOINT_NAME).qposadr[0]
+        arm_qpos_indices = [
+            env.model.joint(name).qposadr[0] for name in ARM_JOINT_NAMES
+        ]
 
         for t in range(args.max_episode_steps):
             try:
@@ -142,16 +134,13 @@ def run_on_env(args: Args) -> None:
                 img = env.render()
 
                 # Get arm and gripper joint positions
-                arm_qpos_indices = [
-                    env.model.joint(name).qposadr[0] for name in ARM_JOINT_NAMES
-                ]
                 arm_qpos = env.data.qpos[arm_qpos_indices]
-                gripper_qpos_addr = env.model.joint(GRIPPER_JOINT_NAME).qposadr[0]
                 gripper_qpos = np.array([env.data.qpos[gripper_qpos_addr]])
                 current_qpos = np.concatenate((arm_qpos, gripper_qpos))
 
-                # Preprocess images (rotate 180 deg to match training data)
-                img = np.ascontiguousarray(img[::-1, ::-1])
+                # Preprocess images (rotate 180 deg to match training data).
+                # TODO: This may or may not be needed. Investigage.
+                # img = np.ascontiguousarray(img[::-1, ::-1])
                 img = image_tools.convert_to_uint8(
                     image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
                 )

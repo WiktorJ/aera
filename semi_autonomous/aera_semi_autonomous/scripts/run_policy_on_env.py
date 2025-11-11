@@ -128,7 +128,7 @@ def run_on_env(args: Args) -> None:
         done = False
 
         # Get initial joint positions for dummy action
-        joint_names = RM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
+        joint_names = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
         qpos_indices = [env.model.joint(name).qposadr[0] for name in joint_names]
         initial_qpos = env.data.qpos[qpos_indices]
 
@@ -140,11 +140,15 @@ def run_on_env(args: Args) -> None:
 
                 # Get observations
                 img = env.render()
-                eef_pos = env.data.site("grip_site").xpos
-                eef_mat = env.data.site("grip_site").xmat.reshape(3, 3)
-                eef_quat = Rotation.from_matrix(eef_mat).as_quat()  # (x,y,z,w)
+
+                # Get arm and gripper joint positions
+                arm_qpos_indices = [
+                    env.model.joint(name).qposadr[0] for name in ARM_JOINT_NAMES
+                ]
+                arm_qpos = env.data.qpos[arm_qpos_indices]
                 gripper_qpos_addr = env.model.joint(GRIPPER_JOINT_NAME).qposadr[0]
                 gripper_qpos = np.array([env.data.qpos[gripper_qpos_addr]])
+                current_qpos = np.concatenate((arm_qpos, gripper_qpos))
 
                 # Preprocess images (rotate 180 deg to match training data)
                 img = np.ascontiguousarray(img[::-1, ::-1])
@@ -157,9 +161,7 @@ def run_on_env(args: Args) -> None:
                     # Prepare observations dict
                     element: dict[str, Any] = {
                         "image": img,
-                        "state": np.concatenate(
-                            (eef_pos, _quat2axisangle(eef_quat), gripper_qpos)
-                        ),
+                        "state": current_qpos,
                         "prompt": args.prompt,
                     }
                     action_chunk = client.get_actions(element)

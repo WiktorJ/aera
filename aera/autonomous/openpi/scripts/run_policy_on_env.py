@@ -129,12 +129,14 @@ def run_on_env(args: Args) -> None:
                     continue
 
                 # Get observations
-                if args.headless:
-                    env.render_mode = "rgb_array"
+                if not args.headless:
+                    env.render()  # Render to screen in human mode
+
+                # Get image for policy, requires rgb_array mode
+                original_mode = env.render_mode
+                env.render_mode = "rgb_array"
                 img = env.render()
-                if args.headless:
-                    env.render_mode = "human"
-                    env.render()
+                env.render_mode = original_mode
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]

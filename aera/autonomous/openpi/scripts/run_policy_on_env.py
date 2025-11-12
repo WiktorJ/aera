@@ -34,7 +34,7 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 
 # Environment constants
 ENV_RESOLUTION = 256  # resolution used for rendered images
-ARM_JOINT_NAMES = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+ARM_JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 GRIPPER_JOINT_NAME = "gripper_jaw1_joint"
 
 

@@ -49,14 +49,14 @@ class Args:
 
     # --- Evaluation parameters ---
     replan_steps: int = 5
-    num_episodes: int = 50
+    num_episodes: int = 1
     max_episode_steps: int = 400
     num_steps_wait: int = 10  # Number of steps to wait for objects to stabilize
     resize_size: int = 224
 
     # --- Environment parameters ---
     domain_rand: bool = False
-    headless: bool = True
+    headless: bool = False
 
     # --- Utils ---
     video_out_path: str = "data/ar4_mk3/videos"

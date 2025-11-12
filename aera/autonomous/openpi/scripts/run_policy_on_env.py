@@ -159,7 +159,7 @@ def run_on_env(args: Args) -> None:
                         "state": current_qpos,
                         "prompt": args.prompt,
                     }
-                    action_chunk = client.get_actions(element)
+                    action_chunk = client.infer(element)["actions"]
                     action_plan.extend(action_chunk[: args.replan_steps])
 
                 action = action_plan.popleft()

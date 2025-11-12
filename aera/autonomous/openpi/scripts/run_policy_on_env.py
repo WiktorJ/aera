@@ -101,8 +101,6 @@ def run_on_env(args: Args) -> None:
     env = Ar4Mk3PickAndPlaceEnv(
         render_mode="rgb_array" if args.headless else "human",
         config=env_config,
-        width=ENV_RESOLUTION,
-        height=ENV_RESOLUTION,
     )
 
     total_episodes, total_successes = 0, 0
@@ -141,9 +139,10 @@ def run_on_env(args: Args) -> None:
                 # Preprocess images (rotate 180 deg to match training data).
                 # TODO: This may or may not be needed. Investigage.
                 # img = np.ascontiguousarray(img[::-1, ::-1])
-                img = image_tools.convert_to_uint8(
-                    image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
-                )
+                # img = image_tools.convert_to_uint8(
+                #     image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
+                # )
+                img = image_tools.convert_to_uint8(img)
                 replay_images.append(img)
 
                 if not action_plan:

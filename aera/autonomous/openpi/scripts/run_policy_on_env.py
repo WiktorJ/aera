@@ -129,7 +129,11 @@ def run_on_env(args: Args) -> None:
                     continue
 
                 # Get observations
+                if args.headless:
+                    env.render_mode = "rgb_array"
                 img = env.render()
+                if args.headless:
+                    env.render_mode = "human"
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]

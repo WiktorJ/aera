@@ -114,6 +114,8 @@ def run_on_env(args: Args) -> None:
         logging.info(f"Task: {args.prompt}")
 
         obs, info = env.reset(seed=args.seed + episode_idx)
+        if viewer:
+            viewer.sync()
         action_plan = collections.deque()
         replay_images = []
         done = False
@@ -129,14 +131,14 @@ def run_on_env(args: Args) -> None:
 
         for t in range(args.max_episode_steps):
             try:
+                if viewer:
+                    viewer.sync()
+
                 if t < args.num_steps_wait:
                     obs, _, done, _, info = env.step(initial_qpos)
                     continue
 
                 # Get observations
-                if viewer:
-                    viewer.sync()
-
                 # Get image for policy, requires rgb_array mode
                 img = env.render()
 

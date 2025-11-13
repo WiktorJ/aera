@@ -22,6 +22,7 @@ import os
 import pathlib
 from typing import Any
 
+import cv2
 import imageio
 import numpy as np
 import tyro
@@ -102,11 +103,6 @@ def run_on_env(args: Args) -> None:
         render_mode="rgb_array",
         config=env_config,
     )
-    viewer = None
-    if not args.headless:
-        import mujoco.viewer
-
-        viewer = mujoco.viewer.launch_passive(env.model, env.data)
 
     total_episodes, total_successes = 0, 0
     for episode_idx in range(args.num_episodes):
@@ -114,8 +110,6 @@ def run_on_env(args: Args) -> None:
         logging.info(f"Task: {args.prompt}")
 
         obs, info = env.reset(seed=args.seed + episode_idx)
-        if viewer:
-            viewer.sync()
         action_plan = collections.deque()
         replay_images = []
         done = False
@@ -131,9 +125,6 @@ def run_on_env(args: Args) -> None:
 
         for t in range(args.max_episode_steps):
             try:
-                if viewer:
-                    viewer.sync()
-
                 if t < args.num_steps_wait:
                     obs, _, done, _, info = env.step(initial_qpos)
                     continue
@@ -141,6 +132,12 @@ def run_on_env(args: Args) -> None:
                 # Get observations
                 # Get image for policy, requires rgb_array mode
                 img = env.render()
+
+                if not args.headless:
+                    # Display the image
+                    display_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                    cv2.imshow("AR4 Mk3 Env", display_img)
+                    cv2.waitKey(1)
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]
@@ -196,9 +193,9 @@ def run_on_env(args: Args) -> None:
                 f"Success rate so far: {success_rate:.1f}% ({total_successes}/{total_episodes})"
             )
 
-    if viewer:
-        viewer.close()
     env.close()
+    if not args.headless:
+        cv2.destroyAllWindows()
     logging.info("Evaluation finished.")
     if total_episodes > 0:
         final_rate = total_successes / total_episodes * 100

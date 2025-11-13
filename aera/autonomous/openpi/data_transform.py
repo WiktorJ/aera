@@ -50,6 +50,7 @@ class Ar4Mk3Inputs(transforms.DataTransformFn):
         # Create inputs dict. Do not change the keys in the dict below.
         inputs = {
             "state": data["state"],
+            "prompt": data["prompt"],
             "image": {
                 "base_0_rgb": base_image,
                 # Pad any non-existent images with zero-arrays of the appropriate shape.

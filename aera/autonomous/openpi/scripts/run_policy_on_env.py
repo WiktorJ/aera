@@ -133,10 +133,7 @@ def run_on_env(args: Args) -> None:
                     env.render()  # Render to screen in human mode
 
                 # Get image for policy, requires rgb_array mode
-                original_mode = env.render_mode
-                env.render_mode = "rgb_array"
-                img = env.render()
-                env.render_mode = original_mode
+                img = env.mujoco_renderer.render("rgb_array")
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]

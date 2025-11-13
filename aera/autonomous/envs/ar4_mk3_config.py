@@ -135,8 +135,8 @@ class Ar4Mk3EnvConfig:
     )
     translation: Optional[np.ndarray] = field(default_factory=lambda: T)
     quaterion: Optional[np.ndarray] = field(default_factory=lambda: Q)
-    z_offset: float = 0.0
-    distance_multiplier: float = 1.0
+    z_offset: float = 0.3
+    distance_multiplier: float = 1.2
     domain_rand: Optional[DomainRandConfig] = None
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
     image_width: int = 224

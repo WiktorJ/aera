@@ -133,8 +133,8 @@ class Ar4Mk3EnvConfig:
             "robot0:slide2": 0.0,
         }
     )
-    translation: Optional[np.ndarray] = T
-    quaterion: Optional[np.ndarray] = Q
+    translation: Optional[np.ndarray] = field(default_factory=lambda: T)
+    quaterion: Optional[np.ndarray] = field(default_factory=lambda: Q)
     z_offset: float = 0.0
     distance_multiplier: float = 1.0
     domain_rand: Optional[DomainRandConfig] = None

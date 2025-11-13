@@ -99,9 +99,14 @@ def run_on_env(args: Args) -> None:
         domain_rand=None,  # Add domain rand config if needed
     )
     env = Ar4Mk3PickAndPlaceEnv(
-        render_mode="rgb_array" if args.headless else "human",
+        render_mode="rgb_array",
         config=env_config,
     )
+    viewer = None
+    if not args.headless:
+        import mujoco.viewer
+
+        viewer = mujoco.viewer.launch_passive(env.model, env.data)
 
     total_episodes, total_successes = 0, 0
     for episode_idx in range(args.num_episodes):
@@ -129,11 +134,11 @@ def run_on_env(args: Args) -> None:
                     continue
 
                 # Get observations
-                if not args.headless:
-                    env.render()  # Render to screen in human mode
+                if viewer:
+                    viewer.sync()
 
                 # Get image for policy, requires rgb_array mode
-                img = env.mujoco_renderer.render("rgb_array")
+                img = env.render()
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]
@@ -189,6 +194,8 @@ def run_on_env(args: Args) -> None:
                 f"Success rate so far: {success_rate:.1f}% ({total_successes}/{total_episodes})"
             )
 
+    if viewer:
+        viewer.close()
     env.close()
     logging.info("Evaluation finished.")
     if total_episodes > 0:

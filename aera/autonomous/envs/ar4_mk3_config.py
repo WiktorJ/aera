@@ -11,6 +11,16 @@ DEFAULT_CAMERA_CONFIG = {
     "lookat": np.array([0, 0, 0]),
 }
 
+T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
+Q = np.array(
+    [
+        -0.36336720179946663,
+        -0.8203835174702869,
+        0.22865474664402222,
+        0.37769321910336584,
+    ]
+)
+
 AVAILABLE_TEXTURES = [
     "blue-wood",
     "brass-ambra",
@@ -123,8 +133,8 @@ class Ar4Mk3EnvConfig:
             "robot0:slide2": 0.0,
         }
     )
-    translation: Optional[np.ndarray] = None
-    quaterion: Optional[np.ndarray] = None
+    translation: Optional[np.ndarray] = T
+    quaterion: Optional[np.ndarray] = Q
     z_offset: float = 0.0
     distance_multiplier: float = 1.0
     domain_rand: Optional[DomainRandConfig] = None

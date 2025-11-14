@@ -171,6 +171,9 @@ def run_on_env(args: Args) -> None:
                         "prompt": prompt,
                     }
                     action_chunk = client.infer(element)["actions"]
+                    if np.all(action_chunk == 0):
+                        logging.warning("Policy returned all zeros.")
+                        continue
                     action_plan.extend(action_chunk[: args.replan_steps])
 
                 action = action_plan.popleft()

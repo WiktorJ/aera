@@ -17,7 +17,6 @@ Example usage:
 import collections
 import dataclasses
 import logging
-import math
 import os
 import pathlib
 from typing import Any
@@ -26,10 +25,12 @@ import cv2
 import imageio
 import numpy as np
 import tyro
-from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera_semi_autonomous.data.domain_rand_config_generator import (
+    generate_random_domain_rand_config,
+)
 from openpi_client import image_tools
 from openpi_client import websocket_client_policy as _websocket_client_policy
 
@@ -93,11 +94,20 @@ def run_on_env(args: Args) -> None:
         logging.error("Could not find AR4 MK3 model file.")
         return
 
+    if args.domain_rand:
+        domain_rand_config, object_color, target_color = (
+            generate_random_domain_rand_config()
+        )
+        prompt = f"Pick {object_color} block"
+    else:
+        domain_rand_config = None
+        prompt = args.prompt
+
     env_config = Ar4Mk3EnvConfig(
         model_path=model_path,
         reward_type="sparse",
         use_eef_control=False,  # Policy outputs joint positions
-        domain_rand=None,  # Add domain rand config if needed
+        domain_rand=domain_rand_config,  # Add domain rand config if needed
     )
     env = Ar4Mk3PickAndPlaceEnv(
         render_mode="rgb_array",
@@ -107,7 +117,7 @@ def run_on_env(args: Args) -> None:
     total_episodes, total_successes = 0, 0
     for episode_idx in range(args.num_episodes):
         logging.info(f"\nStarting episode {episode_idx + 1}/{args.num_episodes}")
-        logging.info(f"Task: {args.prompt}")
+        logging.info(f"Task: {prompt}")
 
         obs, info = env.reset(seed=args.seed + episode_idx)
         action_plan = collections.deque()
@@ -158,7 +168,7 @@ def run_on_env(args: Args) -> None:
                     element: dict[str, Any] = {
                         "image": img,
                         "state": current_qpos,
-                        "prompt": args.prompt,
+                        "prompt": prompt,
                     }
                     action_chunk = client.infer(element)["actions"]
                     action_plan.extend(action_chunk[: args.replan_steps])
@@ -178,7 +188,7 @@ def run_on_env(args: Args) -> None:
 
         # Save replay video
         suffix = "success" if done else "failure"
-        task_segment = args.prompt.replace(" ", "_")[:50]
+        task_segment = prompt.replace(" ", "_")[:50]
         video_path = (
             pathlib.Path(args.video_out_path)
             / f"rollout_{episode_idx}_{task_segment}_{suffix}.mp4"

@@ -50,6 +50,7 @@ class BaseEnv(MujocoRobotEnv):
         self.target_range = config.target_range
         self.distance_threshold = config.distance_threshold
         self.reward_type = config.reward_type
+        self.absolute_state_actions = config.absolute_state_actions
         if isinstance(config.object_size, (float, int)):
             self.object_size = np.array([config.object_size] * 3)
         else:
@@ -256,16 +257,19 @@ class Ar4Mk3Env(BaseEnv):
             assert action.shape == (7,)
             action = action.copy()
 
-            # Relative position control for the arm
-            arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
-            arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
-            current_arm_qpos = np.array(
-                [
-                    self._utils.get_joint_qpos(self.model, self.data, name)[0]
-                    for name in arm_joint_names
-                ]
-            )
-            new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
+            if self.absolute_state_actions:
+                new_target_arm_qpos = action[:6]
+            else:
+                # Relative position control for the arm
+                arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
+                arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
+                current_arm_qpos = np.array(
+                    [
+                        self._utils.get_joint_qpos(self.model, self.data, name)[0]
+                        for name in arm_joint_names
+                    ]
+                )
+                new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
 
             # Absolute position control for the gripper (+1 closed, -1 open)
             gripper_ctrl = action[6]

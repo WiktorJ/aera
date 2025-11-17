@@ -129,8 +129,8 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
         # Verify buffers are cleared
         self.assertEqual(len(self.collector.joint_state_buffer), 0)
-        self.assertEqual(len(self.collector.rgb_buffer), 0)
-        self.assertEqual(len(self.collector.depth_buffer), 0)
+        self.assertEqual(len(self.collector.rgb_buffers), 0)
+        self.assertEqual(len(self.collector.depth_buffers), 0)
         self.assertEqual(len(self.collector.pose_buffer), 0)
 
     def test_start_episode_while_collecting(self):
@@ -218,10 +218,13 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         mock_cv_bridge.return_value = mock_bridge_instance
 
         rgb_image = self._create_mock_image(timestamp_sec=10.5, encoding="bgr8")
-        self.collector.record_rgb_image(rgb_image)
+        camera_name = "test_cam"
+        self.collector.record_rgb_image(rgb_image, camera_name, time.time())
 
         # Verify data was recorded
-        self.assertEqual(len(self.collector.rgb_buffer), 1)
+        self.assertEqual(len(self.collector.rgb_buffers), 1)
+        self.assertIn(camera_name, self.collector.rgb_buffers)
+        self.assertEqual(len(self.collector.rgb_buffers[camera_name]), 1)
 
         # Check metadata was set
         metadata = self.collector.current_episode_data["metadata"]
@@ -248,10 +251,13 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         mock_cv_bridge.return_value = mock_bridge_instance
 
         depth_image = self._create_mock_image(timestamp_sec=10.5, encoding="16UC1")
-        self.collector.record_depth_image(depth_image)
+        camera_name = "test_cam"
+        self.collector.record_depth_image(depth_image, camera_name, time.time())
 
         # Verify data was recorded
-        self.assertEqual(len(self.collector.depth_buffer), 1)
+        self.assertEqual(len(self.collector.depth_buffers), 1)
+        self.assertIn(camera_name, self.collector.depth_buffers)
+        self.assertEqual(len(self.collector.depth_buffers[camera_name]), 1)
 
         # Check metadata was set
         metadata = self.collector.current_episode_data["metadata"]
@@ -294,15 +300,15 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
         # Try recording without starting episode
         self.collector.record_joint_state(joint_state)
-        self.collector.record_rgb_image(rgb_image)
-        self.collector.record_depth_image(depth_image)
+        self.collector.record_rgb_image(rgb_image, "test_cam", time.time())
+        self.collector.record_depth_image(depth_image, "test_cam", time.time())
         self.collector.record_pose(pose, 10.0)
         self.collector.record_current_prompt("test prompt")
 
         # Verify nothing was recorded
         self.assertEqual(len(self.collector.joint_state_buffer), 0)
-        self.assertEqual(len(self.collector.rgb_buffer), 0)
-        self.assertEqual(len(self.collector.depth_buffer), 0)
+        self.assertEqual(len(self.collector.rgb_buffers), 0)
+        self.assertEqual(len(self.collector.depth_buffers), 0)
         self.assertEqual(len(self.collector.pose_buffer), 0)
         self.assertIsNone(getattr(self.collector, "current_prompt", None))
 
@@ -412,7 +418,9 @@ class TestTrajectoryDataCollector(unittest.TestCase):
                 "rgb_image_bytes": f"rgb_data_{i}".encode().hex(),
                 "data_type": "rgb",
             }
-            self.collector.rgb_buffer[ts] = rgb_data
+            if "cam1" not in self.collector.rgb_buffers:
+                self.collector.rgb_buffers["cam1"] = SortedDict()
+            self.collector.rgb_buffers["cam1"][ts] = rgb_data
 
             # Add depth data
             depth_data = {
@@ -421,7 +429,9 @@ class TestTrajectoryDataCollector(unittest.TestCase):
                 "depth_image_bytes": f"depth_data_{i}".encode().hex(),
                 "data_type": "depth",
             }
-            self.collector.depth_buffer[ts] = depth_data
+            if "cam1" not in self.collector.depth_buffers:
+                self.collector.depth_buffers["cam1"] = SortedDict()
+            self.collector.depth_buffers["cam1"][ts] = depth_data
 
             # Add pose data
             pose_data = {
@@ -451,8 +461,8 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         self.assertIn("joint_state", obs)
         self.assertIn("gripper_state", obs)
         self.assertIn("cartesian_position", obs)
-        self.assertIn("rgb_image", obs)
-        self.assertIn("depth_image", obs)
+        self.assertIn("rgb_images", obs)
+        self.assertIn("depth_images", obs)
 
         # Check action structure
         action = first_point["action"]

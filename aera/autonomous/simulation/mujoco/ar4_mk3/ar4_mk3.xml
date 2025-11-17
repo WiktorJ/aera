@@ -155,6 +155,7 @@
                                     <body name="gripper_base_link">
                                         <geom pos="0 0 0.016" quat="0.707105 -0.707108 0 0" type="mesh"
                                               mesh="gripper_base_link" material="gripper_base_link_mat"/>
+                                              <camera name="gripper_camera" pos="0.01 0 0.04" quat="0.707 0 0.707 0" fovy="80" width="640" height="480"/>
                                         <body name="gripper_jaw1_link" pos="0 -0.0155 0.052"
                                               quat="0.707105 -0.707108 0 0">
                                             <!-- <inertial diaginertia="0.1 0.1 0.1" mass="1" pos="0 0 0"/> -->

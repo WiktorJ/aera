@@ -109,18 +109,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             rgb_imgs = self.get_latest_rgb_image()
             if rgb_imgs:
                 for cam_name, rgb_img in rgb_imgs.items():
-                    # TODO: The data collector is not aware of camera names.
-                    # This will be fixed in a future update.
                     rgb_msg = self._create_image_msg(rgb_img, "rgb8", now)
-                    self.data_collector.record_rgb_image(rgb_msg)
+                    self.data_collector.record_rgb_image(rgb_msg, cam_name, now)
 
             depth_imgs = self.get_latest_depth_image()
             if depth_imgs:
                 for cam_name, depth_img in depth_imgs.items():
-                    # TODO: The data collector is not aware of camera names.
-                    # This will be fixed in a future update.
                     depth_msg = self._create_image_msg(depth_img, "32FC1", now)
-                    self.data_collector.record_depth_image(depth_msg)
+                    self.data_collector.record_depth_image(depth_msg, cam_name, now)
 
             pose = self.get_end_effector_pose()
             if pose:

@@ -52,8 +52,8 @@ class TrajectoryDataCollector:
 
         # Synchronized data buffers using SortedDict for O(log n) operations
         self.joint_state_buffer = SortedDict()
-        self.rgb_buffer = SortedDict()
-        self.depth_buffer = SortedDict()
+        self.rgb_buffers: Dict[str, SortedDict] = {}
+        self.depth_buffers: Dict[str, SortedDict] = {}
         self.pose_buffer = SortedDict()
         self.sync_tolerance = sync_tolerance
 
@@ -103,8 +103,8 @@ class TrajectoryDataCollector:
 
         # Clear synchronized buffers for new episode
         self.joint_state_buffer.clear()
-        self.rgb_buffer.clear()
-        self.depth_buffer.clear()
+        self.rgb_buffers.clear()
+        self.depth_buffers.clear()
         self.pose_buffer.clear()
 
         # Reset synchronization statistics
@@ -210,18 +210,21 @@ class TrajectoryDataCollector:
             # Store in synchronized buffer using ROS timestamp as key
             self.joint_state_buffer[ros_timestamp] = data_point
 
-    def record_rgb_image(self, rgb_image: Image) -> None:
+    def record_rgb_image(
+        self, rgb_image: Image, camera_name: str, caller_timestamp: float
+    ) -> None:
         """
         Record RGB camera image at current timestamp.
 
         Args:
             rgb_image: RGB camera image message
+            camera_name: The name of the camera
+            caller_timestamp: The timestamp from the caller
         """
         if not self.is_collecting:
             return
 
         try:
-            timestamp = time.time()
             ros_timestamp = (
                 rgb_image.header.stamp.sec + rgb_image.header.stamp.nanosec * 1e-9
             )
@@ -240,30 +243,35 @@ class TrajectoryDataCollector:
                 )
 
             rgb_data_point = {
-                "timestamp": timestamp,
+                "timestamp": caller_timestamp,
                 "ros_timestamp": ros_timestamp,
                 "rgb_image_bytes": rgb_bytes.hex(),  # Convert to hex string for JSON serialization
                 "data_type": "rgb",
             }
 
             # Store in synchronized buffer using ROS timestamp as key
-            self.rgb_buffer[ros_timestamp] = rgb_data_point
+            if camera_name not in self.rgb_buffers:
+                self.rgb_buffers[camera_name] = SortedDict()
+            self.rgb_buffers[camera_name][ros_timestamp] = rgb_data_point
 
         except Exception as e:
-            self.logger.error(f"Failed to record RGB image data: {e}")
+            self.logger.error(f"Failed to record RGB image data for {camera_name}: {e}")
 
-    def record_depth_image(self, depth_image: Image) -> None:
+    def record_depth_image(
+        self, depth_image: Image, camera_name: str, caller_timestamp: float
+    ) -> None:
         """
         Record depth camera image at current timestamp.
 
         Args:
             depth_image: Depth camera image message
+            camera_name: The name of the camera
+            caller_timestamp: The timestamp from the caller
         """
         if not self.is_collecting:
             return
 
         try:
-            timestamp = time.time()
             ros_timestamp = (
                 depth_image.header.stamp.sec + depth_image.header.stamp.nanosec * 1e-9
             )
@@ -279,17 +287,19 @@ class TrajectoryDataCollector:
                 )
 
             depth_data_point = {
-                "timestamp": timestamp,
+                "timestamp": caller_timestamp,
                 "ros_timestamp": ros_timestamp,
                 "depth_image_bytes": depth_bytes.hex(),
                 "data_type": "depth",
             }
 
             # Store in synchronized buffer using ROS timestamp as key
-            self.depth_buffer[ros_timestamp] = depth_data_point
+            if camera_name not in self.depth_buffers:
+                self.depth_buffers[camera_name] = SortedDict()
+            self.depth_buffers[camera_name][ros_timestamp] = depth_data_point
 
         except Exception as e:
-            self.logger.error(f"Failed to record depth image data: {e}")
+            self.logger.error(f"Failed to record depth image data for {camera_name}: {e}")
 
     def record_pose(self, end_effector_pose, ros_timestamp: float) -> None:
         """
@@ -464,15 +474,23 @@ class TrajectoryDataCollector:
             # Get next state data for actions
             next_joint_data = self.joint_state_buffer[next_timestamp]
 
-            # Find closest RGB image within tolerance for current timestamp
-            rgb_data = self._find_closest_in_buffer(
-                current_timestamp, self.rgb_buffer, "rgb"
-            )
+            # Find closest RGB images for all cameras
+            rgb_images_data = {}
+            for cam_name, rgb_buffer in self.rgb_buffers.items():
+                rgb_data = self._find_closest_in_buffer(
+                    current_timestamp, rgb_buffer, f"rgb_{cam_name}"
+                )
+                if rgb_data:
+                    rgb_images_data[cam_name] = rgb_data
 
-            # Find closest depth image within tolerance for current timestamp
-            depth_data = self._find_closest_in_buffer(
-                current_timestamp, self.depth_buffer, "depth"
-            )
+            # Find closest depth images for all cameras
+            depth_images_data = {}
+            for cam_name, depth_buffer in self.depth_buffers.items():
+                depth_data = self._find_closest_in_buffer(
+                    current_timestamp, depth_buffer, f"depth_{cam_name}"
+                )
+                if depth_data:
+                    depth_images_data[cam_name] = depth_data
 
             # Find closest pose within tolerance for current and next timestamps
             current_pose_data = self._find_closest_in_buffer(
@@ -484,8 +502,8 @@ class TrajectoryDataCollector:
 
             # Skip if we don't have essential data
             if (
-                not rgb_data
-                or not depth_data
+                not rgb_images_data
+                or not depth_images_data
                 or not current_pose_data
                 or not next_pose_data
             ):
@@ -522,8 +540,14 @@ class TrajectoryDataCollector:
                         "position": current_pose_data["position"],
                         "orientation": current_pose_data["orientation"],
                     },
-                    "rgb_image": rgb_data["rgb_image_bytes"],
-                    "depth_image": depth_data["depth_image_bytes"],
+                    "rgb_images": {
+                        cam: data["rgb_image_bytes"]
+                        for cam, data in rgb_images_data.items()
+                    },
+                    "depth_images": {
+                        cam: data["depth_image_bytes"]
+                        for cam, data in depth_images_data.items()
+                    },
                     "timestamp": current_timestamp,
                 },
                 "action": {
@@ -545,8 +569,8 @@ class TrajectoryDataCollector:
         self.logger.info(
             f"Synchronized {len(synchronized_data)} RL data points from buffers: "
             f"joint_states={len(self.joint_state_buffer)}, "
-            f"rgb={len(self.rgb_buffer)}, "
-            f"depth={len(self.depth_buffer)}, "
+            f"rgb_buffers={len(self.rgb_buffers)}, "
+            f"depth_buffers={len(self.depth_buffers)}, "
             f"poses={len(self.pose_buffer)}"
         )
 
@@ -850,8 +874,8 @@ class TrajectoryDataCollector:
                 if duration > 0
                 else 0.0,
                 "has_complete_observations": all(
-                    point.get("observations", {}).get("rgb_image")
-                    and point.get("observations", {}).get("depth_image")
+                    point.get("observations", {}).get("rgb_images")
+                    and point.get("observations", {}).get("depth_images")
                     and point.get("observations", {}).get("joint_state")
                     for point in trajectory_data
                 ),

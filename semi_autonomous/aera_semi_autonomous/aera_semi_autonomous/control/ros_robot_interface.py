@@ -1,4 +1,5 @@
 from functools import cached_property
+import time
 from typing import Optional, Any, Dict
 
 import numpy as np
@@ -93,14 +94,18 @@ class RosRobotInterface(RobotInterface):
 
     def _depth_callback(self, msg: Image):
         if self.trajectory_collector:
-            self.trajectory_collector.record_depth_image(msg)
+            self.trajectory_collector.record_depth_image(
+                msg, "default_camera", time.time()
+            )
         if self.debug_mode and self._last_depth_msg is not None:
             return
         self._last_depth_msg = msg
 
     def _image_callback(self, msg: Image):
         if self.trajectory_collector:
-            self.trajectory_collector.record_rgb_image(msg)
+            self.trajectory_collector.record_rgb_image(
+                msg, "default_camera", time.time()
+            )
         if self.debug_mode and self._last_rgb_msg is not None:
             return
         self._last_rgb_msg = msg

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import logging
-from typing import Optional
+from typing import Optional, Dict
 
 import numpy as np
 import open3d as o3d
@@ -51,13 +51,13 @@ class RobotInterface(ABC):
         pass
 
     @abstractmethod
-    def get_latest_rgb_image(self) -> Optional[np.ndarray]:
-        """Returns the latest RGB image as a NumPy array."""
+    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
+        """Returns the latest RGB images as a dictionary of NumPy arrays."""
         pass
 
     @abstractmethod
-    def get_latest_depth_image(self) -> Optional[np.ndarray]:
-        """Returns the latest depth image as a NumPy array."""
+    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
+        """Returns the latest depth images as a dictionary of NumPy arrays."""
         pass
 
     @abstractmethod

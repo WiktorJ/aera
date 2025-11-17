@@ -36,8 +36,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Camera configuration
 
         # Store latest images
-        self._latest_rgb_image: Optional[np.ndarray] = None
-        self._latest_depth_image: Optional[np.ndarray] = None
+        self._latest_rgb_image: Optional[Dict[str, np.ndarray]] = None
+        self._latest_depth_image: Optional[Dict[str, np.ndarray]] = None
 
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
@@ -106,15 +106,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 + joint_state_msg.header.stamp.nanosec * 1e-9
             )
 
-            rgb_img = self.get_latest_rgb_image()
-            if rgb_img is not None:
-                rgb_msg = self._create_image_msg(rgb_img, "rgb8", now)
-                self.data_collector.record_rgb_image(rgb_msg)
+            rgb_imgs = self.get_latest_rgb_image()
+            if rgb_imgs is not None:
+                for cam_name, rgb_img in rgb_imgs.items():
+                    # TODO: The data collector is not aware of camera names.
+                    # This will be fixed in a future update.
+                    rgb_msg = self._create_image_msg(rgb_img, "rgb8", now)
+                    self.data_collector.record_rgb_image(rgb_msg)
 
-            depth_img = self.get_latest_depth_image()
-            if depth_img is not None:
-                depth_msg = self._create_image_msg(depth_img, "32FC1", now)
-                self.data_collector.record_depth_image(depth_msg)
+            depth_imgs = self.get_latest_depth_image()
+            if depth_imgs is not None:
+                for cam_name, depth_img in depth_imgs.items():
+                    # TODO: The data collector is not aware of camera names.
+                    # This will be fixed in a future update.
+                    depth_msg = self._create_image_msg(depth_img, "32FC1", now)
+                    self.data_collector.record_depth_image(depth_msg)
 
             pose = self.get_end_effector_pose()
             if pose:
@@ -629,18 +635,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.logger.error(f"Failed to get end-effector pose: {e}", exc_info=True)
             return None
 
-    def get_latest_rgb_image(self) -> Optional[np.ndarray]:
-        """Get latest RGB image from simulation."""
+    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
+        """Get latest RGB images from all cameras in the simulation."""
         try:
-            # Temporarily set render mode to rgb_array to get image
-            original_render_mode = self.env.render_mode
-            self.env.render_mode = "rgb_array"
-            render_result = self.env.render()
-            self.env.render_mode = original_render_mode
+            images = {}
+            for i in range(self.env.model.ncam):
+                cam_name = mujoco.mj_id2name(
+                    self.env.model, mujoco.mjtObj.mjOBJ_CAMERA, i
+                )
+                if not cam_name:
+                    continue
+                img = self.env.mujoco_renderer.render("rgb_array", camera_name=cam_name)
+                if img is not None:
+                    images[cam_name] = img
 
-            # Handle different return types from render()
-            if render_result is not None and isinstance(render_result, np.ndarray):
-                self._latest_rgb_image = render_result
+            if images:
+                self._latest_rgb_image = images
                 return self._latest_rgb_image
             return self._latest_rgb_image
 
@@ -648,42 +658,46 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.logger.error(f"Failed to get RGB image: {e}", exc_info=True)
             return None
 
-    def get_latest_depth_image(self) -> Optional[np.ndarray]:
-        """Get latest depth image from simulation."""
+    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
+        """Get latest depth images from all cameras in the simulation."""
         try:
-            # Temporarily set render mode to depth_array to get depth image
-            original_render_mode = self.env.render_mode
-            self.env.render_mode = "depth_array"
-            # render() can return raw depth buffer or linearized distance.
-            # We will handle both cases to be robust.
-            depth_image = self.env.render()
-            self.env.render_mode = original_render_mode
+            images = {}
+            for i in range(self.env.model.ncam):
+                cam_name = mujoco.mj_id2name(
+                    self.env.model, mujoco.mjtObj.mjOBJ_CAMERA, i
+                )
+                if not cam_name:
+                    continue
+                depth_image = self.env.mujoco_renderer.render(
+                    "depth_array", camera_name=cam_name
+                )
 
-            # Handle different return types from render()
-            if depth_image is not None and isinstance(depth_image, np.ndarray):
-                # If the values are already large (max > 1.0), they are likely
-                # already linearized distances in meters.
-                if np.max(depth_image) > 1.0:
-                    self._latest_depth_image = depth_image
-                    return self._latest_depth_image
+                if depth_image is not None and isinstance(depth_image, np.ndarray):
+                    # If the values are already large (max > 1.0), they are likely
+                    # already linearized distances in meters.
+                    if np.max(depth_image) > 1.0:
+                        images[cam_name] = depth_image
+                        continue
 
-                # The depth buffer from MuJoCo is non-linear [0, 1].
-                # We convert it to a linear distance array (in meters).
-                znear = self.env.model.vis.map.znear
-                zfar = self.env.model.vis.map.zfar
-                # Correct for auto-scaling of znear and zfar
-                extent = self.env.model.stat.extent
-                znear *= extent
-                zfar *= extent
+                    # The depth buffer from MuJoCo is non-linear [0, 1].
+                    # We convert it to a linear distance array (in meters).
+                    znear = self.env.model.vis.map.znear
+                    zfar = self.env.model.vis.map.zfar
+                    # Correct for auto-scaling of znear and zfar
+                    extent = self.env.model.stat.extent
+                    znear *= extent
+                    zfar *= extent
 
-                # The formula to convert is:
-                # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
-                # To avoid division by zero for values at zfar, we clip.
-                epsilon = 1e-6
-                depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
-                dist = znear / (1 - depth_image * (1 - znear / zfar))
+                    # The formula to convert is:
+                    # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
+                    # To avoid division by zero for values at zfar, we clip.
+                    epsilon = 1e-6
+                    depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
+                    dist = znear / (1 - depth_image * (1 - znear / zfar))
+                    images[cam_name] = dist
 
-                self._latest_depth_image = dist
+            if images:
+                self._latest_depth_image = images
                 return self._latest_depth_image
             return self._latest_depth_image
 

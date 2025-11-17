@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 import numpy as np
 import open3d as o3d
@@ -123,15 +123,17 @@ class RosRobotInterface(RobotInterface):
     def get_end_effector_pose(self) -> Optional[Pose]:
         return self.robot_controller.get_current_end_effector_pose()
 
-    def get_latest_rgb_image(self) -> Optional[np.ndarray]:
+    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
         if self._last_rgb_msg is None:
             return None
-        return self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg, "bgr8")
+        image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg, "bgr8")
+        return {"default_camera": image}
 
-    def get_latest_depth_image(self) -> Optional[np.ndarray]:
+    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
         if self._last_depth_msg is None:
             return None
-        return self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+        image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
+        return {"default_camera": image}
 
     def get_camera_intrinsics(self) -> Optional[o3d.camera.PinholeCameraIntrinsic]:
         return self.camera_intrinsics

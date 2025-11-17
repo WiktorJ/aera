@@ -22,10 +22,17 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.use_eef_control = True
         self.mock_env.data = Mock()
         self.mock_env.model = Mock()
+        self.mock_env.model.vis = Mock()
+        self.mock_env.model.stat = Mock()
         self.mock_env.action_space = Mock()
         self.mock_env.action_space.shape = (7,)
         self.mock_env.model.nq = 8
         self.mock_env.model.nv = 7
+        self.mock_env.model.ncam = 2
+        self.mock_env.model.vis.map.znear = 0.1
+        self.mock_env.model.vis.map.zfar = 2.0
+        self.mock_env.model.stat.extent = 1.0
+        self.mock_env.mujoco_renderer = Mock()
         self.mock_env._utils = Mock()
 
         # Mock data attributes
@@ -295,48 +302,59 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
         self.assertIsNone(pose)
 
-    def test_get_latest_rgb_image_success(self):
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
+    def test_get_latest_rgb_image_success(self, mock_mujoco):
         """Test get_latest_rgb_image successful execution."""
+        mock_mujoco.mj_id2name.side_effect = ["cam1", "cam2"]
         mock_image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        self.mock_env.render.return_value = mock_image
+        self.mock_env.mujoco_renderer.render.return_value = mock_image
 
-        image = self.robot_interface.get_latest_rgb_image()
+        images = self.robot_interface.get_latest_rgb_image()
 
-        self.assertIsNotNone(image)
-        np.testing.assert_array_equal(image, mock_image)  # type: ignore
+        self.assertIsNotNone(images)
+        self.assertIn("cam1", images)
+        self.assertIn("cam2", images)
+        np.testing.assert_array_equal(images["cam1"], mock_image)
 
-    def test_get_latest_rgb_image_none_returned(self):
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
+    def test_get_latest_rgb_image_none_returned(self, mock_mujoco):
         """Test get_latest_rgb_image when render returns None."""
-        self.mock_env.render.return_value = None
-        self.robot_interface._latest_rgb_image = np.array([1, 2, 3])
+        mock_mujoco.mj_id2name.side_effect = ["cam1", "cam2"]
+        self.mock_env.mujoco_renderer.render.return_value = None
+        self.robot_interface._latest_rgb_image = {"cached_cam": np.array([1, 2, 3])}
 
-        image = self.robot_interface.get_latest_rgb_image()
+        images = self.robot_interface.get_latest_rgb_image()
 
-        np.testing.assert_array_equal(image, np.array([1, 2, 3]))  # type: ignore
+        self.assertIsNotNone(images)
+        self.assertIn("cached_cam", images)
+        np.testing.assert_array_equal(images["cached_cam"], np.array([1, 2, 3]))
 
     def test_get_latest_rgb_image_exception(self):
         """Test get_latest_rgb_image when an exception occurs."""
-        self.mock_env.render.side_effect = Exception("Test exception")
+        self.mock_env.mujoco_renderer.render.side_effect = Exception("Test exception")
 
         image = self.robot_interface.get_latest_rgb_image()
 
         self.assertIsNone(image)
 
-    def test_get_latest_depth_image_success(self):
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
+    def test_get_latest_depth_image_success(self, mock_mujoco):
         """Test get_latest_depth_image successful execution."""
+        mock_mujoco.mj_id2name.side_effect = ["cam1", "cam2"]
         mock_depth = np.random.rand(480, 640).astype(np.float32)
-        self.mock_env.render.return_value = mock_depth
+        self.mock_env.mujoco_renderer.render.return_value = mock_depth
 
-        depth = self.robot_interface.get_latest_depth_image()
+        depths = self.robot_interface.get_latest_depth_image()
 
-        self.assertIsNotNone(depth)
-        np.testing.assert_array_equal(depth, mock_depth)  # type: ignore
+        self.assertIsNotNone(depths)
+        self.assertIn("cam1", depths)
+        self.assertIn("cam2", depths)
         # Verify render was called
-        self.mock_env.render.assert_called_once()
+        self.assertEqual(self.mock_env.mujoco_renderer.render.call_count, 2)
 
     def test_get_latest_depth_image_exception(self):
         """Test get_latest_depth_image when an exception occurs."""
-        self.mock_env.render.side_effect = Exception("Test exception")
+        self.mock_env.mujoco_renderer.render.side_effect = Exception("Test exception")
 
         depth = self.robot_interface.get_latest_depth_image()
 

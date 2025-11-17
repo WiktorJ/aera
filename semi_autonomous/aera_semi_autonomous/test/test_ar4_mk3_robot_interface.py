@@ -28,6 +28,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.mock_env.action_space.shape = (7,)
         self.mock_env.model.nq = 8
         self.mock_env.model.nv = 7
+        self.mock_env.model.nu = 10
         self.mock_env.model.ncam = 2
         self.mock_env.model.vis.map.znear = 0.1
         self.mock_env.model.vis.map.zfar = 2.0
@@ -37,6 +38,7 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
         # Mock data attributes
         self.mock_env.data.qpos = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.0, 0.0])
+        self.mock_env.data.ctrl = np.zeros(self.mock_env.model.nu)
         self.mock_env.initial_qpos = np.array(
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.014, -0.014]
         )
@@ -61,9 +63,6 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         mock_actuator = Mock()
         mock_actuator.id = 0
         self.mock_env.model.actuator.return_value = mock_actuator
-
-        # Mock the ctrl array to be writable
-        self.mock_env.data.ctrl = np.zeros(10)
 
         with (
             patch.object(
@@ -182,6 +181,11 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_grasp_at_success(self):
         """Test grasp_at successful execution."""
+
+        def release_gripper_side_effect():
+            self.mock_env.data.qpos[-2:] = self.mock_env.initial_qpos[-2:]
+            return True
+
         with (
             patch.object(
                 self.robot_interface, "move_to", return_value=True
@@ -190,7 +194,9 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
                 self.robot_interface, "_interpolate_gripper", return_value=True
             ) as mock_interpolate_gripper,
             patch.object(
-                self.robot_interface, "release_gripper", return_value=True
+                self.robot_interface,
+                "release_gripper",
+                side_effect=release_gripper_side_effect,
             ) as mock_release_gripper,
         ):
             pose = Pose()
@@ -242,12 +248,19 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
 
     def test_release_at_success(self):
         """Test release_at successful execution."""
+
+        def release_gripper_side_effect():
+            self.mock_env.data.qpos[-2:] = self.mock_env.initial_qpos[-2:]
+            return True
+
         with (
             patch.object(
                 self.robot_interface, "move_to", return_value=True
             ) as mock_move_to,
             patch.object(
-                self.robot_interface, "release_gripper", return_value=True
+                self.robot_interface,
+                "release_gripper",
+                side_effect=release_gripper_side_effect,
             ) as mock_release_gripper,
         ):
             pose = Pose()

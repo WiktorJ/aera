@@ -1,6 +1,8 @@
 from typing import Optional, Sequence
 
+from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 import numpy as np
+import mujoco
 
 from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
@@ -14,12 +16,39 @@ def goal_distance(goal_a, goal_b):
     return np.linalg.norm(goal_a - goal_b, axis=-1)
 
 
+class BaseRender(MujocoRenderer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def render(
+        self,
+        render_mode: str | None,
+        camera_id: int | None = None,
+        camera_name: str | None = None,
+    ):
+        if render_mode == "human":
+            super().render(render_mode)
+            return
+        if camera_id is None and camera_name is None:
+            camera_id = self.camera_id
+        elif camera_id is None:
+            camera_id = mujoco.mj_name2id(
+                self.model,
+                mujoco.mjtObj.mjOBJ_CAMERA,
+                camera_name,
+            )
+        return self._get_viewer(render_mode).render(
+            render_mode=render_mode, camera_id=camera_id
+        )
+
+
 class BaseEnv(MujocoRobotEnv):
     """Superclass for all Fetch environments."""
 
     def __init__(
         self,
         config: Ar4Mk3EnvConfig,
+        default_camera_config: dict | None = None,
         **kwargs,
     ):
         """Initializes a new Fetch environment.
@@ -67,6 +96,14 @@ class BaseEnv(MujocoRobotEnv):
             width=config.image_width,
             height=config.image_height,
             **kwargs,
+        )
+
+        self.mujoco_renderer = BaseRender(
+            model=self.model,
+            data=self.data,
+            default_cam_config=default_camera_config,
+            width=config.image_width,
+            height=config.image_height,
         )
 
     # GoalEnv methods

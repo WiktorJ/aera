@@ -131,6 +131,8 @@ class BaseEnv(MujocoRobotEnv):
             object_velr,
             grip_velp,
             gripper_vel,
+            default_img,
+            gripper_img,
         ) = self.generate_mujoco_observations()
 
         if not self.has_object:
@@ -150,11 +152,6 @@ class BaseEnv(MujocoRobotEnv):
                 grip_velp,
                 gripper_vel,
             ]
-        )
-
-        default_img = self.mujoco_renderer.render(render_mode="rgb_array")
-        gripper_img = self.mujoco_renderer.render(
-            render_mode="rgb_array", camera_name="gripper_camera"
         )
 
         return {
@@ -365,6 +362,11 @@ class Ar4Mk3Env(BaseEnv):
             robot_qvel[-2:] * dt
         )  # change to a scalar if the gripper is made symmetric
 
+        default_img = self.mujoco_renderer.render(render_mode="rgb_array")
+        gripper_img = self.mujoco_renderer.render(
+            render_mode="rgb_array", camera_name="gripper_camera"
+        )
+
         return (
             grip_pos,
             object_pos,
@@ -375,6 +377,8 @@ class Ar4Mk3Env(BaseEnv):
             object_velr,
             grip_velp,
             gripper_vel,
+            default_img,
+            gripper_img,
         )
 
     def _get_gripper_xpos(self):

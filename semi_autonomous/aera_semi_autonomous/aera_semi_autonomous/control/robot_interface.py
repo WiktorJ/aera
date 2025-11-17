@@ -51,12 +51,12 @@ class RobotInterface(ABC):
         pass
 
     @abstractmethod
-    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_rgb_image(self) -> Dict[str, np.ndarray]:
         """Returns the latest RGB images as a dictionary of NumPy arrays."""
         pass
 
     @abstractmethod
-    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_depth_image(self) -> Dict[str, np.ndarray]:
         """Returns the latest depth images as a dictionary of NumPy arrays."""
         pass
 

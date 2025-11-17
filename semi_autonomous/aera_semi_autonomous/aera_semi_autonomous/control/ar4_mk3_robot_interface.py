@@ -36,8 +36,8 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # Camera configuration
 
         # Store latest images
-        self._latest_rgb_image: Optional[Dict[str, np.ndarray]] = None
-        self._latest_depth_image: Optional[Dict[str, np.ndarray]] = None
+        self._latest_rgb_image: Dict[str, np.ndarray] = {}
+        self._latest_depth_image: Dict[str, np.ndarray] = {}
 
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
@@ -107,7 +107,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             )
 
             rgb_imgs = self.get_latest_rgb_image()
-            if rgb_imgs is not None:
+            if rgb_imgs:
                 for cam_name, rgb_img in rgb_imgs.items():
                     # TODO: The data collector is not aware of camera names.
                     # This will be fixed in a future update.
@@ -115,7 +115,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     self.data_collector.record_rgb_image(rgb_msg)
 
             depth_imgs = self.get_latest_depth_image()
-            if depth_imgs is not None:
+            if depth_imgs:
                 for cam_name, depth_img in depth_imgs.items():
                     # TODO: The data collector is not aware of camera names.
                     # This will be fixed in a future update.
@@ -635,7 +635,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.logger.error(f"Failed to get end-effector pose: {e}", exc_info=True)
             return None
 
-    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_rgb_image(self) -> Dict[str, np.ndarray]:
         """Get latest RGB images from all cameras in the simulation."""
         try:
             images = {}
@@ -656,9 +656,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         except Exception as e:
             self.logger.error(f"Failed to get RGB image: {e}", exc_info=True)
-            return None
+            return self._latest_rgb_image
 
-    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_depth_image(self) -> Dict[str, np.ndarray]:
         """Get latest depth images from all cameras in the simulation."""
         try:
             images = {}
@@ -703,7 +703,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         except Exception as e:
             self.logger.error(f"Failed to get depth image: {e}", exc_info=True)
-            return None
+            return self._latest_depth_image
 
     def get_camera_intrinsics(self) -> Optional[o3d.camera.PinholeCameraIntrinsic]:
         """Get camera intrinsic parameters."""

@@ -123,15 +123,15 @@ class RosRobotInterface(RobotInterface):
     def get_end_effector_pose(self) -> Optional[Pose]:
         return self.robot_controller.get_current_end_effector_pose()
 
-    def get_latest_rgb_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_rgb_image(self) -> Dict[str, np.ndarray]:
         if self._last_rgb_msg is None:
-            return None
+            return {}
         image = self.cv_bridge.imgmsg_to_cv2(self._last_rgb_msg, "bgr8")
         return {"default_camera": image}
 
-    def get_latest_depth_image(self) -> Optional[Dict[str, np.ndarray]]:
+    def get_latest_depth_image(self) -> Dict[str, np.ndarray]:
         if self._last_depth_msg is None:
-            return None
+            return {}
         image = self.cv_bridge.imgmsg_to_cv2(self._last_depth_msg)
         return {"default_camera": image}
 

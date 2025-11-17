@@ -173,7 +173,10 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
             [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, -0.007, -0.007]
         )
 
-        result = self.robot_interface.release_gripper()
+        with patch.object(
+            self.robot_interface, "_get_qpos_indices", return_value=np.arange(6)
+        ):
+            result = self.robot_interface.release_gripper()
 
         self.assertFalse(result)
 
@@ -329,13 +332,15 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertIn("cached_cam", images)
         np.testing.assert_array_equal(images["cached_cam"], np.array([1, 2, 3]))
 
-    def test_get_latest_rgb_image_exception(self):
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
+    def test_get_latest_rgb_image_exception(self, mock_mujoco):
         """Test get_latest_rgb_image when an exception occurs."""
+        mock_mujoco.mj_id2name.return_value = "cam1"
         self.mock_env.mujoco_renderer.render.side_effect = Exception("Test exception")
 
         image = self.robot_interface.get_latest_rgb_image()
 
-        self.assertIsNone(image)
+        self.assertEqual(image, {})
 
     @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
     def test_get_latest_depth_image_success(self, mock_mujoco):
@@ -352,13 +357,15 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         # Verify render was called
         self.assertEqual(self.mock_env.mujoco_renderer.render.call_count, 2)
 
-    def test_get_latest_depth_image_exception(self):
+    @patch("aera_semi_autonomous.control.ar4_mk3_robot_interface.mujoco")
+    def test_get_latest_depth_image_exception(self, mock_mujoco):
         """Test get_latest_depth_image when an exception occurs."""
+        mock_mujoco.mj_id2name.return_value = "cam1"
         self.mock_env.mujoco_renderer.render.side_effect = Exception("Test exception")
 
         depth = self.robot_interface.get_latest_depth_image()
 
-        self.assertIsNone(depth)
+        self.assertEqual(depth, {})
 
     def test_get_camera_intrinsics(self):
         """Test get_camera_intrinsics returns correct intrinsics."""

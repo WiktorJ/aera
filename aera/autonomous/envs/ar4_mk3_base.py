@@ -152,10 +152,17 @@ class BaseEnv(MujocoRobotEnv):
             ]
         )
 
+        default_img = self.mujoco_renderer.render(render_mode="rgb_array")
+        gripper_img = self.mujoco_renderer.render(
+            render_mode="rgb_array", camera_name="gripper_camera"
+        )
+
         return {
             "observation": obs.copy(),
             "achieved_goal": achieved_goal.copy(),
             "desired_goal": self.goal.copy(),
+            "default_camera_image": default_img,
+            "gripper_camera_image": gripper_img,
         }
 
     def generate_mujoco_observations(self):

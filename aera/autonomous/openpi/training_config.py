@@ -85,7 +85,7 @@ _CONFIGS = [
         model=pi0_config.Pi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
-            action_horizon=50,
+            action_horizon=10,
         ),
         data=Ar4Mk3DataConfig(
             repo_id="rl_training_data",

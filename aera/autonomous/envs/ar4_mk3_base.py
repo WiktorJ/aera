@@ -140,7 +140,7 @@ class BaseEnv(MujocoRobotEnv):
         else:
             achieved_goal = np.squeeze(object_pos.copy())
 
-        obs = np.concatenate(
+        obs_vec = np.concatenate(
             [
                 grip_pos,
                 object_pos.ravel(),
@@ -154,13 +154,17 @@ class BaseEnv(MujocoRobotEnv):
             ]
         )
 
-        return {
-            "observation": obs.copy(),
+        obs = {
+            "observation": obs_vec.copy(),
             "achieved_goal": achieved_goal.copy(),
             "desired_goal": self.goal.copy(),
-            "default_camera_image": default_img,
-            "gripper_camera_image": gripper_img,
         }
+
+        if self.config.include_images_in_obs:
+            obs["default_camera_image"] = default_img
+            obs["gripper_camera_image"] = gripper_img
+
+        return obs
 
     def generate_mujoco_observations(self):
         raise NotImplementedError
@@ -362,10 +366,13 @@ class Ar4Mk3Env(BaseEnv):
             robot_qvel[-2:] * dt
         )  # change to a scalar if the gripper is made symmetric
 
-        default_img = self.mujoco_renderer.render(render_mode="rgb_array")
-        gripper_img = self.mujoco_renderer.render(
-            render_mode="rgb_array", camera_name="gripper_camera"
-        )
+        if self.config.include_images_in_obs:
+            default_img = self.mujoco_renderer.render(render_mode="rgb_array")
+            gripper_img = self.mujoco_renderer.render(
+                render_mode="rgb_array", camera_name="gripper_camera"
+            )
+        else:
+            default_img, gripper_img = None, None
 
         return (
             grip_pos,

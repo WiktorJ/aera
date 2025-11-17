@@ -6,6 +6,7 @@ import os
 import tempfile
 import shutil
 import numpy as np
+from sortedcontainers import SortedDict
 
 # ROS message mocks
 from sensor_msgs.msg import Image, JointState
@@ -314,7 +315,6 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
     def test_find_closest_in_buffer(self):
         """Test the internal _find_closest_in_buffer helper method."""
-        from sortedcontainers import SortedDict
 
         # Test with empty buffer
         empty_buffer = SortedDict()
@@ -368,8 +368,6 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
     def test_find_closest_in_buffer_statistics(self):
         """Test that synchronization statistics are properly recorded."""
-        from sortedcontainers import SortedDict
-
         buffer = SortedDict([(10.0, {"data": "a"}), (20.0, {"data": "b"})])
 
         # Test successful sync records discrepancy

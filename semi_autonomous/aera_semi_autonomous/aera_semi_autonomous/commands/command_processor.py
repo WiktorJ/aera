@@ -112,7 +112,6 @@ class CommandProcessor:
         rgb_image: np.ndarray,
         depth_image: np.ndarray,
         object_in_gripper: bool,
-        last_rgb_img: Optional[np.ndarray] = None,
     ) -> bool:
         """Handle a single tool call and return updated object_in_gripper status."""
         if tool_call == _PICK_OBJECT:
@@ -127,7 +126,7 @@ class CommandProcessor:
                 return object_in_gripper
 
             success = manipulation_handler.pick_object(
-                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_img
+                _OBJECT_DETECTION_INDEX, detections, depth_image, rgb_image
             )
             return True if success else object_in_gripper
 
@@ -139,7 +138,7 @@ class CommandProcessor:
                 )
                 return object_in_gripper
             success = manipulation_handler.release_above(
-                _OBJECT_DETECTION_INDEX, detections, depth_image, last_rgb_img
+                _OBJECT_DETECTION_INDEX, detections, depth_image, rgb_image
             )
             return False if success else object_in_gripper
 

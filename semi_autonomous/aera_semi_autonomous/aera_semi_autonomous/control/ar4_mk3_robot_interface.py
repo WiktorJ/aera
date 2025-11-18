@@ -635,6 +635,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Get latest RGB images from all cameras in the simulation."""
         try:
             images = {}
+            # Render from the default/free camera, which is not in ncam
+            img = self.env.mujoco_renderer.render("rgb_array", camera_id=-1)
+            if img is not None:
+                images["default"] = img
+
             for i in range(self.env.model.ncam):
                 cam_name = mujoco.mj_id2name(
                     self.env.model, mujoco.mjtObj.mjOBJ_CAMERA, i
@@ -658,6 +663,31 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Get latest depth images from all cameras in the simulation."""
         try:
             images = {}
+            # Render from the default/free camera, which is not in ncam
+            depth_image = self.env.mujoco_renderer.render("depth_array", camera_id=-1)
+            if depth_image is not None and isinstance(depth_image, np.ndarray):
+                # If the values are already large (max > 1.0), they are likely
+                # already linearized distances in meters.
+                if np.max(depth_image) > 1.0:
+                    images["default"] = depth_image
+                else:
+                    # The depth buffer from MuJoCo is non-linear [0, 1].
+                    # We convert it to a linear distance array (in meters).
+                    znear = self.env.model.vis.map.znear
+                    zfar = self.env.model.vis.map.zfar
+                    # Correct for auto-scaling of znear and zfar
+                    extent = self.env.model.stat.extent
+                    znear *= extent
+                    zfar *= extent
+
+                    # The formula to convert is:
+                    # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
+                    # To avoid division by zero for values at zfar, we clip.
+                    epsilon = 1e-6
+                    depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
+                    dist = znear / (1 - depth_image * (1 - znear / zfar))
+                    images["default"] = dist
+
             for i in range(self.env.model.ncam):
                 cam_name = mujoco.mj_id2name(
                     self.env.model, mujoco.mjtObj.mjOBJ_CAMERA, i

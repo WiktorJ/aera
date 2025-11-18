@@ -659,6 +659,30 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.logger.error(f"Failed to get RGB image: {e}", exc_info=True)
             return self._latest_rgb_image
 
+    def _linearize_depth_image(self, depth_image: np.ndarray) -> np.ndarray:
+        """Converts a non-linear MuJoCo depth buffer to a linear distance array in meters."""
+        # If the values are already large (max > 1.0), they are likely
+        # already linearized distances in meters.
+        if np.max(depth_image) > 1.0:
+            return depth_image
+
+        # The depth buffer from MuJoCo is non-linear [0, 1].
+        # We convert it to a linear distance array (in meters).
+        znear = self.env.model.vis.map.znear
+        zfar = self.env.model.vis.map.zfar
+        # Correct for auto-scaling of znear and zfar
+        extent = self.env.model.stat.extent
+        znear *= extent
+        zfar *= extent
+
+        # The formula to convert is:
+        # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
+        # To avoid division by zero for values at zfar, we clip.
+        epsilon = 1e-6
+        depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
+        dist = znear / (1 - depth_image * (1 - znear / zfar))
+        return dist
+
     def get_latest_depth_image(self) -> Dict[str, np.ndarray]:
         """Get latest depth images from all cameras in the simulation."""
         try:
@@ -666,27 +690,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Render from the default/free camera, which is not in ncam
             depth_image = self.env.mujoco_renderer.render("depth_array", camera_id=-1)
             if depth_image is not None and isinstance(depth_image, np.ndarray):
-                # If the values are already large (max > 1.0), they are likely
-                # already linearized distances in meters.
-                if np.max(depth_image) > 1.0:
-                    images["default"] = depth_image
-                else:
-                    # The depth buffer from MuJoCo is non-linear [0, 1].
-                    # We convert it to a linear distance array (in meters).
-                    znear = self.env.model.vis.map.znear
-                    zfar = self.env.model.vis.map.zfar
-                    # Correct for auto-scaling of znear and zfar
-                    extent = self.env.model.stat.extent
-                    znear *= extent
-                    zfar *= extent
-
-                    # The formula to convert is:
-                    # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
-                    # To avoid division by zero for values at zfar, we clip.
-                    epsilon = 1e-6
-                    depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
-                    dist = znear / (1 - depth_image * (1 - znear / zfar))
-                    images["default"] = dist
+                images["default"] = self._linearize_depth_image(depth_image)
 
             for i in range(self.env.model.ncam):
                 cam_name = mujoco.mj_id2name(
@@ -699,28 +703,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 )
 
                 if depth_image is not None and isinstance(depth_image, np.ndarray):
-                    # If the values are already large (max > 1.0), they are likely
-                    # already linearized distances in meters.
-                    if np.max(depth_image) > 1.0:
-                        images[cam_name] = depth_image
-                        continue
-
-                    # The depth buffer from MuJoCo is non-linear [0, 1].
-                    # We convert it to a linear distance array (in meters).
-                    znear = self.env.model.vis.map.znear
-                    zfar = self.env.model.vis.map.zfar
-                    # Correct for auto-scaling of znear and zfar
-                    extent = self.env.model.stat.extent
-                    znear *= extent
-                    zfar *= extent
-
-                    # The formula to convert is:
-                    # dist = znear / (1 - depth_buffer * (1 - znear / zfar))
-                    # To avoid division by zero for values at zfar, we clip.
-                    epsilon = 1e-6
-                    depth_image = np.clip(depth_image, 0.0, 1.0 - epsilon)
-                    dist = znear / (1 - depth_image * (1 - znear / zfar))
-                    images[cam_name] = dist
+                    images[cam_name] = self._linearize_depth_image(depth_image)
 
             if images:
                 self._latest_depth_image = images

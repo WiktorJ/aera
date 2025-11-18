@@ -641,7 +641,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 )
                 if not cam_name:
                     continue
-                img = self.env.mujoco_renderer.render("rgb_array", camera_name=cam_name)
+                img = self.env.mujoco_renderer.render("rgb_array", camera_id=i)
                 if img is not None:
                     images[cam_name] = img
 

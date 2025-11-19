@@ -59,44 +59,32 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
     target_distractor2_rgba = NAMED_COLORS[target_distractor2_color_name]
 
     # Make target and its distractors semi-transparent
-    target_rgba = (target_rgba[0], target_rgba[1], target_rgba[2], 0.5)
+    target_rgba = (target_rgba[0], target_rgba[1], target_rgba[2], 0.9)
     target_distractor1_rgba = (
         target_distractor1_rgba[0],
         target_distractor1_rgba[1],
         target_distractor1_rgba[2],
-        0.5,
+        0.9,
     )
     target_distractor2_rgba = (
         target_distractor2_rgba[0],
         target_distractor2_rgba[1],
         target_distractor2_rgba[2],
-        0.5,
+        0.9,
     )
 
     # --- Material Randomization ---
     object_material = MaterialConfig(
-        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_rgba,
-        specular=np.random.uniform(0.5, 1.0),
-        shininess=np.random.uniform(0.5, 1.0),
-        reflectance=np.random.uniform(0.0, 0.2),
     )
     target_material = MaterialConfig(rgba=target_rgba)
     distractor1_material = MaterialConfig(rgba=target_distractor1_rgba)
     distractor2_material = MaterialConfig(rgba=target_distractor2_rgba)
     object_distractor1_material = MaterialConfig(
-        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_distractor1_rgba,
-        specular=np.random.uniform(0.5, 1.0),
-        shininess=np.random.uniform(0.5, 1.0),
-        reflectance=np.random.uniform(0.0, 0.2),
     )
     object_distractor2_material = MaterialConfig(
-        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_distractor2_rgba,
-        specular=np.random.uniform(0.5, 1.0),
-        shininess=np.random.uniform(0.5, 1.0),
-        reflectance=np.random.uniform(0.0, 0.2),
     )
     floor_material = MaterialConfig(
         texture_name=np.random.choice(AVAILABLE_TEXTURES),

@@ -205,6 +205,7 @@ class TrajectoryDataCollector:
                 "gripper_joint_positions": gripper_positions,
                 "gripper_joint_velocities": gripper_velocities,
                 "prompt": self.current_prompt,
+                "full_prompt": self.current_episode_data["input_message"],
             }
 
             # Store in synchronized buffer using ROS timestamp as key
@@ -517,6 +518,7 @@ class TrajectoryDataCollector:
 
             # Determine episode flags
             current_prompt = current_joint_data.get("prompt")
+            full_prompt = current_joint_data.get("full_prompt")
             is_first = self._is_first_in_prompt_group(
                 current_timestamp, current_prompt, prompt_groups
             )
@@ -529,6 +531,7 @@ class TrajectoryDataCollector:
             # Format as RL observation-action pair
             rl_data_point = {
                 "prompt": current_prompt,
+                "full_prompt": full_prompt,
                 "is_first": is_first,
                 "is_last": is_last,
                 "is_terminal": is_terminal,

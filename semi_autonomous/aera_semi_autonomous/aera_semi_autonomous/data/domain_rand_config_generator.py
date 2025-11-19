@@ -1,4 +1,3 @@
-import random
 from typing import Tuple
 
 import numpy as np
@@ -42,7 +41,7 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         object_distractor2_color_name,
         target_distractor1_color_name,
         target_distractor2_color_name,
-    ) = random.sample(list(NAMED_COLORS.keys()), 6)
+    ) = np.random.choice(list(NAMED_COLORS.keys()), 6, replace=False)
     print(
         f"Object color: {object_color_name}\n"
         f"Target color: {target_color_name}\n"
@@ -76,41 +75,41 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
 
     # --- Material Randomization ---
     object_material = MaterialConfig(
-        texture_name=random.choice(AVAILABLE_TEXTURES),
+        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_rgba,
-        specular=random.uniform(0.5, 1.0),
-        shininess=random.uniform(0.5, 1.0),
-        reflectance=random.uniform(0.0, 0.2),
+        specular=np.random.uniform(0.5, 1.0),
+        shininess=np.random.uniform(0.5, 1.0),
+        reflectance=np.random.uniform(0.0, 0.2),
     )
     target_material = MaterialConfig(rgba=target_rgba)
     distractor1_material = MaterialConfig(rgba=target_distractor1_rgba)
     distractor2_material = MaterialConfig(rgba=target_distractor2_rgba)
     object_distractor1_material = MaterialConfig(
-        texture_name=random.choice(AVAILABLE_TEXTURES),
+        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_distractor1_rgba,
-        specular=random.uniform(0.5, 1.0),
-        shininess=random.uniform(0.5, 1.0),
-        reflectance=random.uniform(0.0, 0.2),
+        specular=np.random.uniform(0.5, 1.0),
+        shininess=np.random.uniform(0.5, 1.0),
+        reflectance=np.random.uniform(0.0, 0.2),
     )
     object_distractor2_material = MaterialConfig(
-        texture_name=random.choice(AVAILABLE_TEXTURES),
+        texture_name=np.random.choice(AVAILABLE_TEXTURES),
         rgba=object_distractor2_rgba,
-        specular=random.uniform(0.5, 1.0),
-        shininess=random.uniform(0.5, 1.0),
-        reflectance=random.uniform(0.0, 0.2),
+        specular=np.random.uniform(0.5, 1.0),
+        shininess=np.random.uniform(0.5, 1.0),
+        reflectance=np.random.uniform(0.0, 0.2),
     )
     floor_material = MaterialConfig(
-        texture_name=random.choice(AVAILABLE_TEXTURES),
-        specular=random.uniform(0.1, 0.8),
-        shininess=random.uniform(0.1, 0.7),
+        texture_name=np.random.choice(AVAILABLE_TEXTURES),
+        specular=np.random.uniform(0.1, 0.8),
+        shininess=np.random.uniform(0.1, 0.7),
     )
-    wall_material = MaterialConfig(texture_name=random.choice(AVAILABLE_TEXTURES))
+    wall_material = MaterialConfig(texture_name=np.random.choice(AVAILABLE_TEXTURES))
 
     def _create_random_robot_part_material():
         return MaterialConfig(
-            texture_name=random.choice(AVAILABLE_TEXTURES),
-            specular=random.uniform(0.1, 0.8),
-            shininess=random.uniform(0.1, 0.7),
+            texture_name=np.random.choice(AVAILABLE_TEXTURES),
+            specular=np.random.uniform(0.1, 0.8),
+            shininess=np.random.uniform(0.1, 0.7),
         )
 
     base_link_material = _create_random_robot_part_material()
@@ -151,11 +150,11 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
     def _create_random_dynamics_config():
         return DynamicsConfig(
             size=np.random.uniform([0.01, 0.01, 0.01], [0.015, 0.015, 0.015]).tolist(),
-            mass=random.uniform(0.05, 0.15),
+            mass=np.random.uniform(0.05, 0.15),
             friction=np.random.uniform(
                 [1.5, 0.005, 0.005], [2.5, 0.015, 0.015]
             ).tolist(),
-            damping=random.uniform(0.005, 0.015),
+            damping=np.random.uniform(0.005, 0.015),
         )
 
     object_dynamics = _create_random_dynamics_config()

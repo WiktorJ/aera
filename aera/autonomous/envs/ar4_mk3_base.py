@@ -206,6 +206,7 @@ class Ar4Mk3Env(BaseEnv):
         while not did_reset_sim:
             did_reset_sim = self._reset_sim()
         self.goal = self._sample_goal()
+        self._visualize_target()
         self._reset_distractors()
         self._mujoco.mj_forward(self.model, self.data)
         obs = self._get_obs()
@@ -214,6 +215,22 @@ class Ar4Mk3Env(BaseEnv):
             self.render()
 
         return obs, {}
+
+    def _visualize_target(self):
+        # Visualize target.
+        # Move the visual element on the floor
+        visual_body_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_BODY, "target_visual_body"
+        )
+        target_visual_pos = self.goal.copy()
+        target_visual_pos[2] = 0.0
+        self.model.body_pos[visual_body_id] = target_visual_pos
+
+        # Move the target site to the goal position
+        site_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_SITE, "target0"
+        )
+        self.model.site_pos[site_id] = self.goal
 
     def _calculate_camera_config_from_transform(
         self, translation, quatertion, z_offset=0.0, distance_multiplier=1.0
@@ -394,19 +411,7 @@ class Ar4Mk3Env(BaseEnv):
 
     def _render_callback(self):
         # Visualize target.
-        # Move the visual element on the floor
-        visual_body_id = self._mujoco.mj_name2id(
-            self.model, self._mujoco.mjtObj.mjOBJ_BODY, "target_visual_body"
-        )
-        target_visual_pos = self.goal.copy()
-        target_visual_pos[2] = 0.0
-        self.model.body_pos[visual_body_id] = target_visual_pos
-
-        # Move the target site to the goal position
-        site_id = self._mujoco.mj_name2id(
-            self.model, self._mujoco.mjtObj.mjOBJ_SITE, "target0"
-        )
-        self.model.site_pos[site_id] = self.goal
+        self._visualize_target()
 
         # Display grip position
         if self.render_mode == "human" and self.mujoco_renderer.viewer:

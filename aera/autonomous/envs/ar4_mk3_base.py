@@ -440,7 +440,7 @@ class Ar4Mk3Env(BaseEnv):
 
         # --- Apply Material Properties ---
         materials_map = {
-            "object_material": "gray",
+            "object_material": "object_mat",
             "target_material": "target_mat",
             "distractor1_material": "distractor1_mat",
             "distractor2_material": "distractor2_mat",

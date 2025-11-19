@@ -31,6 +31,9 @@ from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
 )
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
+from aera_semi_autonomous.data.domain_rand_config_generator import (
+    generate_random_domain_rand_config,
+)
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
 Q = (
@@ -171,58 +174,11 @@ def main():
         domain_rand_config = None
         if args.domain_rand:
             logger.info("Enabling domain randomization")
-            domain_rand_config = DomainRandConfig(
-                # --- Material Properties ---
-                object_material=MaterialConfig(
-                    texture_name="steel-brushed",
-                    specular=0.9,
-                    shininess=0.8,
-                    reflectance=0.1,
-                ),
-                target_material=MaterialConfig(rgba=(0.2, 0.8, 0.2, 0.5)),
-                distractor1_material=MaterialConfig(rgba=(0.2, 0.2, 0.8, 0.5)),
-                distractor2_material=MaterialConfig(rgba=(0.8, 0.8, 0.2, 0.5)),
-                floor_material=MaterialConfig(
-                    texture_name="wood-tiles", specular=0.8, shininess=0.7
-                ),
-                wall_material=MaterialConfig(texture_name="white-bricks"),
-                base_link_material=MaterialConfig(texture_name="metal"),
-                link_1_material=MaterialConfig(texture_name="gray-woodgrain"),
-                link_2_material=MaterialConfig(texture_name="gray-woodgrain"),
-                link_3_material=MaterialConfig(texture_name="gray-woodgrain"),
-                link_4_material=MaterialConfig(texture_name="gray-woodgrain"),
-                link_5_material=MaterialConfig(texture_name="gray-woodgrain"),
-                link_6_material=MaterialConfig(texture_name="gray-woodgrain"),
-                gripper_base_link_material=MaterialConfig(texture_name="brass-ambra"),
-                gripper_jaw1_material=MaterialConfig(texture_name="steel-scratched"),
-                gripper_jaw2_material=MaterialConfig(texture_name="steel-scratched"),
-                # --- Light Properties ---
-                headlight=LightConfig(
-                    active=True,
-                    diffuse=(0.6, 0.6, 0.6),
-                    ambient=(0.4, 0.4, 0.4),
-                    specular=(0, 0, 0),
-                ),
-                top_light=LightConfig(active=True),
-                scene_light=LightConfig(
-                    active=True,
-                    pos=(0.0, 0.0, 1.5),
-                    dir=(0.0, 0.0, -1.0),
-                    diffuse=(0.2, 0.2, 0.2),
-                    ambient=(0, 0, 0),
-                    specular=(0, 0, 0),
-                ),
-                # --- Dynamics Properties ---
-                object_dynamics=DynamicsConfig(
-                    size=(0.012, 0.01, 0.012),
-                ),
-                object_distractor1_dynamics=DynamicsConfig(
-                    size=(0.015, 0.01, 0.012),
-                ),
-                object_distractor2_dynamics=DynamicsConfig(
-                    size=(0.01, 0.01, 0.012),
-                ),
+            domain_rand_config, object_color, target_color = (
+                generate_random_domain_rand_config()
             )
+            logger.info(f"Object color: {object_color}")
+            logger.info(f"Target color: {target_color}")
 
         env_config = Ar4Mk3EnvConfig(
             model_path=model_path,

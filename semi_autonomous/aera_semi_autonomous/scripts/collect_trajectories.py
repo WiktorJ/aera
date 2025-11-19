@@ -193,7 +193,15 @@ def main():
         default="rl_training_data",
         help="Directory to save data",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=-1,
+        help="Seed for random number generator",
+    )
     args = parser.parse_args()
+    if args.seed != -1:
+        np.random.seed(args.seed)
 
     logger = setup_logging(args.debug)
     logger.info(f"Starting trajectory collection for {args.num_trajectories} episodes.")

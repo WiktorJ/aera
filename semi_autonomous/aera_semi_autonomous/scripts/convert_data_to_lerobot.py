@@ -20,6 +20,22 @@ import tyro
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 
+def _process_rgb_image(image_hex: str) -> np.ndarray:
+    """Process RGB image bytes and return as a NumPy array."""
+    image_bytes = bytes.fromhex(image_hex)
+    rgb_np = np.frombuffer(image_bytes, np.uint8)
+    bgr_img = cv2.imdecode(rgb_np, cv2.IMREAD_COLOR)
+    return cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
+
+
+def _process_depth_image(image_hex: str) -> np.ndarray:
+    """Process depth image bytes and return as a NumPy array."""
+    image_bytes = bytes.fromhex(image_hex)
+    depth_array = np.frombuffer(image_bytes, dtype=np.float32)
+    depth_image = depth_array.reshape((height, width))
+    return np.expand_dims(depth_image, axis=-1)
+
+
 def main(
     data_dir: str,
     output_dir: Optional[str] = None,
@@ -74,6 +90,11 @@ def main(
             "shape": (height, width, 3),
             "names": ["height", "width", "channel"],
         },
+        "gripper_image": {
+            "dtype": "image",
+            "shape": (height, width, 3),
+            "names": ["height", "width", "channel"],
+        },
         # "depth_image": {
         #     "dtype": "image",
         #     "shape": (height, width, 1),
@@ -88,6 +109,11 @@ def main(
             "dtype": "float32",
             "shape": (action_dim,),  # 6 arm joints + 1/2 gripper joints
             "names": ["actions"],
+        },
+        "granural_prompt": {
+            "dtype": "string",
+            "shape": (1,),
+            "names": ["granular_prompt"],
         },
     }
     dataset = LeRobotDataset.create(
@@ -114,17 +140,18 @@ def main(
         for i in range(0, len(trajectory), frame_skip):
             step = trajectory[i]
             # Decode RGB image
-            rgb_bytes = bytes.fromhex(step["observations"]["rgb_image"])
-            rgb_np = np.frombuffer(rgb_bytes, np.uint8)
-            bgr_img = cv2.imdecode(rgb_np, cv2.IMREAD_COLOR)
-            rgb_img = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
-
-            # Decode depth image
-            depth_bytes = bytes.fromhex(step["observations"]["depth_image"])
-            depth_array = np.frombuffer(depth_bytes, dtype=np.float32)
-            depth_image = depth_array.reshape((height, width))
-            depth_image = np.expand_dims(depth_image, axis=-1)
-
+            default_image = _process_rgb_image(
+                step["observations"]["rgb_images"]["default"]
+            )
+            gripper_image = _process_rgb_image(
+                step["observations"]["rgb_images"]["gripper_camera"]
+            )
+            # default_depth_image = _process_depth_image(
+            #     step["observations"]["depth_images"]["default"]
+            # )
+            # gripper_depth_image = _process_depth_image(
+            #     step["observations"]["depth_images"]["gripper_camera"]
+            # )
             # State is current joint positions
             gripper_state = step["observations"]["gripper_state"]
             gripper_action = step["action"]["gripper_state"]
@@ -144,11 +171,13 @@ def main(
 
             dataset.add_frame(
                 {
-                    "image": rgb_img,
+                    "image": default_image,
+                    "gripper_image": gripper_image,
                     # "depth_image": depth_image,
                     "state": state,
                     "actions": action,
-                    "task": step["prompt"],
+                    "task": step["full_prompt"],
+                    "granural_prompt": step["prompt"],
                     # "is_first": step["is_first"],
                     # "is_last": step["is_last"],
                     # "is_terminal": step["is_terminal"],

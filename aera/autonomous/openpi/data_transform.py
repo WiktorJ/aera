@@ -46,6 +46,7 @@ class Ar4Mk3Inputs(transforms.DataTransformFn):
         # of image, e.g. wrist images, you can comment it out here and replace it with zeros like we do for the
         # right wrist image below.
         base_image = _parse_image(data["image"])
+        gripper_image = _parse_image(data["gripper_image"])
 
         # Create inputs dict. Do not change the keys in the dict below.
         inputs = {
@@ -54,7 +55,7 @@ class Ar4Mk3Inputs(transforms.DataTransformFn):
             "image": {
                 "base_0_rgb": base_image,
                 # Pad any non-existent images with zero-arrays of the appropriate shape.
-                "left_wrist_0_rgb": np.zeros_like(base_image),
+                "left_wrist_0_rgb": gripper_image,
                 "right_wrist_0_rgb": np.zeros_like(base_image),
             },
             "image_mask": {

@@ -154,6 +154,10 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     * v1: the environment depends on `mujoco_py` which is no longer maintained.
     """
 
-    def __init__(self, config: Ar4Mk3EnvConfig, **kwargs):
-        Ar4Mk3Env.__init__(self, config=config, initial_qpos=config.initial_qpos, **kwargs)
+    def __init__(self, config: Ar4Mk3EnvConfig | None = None, **kwargs):
+        if config is None:
+            config = Ar4Mk3EnvConfig()
+        Ar4Mk3Env.__init__(
+            self, config=config, initial_qpos=config.initial_qpos, **kwargs
+        )
         EzPickle.__init__(self, config=config, **kwargs)

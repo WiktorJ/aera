@@ -112,7 +112,7 @@ class DomainRandConfig:
 
 @dataclasses.dataclass
 class Ar4Mk3EnvConfig:
-    model_path: str
+    model_path: str | None = None
     n_substeps: int = 20
     gripper_extra_height: float = 0.2
     block_gripper: bool = False

@@ -2,6 +2,7 @@ from typing import Optional, Sequence
 
 from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 import numpy as np
+import os
 import mujoco
 
 from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
@@ -87,10 +88,21 @@ class BaseEnv(MujocoRobotEnv):
         assert self.object_size.shape == (3,), (
             "object_size must be a float or a 3-element array-like"
         )
+
         self.use_eef_control = config.use_eef_control
+        current_dir = os.path.dirname(__file__)
+        env_base_path = os.path.join(
+            current_dir, "..", "simulation", "mujoco", "ar4_mk3"
+        )
+        if config.model_path is not None:
+            self.model_path = config.model_path
+        elif self.use_eef_control:
+            self.model_path = os.path.join(env_base_path, "scene_eef.xml")
+        else:
+            self.model_path = os.path.join(env_base_path, "scene.xml")
 
         super().__init__(
-            model_path=config.model_path,
+            model_path=self.model_path,
             n_substeps=config.n_substeps,
             n_actions=4 if config.use_eef_control else 7,
             width=config.image_width,

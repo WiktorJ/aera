@@ -1,10 +1,12 @@
 import gymnasium as gym
+import aera.autonomous.envs.ar4_mk3_pick_and_place
+from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3EnvConfig
 
 from sbx import SAC
 
-env = gym.make("Pendulum-v1", render_mode="human")
+env = gym.make("Ar4Mk3PickAndPlaceDenseEnv-v1", render_mode="human")
 
-model = SAC("MlpPolicy", env, verbose=1)
+model = SAC("MultiInputPolicy", env, verbose=1)
 model.learn(total_timesteps=10_000, progress_bar=True)
 
 vec_env = model.get_env()

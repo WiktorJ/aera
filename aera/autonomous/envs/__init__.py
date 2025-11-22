@@ -1,4 +1,5 @@
 from gymnasium import register
+from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 import os
 
 
@@ -13,9 +14,11 @@ def register_robotics_envs():
     )
     for reward_type in ["sparse", "dense"]:
         suffix = "Dense" if reward_type == "dense" else ""
+        config = Ar4Mk3EnvConfig(model_path=model_path, reward_type=reward_type)
         kwargs = {
-            "model_path": model_path,
-            "reward_type": reward_type,
+            # "model_path": model_path,
+            # "reward_type": reward_type,
+            "config": config
         }
         register(
             id=f"Ar4Mk3PickAndPlace{suffix}Env-v1",

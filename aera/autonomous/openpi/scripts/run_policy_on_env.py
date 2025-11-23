@@ -109,6 +109,7 @@ def run_on_env(args: Args) -> None:
         use_eef_control=False,  # Policy outputs joint positions
         domain_rand=domain_rand_config,  # Add domain rand config if needed
         absolute_state_actions=True,
+        include_images_in_obs=True,
     )
     env = Ar4Mk3PickAndPlaceEnv(
         render_mode="rgb_array",
@@ -141,8 +142,8 @@ def run_on_env(args: Args) -> None:
                     continue
 
                 # Get observations
-                # Get image for policy, requires rgb_array mode
-                img = env.render()
+                img = obs["default_camera_image"]
+                gripper_img = obs["gripper_camera_image"]
 
                 if not args.headless:
                     # Display the image
@@ -162,12 +163,14 @@ def run_on_env(args: Args) -> None:
                 #     image_tools.resize_with_pad(img, args.resize_size, args.resize_size)
                 # )
                 img = image_tools.convert_to_uint8(img)
+                gripper_img = image_tools.convert_to_uint8(gripper_img)
                 replay_images.append(img)
 
                 if not action_plan:
                     # Prepare observations dict
                     element: dict[str, Any] = {
                         "image": img,
+                        "wrist_image": gripper_img,
                         "state": current_qpos,
                         "prompt": prompt,
                     }

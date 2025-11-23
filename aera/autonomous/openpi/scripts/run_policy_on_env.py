@@ -98,7 +98,9 @@ def run_on_env(args: Args) -> None:
         domain_rand_config, object_color, target_color = (
             generate_random_domain_rand_config()
         )
-        prompt = f"Pick {object_color} block"
+        prompt = (
+            f"Pick the {object_color} block and place it on the {target_color} target."
+        )
     else:
         domain_rand_config = None
         prompt = args.prompt

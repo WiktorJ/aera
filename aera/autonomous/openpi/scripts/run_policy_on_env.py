@@ -151,6 +151,8 @@ def run_on_env(args: Args) -> None:
                     # Display the image
                     display_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                     cv2.imshow("AR4 Mk3 Env", display_img)
+                    display_gripper_img = cv2.cvtColor(gripper_img, cv2.COLOR_RGB2BGR)
+                    cv2.imshow("AR4 Mk3 Gripper", display_gripper_img)
                     cv2.waitKey(1)
 
                 # Get arm and gripper joint positions

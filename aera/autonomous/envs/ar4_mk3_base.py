@@ -81,6 +81,7 @@ class BaseEnv(MujocoRobotEnv):
         self.distance_threshold = config.distance_threshold
         self.reward_type = config.reward_type
         self.absolute_state_actions = config.absolute_state_actions
+        self.mujoco_renderer = None
         if isinstance(config.object_size, (float, int)):
             self.object_size = np.array([config.object_size] * 3)
         else:
@@ -395,7 +396,7 @@ class Ar4Mk3Env(BaseEnv):
             robot_qvel[-2:] * dt
         )  # change to a scalar if the gripper is made symmetric
 
-        if self.config.include_images_in_obs:
+        if self.config.include_images_in_obs and self.mujoco_renderer:
             default_img = self.mujoco_renderer.render(render_mode="rgb_array")
             gripper_img = self.mujoco_renderer.render(
                 render_mode="rgb_array", camera_name="gripper_camera"

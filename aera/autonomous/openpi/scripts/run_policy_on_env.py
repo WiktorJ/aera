@@ -170,7 +170,7 @@ def run_on_env(args: Args) -> None:
                     # Prepare observations dict
                     element: dict[str, Any] = {
                         "image": img,
-                        "wrist_image": gripper_img,
+                        "gripper_image": gripper_img,
                         "state": current_qpos,
                         "prompt": prompt,
                     }

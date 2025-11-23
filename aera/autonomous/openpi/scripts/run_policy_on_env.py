@@ -47,7 +47,7 @@ class Args:
     # --- Model server parameters ---
     host: str = "0.0.0.0"
     port: int = 8000
-    prompt: str = "pick the red block and place it on the green target"
+    prompt: str = "pick the yellow block and place it on the red target"
 
     # --- Evaluation parameters ---
     replan_steps: int = 5

@@ -4,7 +4,12 @@ from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3EnvConfig
 
 from sbx import SAC
 
-env = gym.make("Ar4Mk3PickAndPlaceEnv-v1", render_mode="human", max_episode_steps=500)
+config = Ar4Mk3EnvConfig(
+    use_eef_control=True,
+    reward_type="dense",
+)
+
+env = gym.make("Ar4Mk3PickAndPlaceEnv-v1", render_mode="human", max_episode_steps=100)
 
 model = SAC("MultiInputPolicy", env, verbose=1)
 model.learn(total_timesteps=10_000, progress_bar=True)

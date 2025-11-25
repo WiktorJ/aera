@@ -11,7 +11,7 @@ config = Ar4Mk3EnvConfig(
 
 env = gym.make("Ar4Mk3PickAndPlaceEnv-v1", render_mode="human", max_episode_steps=100)
 
-model = SAC("MultiInputPolicy", env, verbose=1)
+model = SAC("MultiInputPolicy", env, verbose=1, tensorboard_log="logs")
 model.learn(total_timesteps=10_000, progress_bar=True)
 
 vec_env = model.get_env()

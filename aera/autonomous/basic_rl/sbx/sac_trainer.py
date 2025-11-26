@@ -1,18 +1,56 @@
+import sys
+from typing import Any, Dict, Tuple, Union
+
 import gymnasium as gym
+import mlflow
+import numpy as np
+from sbx import SAC
+from stable_baselines3.common.logger import HumanOutputFormat, KVWriter, Logger
+
 import aera.autonomous.envs.ar4_mk3_pick_and_place
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3EnvConfig
 
-from sbx import SAC
+
+class MLflowOutputFormat(KVWriter):
+    """
+    Dumps key/value pairs into MLflow's numeric format.
+    """
+
+    def write(
+        self,
+        key_values: Dict[str, Any],
+        key_excluded: Dict[str, Union[str, Tuple[str, ...]]],
+        step: int = 0,
+    ) -> None:
+        for (key, value), (_, excluded) in zip(
+            sorted(key_values.items()), sorted(key_excluded.items())
+        ):
+            if excluded is not None and "mlflow" in excluded:
+                continue
+
+            if isinstance(value, np.ScalarType):
+                if not isinstance(value, str):
+                    mlflow.log_metric(key, value, step)
+
+
+loggers = Logger(
+    folder=None,
+    output_formats=[HumanOutputFormat(sys.stdout), MLflowOutputFormat()],
+)
 
 config = Ar4Mk3EnvConfig(
     use_eef_control=True,
     reward_type="dense",
 )
 
-env = gym.make("Ar4Mk3PickAndPlaceEnv-v1", render_mode="human", max_episode_steps=100)
+env_name = "Ar4Mk3PickAndPlaceEnv-v1"
+mlflow.set_experiment(f"{env_name}-SAC")
+env = gym.make(env_name, render_mode="human", max_episode_steps=100)
 
-model = SAC("MultiInputPolicy", env, verbose=1, tensorboard_log="logs")
-model.learn(total_timesteps=10_000, progress_bar=True)
+with mlflow.start_run():
+    model = SAC("MultiInputPolicy", env, verbose=2)
+    model.set_logger(loggers)
+    model.learn(total_timesteps=10_000, progress_bar=True, log_interval=1)
 
 vec_env = model.get_env()
 if vec_env is None:

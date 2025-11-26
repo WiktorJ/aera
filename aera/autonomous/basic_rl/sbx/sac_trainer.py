@@ -34,6 +34,12 @@ class MLflowOutputFormat(KVWriter):
                     mlflow.log_metric(key, value, step)
 
 
+class VideoRecorderWithMLFlow(VecVideoRecorder):
+    def _stop_recording(self) -> None:
+        super()._stop_recording()
+        mlflow.log_artifact(self.video_path)
+
+
 loggers = Logger(
     folder=None,
     output_formats=[HumanOutputFormat(sys.stdout), MLflowOutputFormat()],
@@ -49,7 +55,7 @@ mlflow.set_experiment(f"{env_name}-SAC")
 env = DummyVecEnv(
     [lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=100)]
 )
-env = VecVideoRecorder(
+env = VideoRecorderWithMLFlow(
     env,
     f"videos/{env_name}.mp4",
     record_video_trigger=lambda x: x == 0,

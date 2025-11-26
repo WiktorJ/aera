@@ -6,6 +6,7 @@ import mlflow
 import numpy as np
 from sbx import SAC
 from stable_baselines3.common.logger import HumanOutputFormat, KVWriter, Logger
+from stable_baselines3.common.vec_env import VecVideoRecorder, DummyVecEnv
 
 import aera.autonomous.envs.ar4_mk3_pick_and_place
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3EnvConfig
@@ -45,7 +46,15 @@ config = Ar4Mk3EnvConfig(
 
 env_name = "Ar4Mk3PickAndPlaceEnv-v1"
 mlflow.set_experiment(f"{env_name}-SAC")
-env = gym.make(env_name, render_mode="human", max_episode_steps=100)
+env = DummyVecEnv(
+    [lambda: gym.make(env_name, render_mode="rgb_array", max_episode_steps=100)]
+)
+env = VecVideoRecorder(
+    env,
+    f"videos/{env_name}.mp4",
+    record_video_trigger=lambda x: x == 0,
+    video_length=100,
+)
 
 with mlflow.start_run():
     model = SAC("MultiInputPolicy", env, verbose=2)

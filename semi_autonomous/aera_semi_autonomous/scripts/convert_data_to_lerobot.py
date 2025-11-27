@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 import tyro
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.utils.constants import HF_LEROBOT_HOME
 
 
 def _process_rgb_image(image_hex: str) -> np.ndarray:
@@ -38,9 +39,10 @@ def _process_depth_image(image_hex: str) -> np.ndarray:
 
 def main(
     data_dir: str,
-    output_dir: Optional[str] = None,
+    output_dir: str | Path | None = None,
     frame_skip: int = 1,
     squeeze_gripper: bool = True,
+    push_to_hub: bool = False,
 ):
     """
     Main function to convert trajectory data to LeRobot format.
@@ -50,12 +52,12 @@ def main(
         output_dir: Path to save the converted dataset. Defaults to `{data_dir}_lerobot`.
         frame_skip: How many steps to skip between each observation. Defaults to 1 (no skip).
         squeeze_gripper: If True, squeeze the 2D gripper state/action into 1D.
+        push_to_hub: If True, push the dataset to the Hugging Face Hub.
     """
     if output_dir is None:
-        output_dir = f"{data_dir}_lerobot"
-
-    # Clean up any existing dataset in the output directory
-    output_path = Path(output_dir)
+        output_path = HF_LEROBOT_HOME / data_dir
+    else:
+        output_path = Path(output_dir)
 
     episode_dirs = sorted([p for p in Path(data_dir).iterdir() if p.is_dir()])
     if not episode_dirs:
@@ -185,6 +187,13 @@ def main(
                 }
             )
         dataset.save_episode()
+    if push_to_hub:
+        dataset.push_to_hub(
+            tags=["aera", "ar4_mk3", "rlds"],
+            private=False,
+            push_videos=True,
+            license="apache-2.0",
+        )
     print(f"Finished converting dataset. Saved to {output_path}")
     print(f"Processed {processed_prompts} prompts")
 

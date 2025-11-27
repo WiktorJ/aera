@@ -73,3 +73,8 @@ In different directory
 `GIT_LFS_SKIP_SMUDGE=1 uv sync`
 `GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .`
 `uv pip install --reinstall 'lerobot[all]' mlflow`
+
+
+## Env variables
+To upload data to huggingface hub, set the following environment variables:
+`export HF_TOKEN="hf_xxxxxxxxxxxxx"`

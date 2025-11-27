@@ -20,7 +20,7 @@ class MLflowOutputFormat(KVWriter):
     def write(
         self,
         key_values: Dict[str, Any],
-        key_excluded: Dict[str, Union[str, Tuple[str, ...]]],
+        key_excluded: Dict[str, Tuple[str, ...]],
         step: int = 0,
     ) -> None:
         for (key, value), (_, excluded) in zip(
@@ -30,7 +30,11 @@ class MLflowOutputFormat(KVWriter):
                 continue
 
             if isinstance(value, np.ScalarType):
-                if not isinstance(value, str):
+                if (
+                    isinstance(value, float)
+                    or isinstance(value, int)
+                    or isinstance(value, bool)
+                ):
                     mlflow.log_metric(key, value, step)
 
 
@@ -58,14 +62,14 @@ env = DummyVecEnv(
 env = VideoRecorderWithMLFlow(
     env,
     f"videos/{env_name}.mp4",
-    record_video_trigger=lambda x: x == 0,
+    record_video_trigger=lambda x: x % 10000 == 0,
     video_length=100,
 )
 
 with mlflow.start_run():
     model = SAC("MultiInputPolicy", env, verbose=2)
     model.set_logger(loggers)
-    model.learn(total_timesteps=10_000, progress_bar=True, log_interval=1)
+    model.learn(total_timesteps=100_000, progress_bar=True, log_interval=1)
 
 vec_env = model.get_env()
 if vec_env is None:

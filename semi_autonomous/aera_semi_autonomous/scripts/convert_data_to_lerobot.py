@@ -119,7 +119,7 @@ def main(
         },
     }
     dataset = LeRobotDataset.create(
-        repo_id=output_path.name,
+        repo_id=f"purple69/{output_path.name}",
         root=output_path,
         robot_type="AR4_MK3",
         features=features,

@@ -91,6 +91,9 @@ _CONFIGS = [
             repo_id="aera_semi_pnp_dr_27_11_2025",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
+            assets=openpi_config.AssetsConfig(
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_27_11_2025/assets",
+            ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_base/params"
@@ -123,6 +126,9 @@ _CONFIGS = [
             repo_id="aera_semi_pnp_dr_27_11_2025",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
+            assets=openpi_config.AssetsConfig(
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_27_11_2025/assets",
+            ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"

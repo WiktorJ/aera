@@ -64,7 +64,9 @@ def create_torch_dataloader(
     return data_loader, num_batches
 
 
-def main(config_name: str, max_frames: int | None = None):
+def main(
+    config_name: str, max_frames: int | None = None, push_to_hub: bool = False
+):
     config = _training_config.get_config(config_name)
     data_config = config.data.create(config.assets_dirs, config.model)
 
@@ -91,6 +93,18 @@ def main(config_name: str, max_frames: int | None = None):
     )
     print(f"Writing stats to: {output_path}")
     normalize.save(output_path, norm_stats)
+
+    if push_to_hub and data_config.repo_id:
+        print(f"Pushing stats to Hugging Face Hub: {data_config.repo_id}")
+        from huggingface_hub import HfApi
+
+        api = HfApi()
+        api.upload_folder(
+            folder_path=output_path,
+            repo_id=data_config.repo_id,
+            repo_type="dataset",
+            path_in_repo="assets",
+        )
 
 
 if __name__ == "__main__":

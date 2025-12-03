@@ -36,6 +36,7 @@ def create_torch_dataloader(
 ) -> tuple[_data_loader.TorchDataLoader, int]:
     if data_config.repo_id is None:
         raise ValueError("Data config must have a repo_id")
+    print(data_config)
     dataset = _data_loader.create_torch_dataset(
         data_config, action_horizon, model_config
     )
@@ -64,9 +65,7 @@ def create_torch_dataloader(
     return data_loader, num_batches
 
 
-def main(
-    config_name: str, max_frames: int | None = None, push_to_hub: bool = False
-):
+def main(config_name: str, max_frames: int | None = None, push_to_hub: bool = False):
     config = _training_config.get_config(config_name)
     data_config = config.data.create(config.assets_dirs, config.model)
 
@@ -99,6 +98,7 @@ def main(
         from huggingface_hub import HfApi
 
         api = HfApi()
+        print(f"repo_id: {data_config.repo_id}")
         api.upload_folder(
             folder_path=output_path,
             repo_id=data_config.repo_id,

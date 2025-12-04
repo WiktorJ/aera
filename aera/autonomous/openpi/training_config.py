@@ -119,7 +119,7 @@ _CONFIGS = [
         model=pi0_fast.Pi0FASTConfig(
             action_dim=7,
             action_horizon=10,
-            max_token_len=180,
+            max_token_len=100,
             paligemma_variant="gemma_2b_lora",
         ),
         data=Ar4Mk3DataConfig(

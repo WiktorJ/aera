@@ -16,9 +16,11 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from torch.utils import data
 import tyro
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.constants import HF_LEROBOT_HOME
+from huggingface_hub import HfApi
 
 
 def _process_rgb_image(image_hex: str) -> np.ndarray:
@@ -120,7 +122,6 @@ def main(
     }
     dataset = LeRobotDataset.create(
         repo_id=f"Purple69/{output_path.name}",
-        # root=output_path,
         robot_type="AR4_MK3",
         features=features,
         fps=fps,
@@ -193,6 +194,13 @@ def main(
             private=False,
             push_videos=True,
             license="apache-2.0",
+        )
+        # We have to finalize the dataset to make sure all the metadata is written,
+        # then upload again to make sure the metadata is present on the hub.
+        dataset.finalize()
+        hub_api = HfApi()
+        hub_api.upload_folder(
+            repo_id=dataset.repo_id, folder_path=dataset.root, repo_type="dataset"
         )
     print(f"Finished converting dataset. Saved to {output_path}")
     print(f"Processed {processed_prompts} prompts")

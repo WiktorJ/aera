@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 from torch.utils import data
 import tyro
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset, CODEBASE_VERSION
 from lerobot.utils.constants import HF_LEROBOT_HOME
 from huggingface_hub import HfApi
 
@@ -189,18 +189,12 @@ def main(
             )
         dataset.save_episode()
     if push_to_hub:
+        dataset.finalize()
         dataset.push_to_hub(
             tags=["aera", "ar4_mk3", "rlds"],
             private=False,
             push_videos=True,
             license="apache-2.0",
-        )
-        # We have to finalize the dataset to make sure all the metadata is written,
-        # then upload again to make sure the metadata is present on the hub.
-        dataset.finalize()
-        hub_api = HfApi()
-        hub_api.upload_folder(
-            repo_id=dataset.repo_id, folder_path=dataset.root, repo_type="dataset"
         )
     print(f"Finished converting dataset. Saved to {output_path}")
     print(f"Processed {processed_prompts} prompts")

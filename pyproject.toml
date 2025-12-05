@@ -22,6 +22,15 @@ dependencies = [
     "mujoco",
     "numpy",
     "matplotlib",
+    "etils[epath]",
+    "flax",
+    "jax",
+    "mlflow",
+    "optax",
+    "tqdm-loggable",
+    "tyro",
+    "typing-extensions",
+    "openpi",
 ]
 
 [tool.setuptools.packages.find]

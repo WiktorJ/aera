@@ -29,7 +29,7 @@ dependencies = [
     "tqdm-loggable",
     "tyro",
     "typing-extensions",
-    "openpi",
+    "lerobot",
 ]
 
 [tool.setuptools.packages.find]

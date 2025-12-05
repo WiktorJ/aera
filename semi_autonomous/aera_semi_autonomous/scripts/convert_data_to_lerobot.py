@@ -12,15 +12,12 @@ The resulting dataset will be saved to `rl_training_data_lerobot` by default.
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
-from torch.utils import data
 import tyro
-from lerobot.datasets.lerobot_dataset import LeRobotDataset, CODEBASE_VERSION
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.constants import HF_LEROBOT_HOME
-from huggingface_hub import HfApi
 
 
 def _process_rgb_image(image_hex: str) -> np.ndarray:

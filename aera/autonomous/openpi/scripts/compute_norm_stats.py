@@ -15,6 +15,7 @@ import openpi.models.model as _model
 import openpi.shared.normalize as normalize
 import openpi.training.data_loader as _data_loader
 import openpi.transforms as transforms
+from lerobot.datasets.lerobot_dataset import CODEBASE_VERSION
 
 
 class RemoveStrings(transforms.DataTransformFn):
@@ -96,14 +97,23 @@ def main(config_name: str, max_frames: int | None = None, push_to_hub: bool = Fa
     if push_to_hub and data_config.repo_id:
         print(f"Pushing stats to Hugging Face Hub: {data_config.repo_id}")
         from huggingface_hub import HfApi
+        import contextlib
+        from huggingface_hub.errors import RevisionNotFoundError
 
-        api = HfApi()
+        hub_api = HfApi()
         print(f"repo_id: {data_config.repo_id}")
-        api.upload_folder(
-            folder_path=output_path,
+        hub_api.upload_folder(
             repo_id=data_config.repo_id,
+            folder_path=output_path,
             repo_type="dataset",
             path_in_repo="assets",
+        )
+        with contextlib.suppress(RevisionNotFoundError):
+            hub_api.delete_tag(
+                data_config.repo_id, tag=CODEBASE_VERSION, repo_type="dataset"
+            )
+        hub_api.create_tag(
+            data_config.repo_id, tag=CODEBASE_VERSION, repo_type="dataset"
         )
 
 

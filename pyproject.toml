@@ -20,16 +20,20 @@ dependencies = [
     "gymnasium-robotics",
     "mujoco",
     "numpy",
+    "lerobot=0.4.2",
     "matplotlib",
     "etils[epath]",
     "flax",
     "jax",
+    "jax[cuda12]",
+    "jax_cuda12_plugin",
     "mlflow",
+    "mujoco==3.3.7",
     "optax",
     "tqdm-loggable",
+    "transformers",
     "tyro",
     "typing-extensions",
-    "lerobot",
 ]
 
 [tool.setuptools.packages.find]

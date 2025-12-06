@@ -20,7 +20,7 @@ dependencies = [
     "gymnasium-robotics",
     "mujoco",
     "numpy",
-    "lerobot=0.4.2",
+    "lerobot==0.4.2",
     "matplotlib",
     "etils[epath]",
     "flax",

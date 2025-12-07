@@ -1,0 +1,23 @@
+services:
+  aera-train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
+    volumes:
+      - .:/workspace
+      - ~/.cache:/root/.cache  # Cache for JAX compilation and model checkpoints
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: bash
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

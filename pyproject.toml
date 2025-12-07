@@ -19,7 +19,8 @@ dependencies = [
     "gymnasium==1.2.1",
     "gymnasium-robotics==1.4.1",
     "mujoco==3.3.7",
-    "numpy==2.3.5",
+    # "numpy>=1.22.4,<2.0.0",
+    "numpy==2.3.4",
     "lerobot==0.4.2",
     "matplotlib==3.10.7",
     "etils[epath]==1.13.0",
@@ -31,11 +32,13 @@ dependencies = [
     "optax==0.2.6",
     "orbax-checkpoint==0.11.13",
     "tqdm-loggable==0.2",
-    "transformers==4.57.3",
+    "transformers==4.53.2",
     "tyro==0.9.35",
     "typing-extensions==4.15.0",
-    "openpi @ git+https://github.com/WiktorJ/openpi.git",
+    "openpi",
 ]
+[tool.uv.sources]
+openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "d6a61087418fc64a5e5fa6f267bb0933ac1888de" }
 
 [tool.setuptools.packages.find]
 where = ["."]

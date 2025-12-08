@@ -3,7 +3,6 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.train
-    runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - XLA_PYTHON_CLIENT_MEM_FRACTION=0.9

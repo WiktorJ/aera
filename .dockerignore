@@ -52,6 +52,8 @@ checkpoints/
 logs/
 wandb/
 mlruns/
+data/
+assets/
 
 # Cache directories
 .cache/
@@ -60,3 +62,5 @@ mlruns/
 # Temporary files
 *.tmp
 *.temp
+
+.aider*

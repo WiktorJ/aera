@@ -23,6 +23,7 @@ coverage.xml
 .mypy_cache
 .pytest_cache
 .hypothesis
+.venv
 
 # Documentation
 *.md
@@ -54,6 +55,8 @@ wandb/
 mlruns/
 data/
 assets/
+**/Grounded-Segment-Anything/
+**/.debug_img_logs/
 
 # Cache directories
 .cache/
@@ -63,4 +66,5 @@ assets/
 *.tmp
 *.temp
 
+# aider
 .aider*

@@ -61,6 +61,7 @@ assets/
 # Cache directories
 .cache/
 .uv/
+.uv.lock/
 
 # Temporary files
 *.tmp

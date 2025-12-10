@@ -27,4 +27,4 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
 # Set the default command
-CMD ["bash"]
+CMD ["uv", "run", "python3", "aera/autonomous/openpi/scripts/train.py"]

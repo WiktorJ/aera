@@ -31,8 +31,11 @@ WORKDIR /app
 COPY . .
 
 # Install the project
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv uv sync
+# Setup start script
+COPY docker/start.sh /start.sh
+RUN chmod +x /start.sh
 
-# CHANGED: Keep container alive
-# Replaces the training script entrypoint so you can SSH in first.
-CMD ["sleep", "infinity"]
+# Set the entrypoint to our script
+ENTRYPOINT ["/start.sh"]
+

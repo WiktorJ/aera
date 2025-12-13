@@ -1,0 +1,38 @@
+FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
+# Add the virtual environment to PATH so you don't always have to type 'uv run'
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install system dependencies
+# Added: openssh-server (Required for RunPod SSH access)
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-dev \
+    python3-pip \
+    git \
+    curl \
+    build-essential \
+    openssh-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# CHANGED: Use /app instead of /workspace
+# RunPod mounts Network Volumes to /workspace. If you build code into 
+# /workspace here, the volume will cover it up and make it invisible.
+WORKDIR /app
+
+# Copy project files
+COPY . .
+
+# Install the project
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
+
+# CHANGED: Keep container alive
+# Replaces the training script entrypoint so you can SSH in first.
+CMD ["sleep", "infinity"]

@@ -1,19 +1,31 @@
 #!/bin/bash
 set -e
 
-# 1. Start setup SSH
+echo "--- Starting Initialization ---"
+
+# 1. Setup SSH Keys (CRITICAL STEP)
+# RunPod passes your web-configured public key as the $PUBLIC_KEY env var.
+if [ -n "$PUBLIC_KEY" ]; then
+  echo "Setting up SSH access..."
+  mkdir -p /root/.ssh
+  echo "$PUBLIC_KEY" >/root/.ssh/authorized_keys
+  chmod 700 /root/.ssh
+  chmod 600 /root/.ssh/authorized_keys
+  echo "SSH Key injected successfully."
+else
+  echo "WARNING: No PUBLIC_KEY environment variable found. SSH access might fail."
+fi
+
+# 2. Setup SSH Service
 # Ensure the directory exists for privilege separation
 mkdir -p /run/sshd
-
 # Start SSH in the background
-echo "Starting SSH..."
 /usr/sbin/sshd
 
-# 2. Start MLflow UI
+# 3. Start MLflow UI
 # We point the backend store to /workspace so your experiment history
-# is saved on the Persistent Volume, not the ephemeral container.
+# is saved on the Persistent Volume.
 echo "Starting MLflow UI..."
-# Use nohup to run it in the background and log output
 nohup uv run mlflow ui \
   --host 0.0.0.0 \
   --port 5000 \
@@ -21,7 +33,6 @@ nohup uv run mlflow ui \
   --default-artifact-root /workspace/mlruns \
   >/app/mlflow.log 2>&1 &
 
-# 3. Keep the container alive
-# This prevents the container from exiting so you can SSH in.
+# 4. Keep the container alive
 echo "Container started. Waiting..."
 sleep infinity

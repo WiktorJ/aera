@@ -11,20 +11,22 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     git \
     curl \
+    vim \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set working directory
-WORKDIR /workspace
+WORKDIR /app
 
 # Copy project files
 COPY . .
 
 # Install the project
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
+RUN --mount=type=cache,target=/root/.cache/uv uv sync
+
+RUN chmod +x aera/autonomous/openpi/scripts/run_runpod_train.sh
 
 # Set the default command
 ENTRYPOINT ["uv", "run", "python3", "aera/autonomous/openpi/scripts/train.py"]

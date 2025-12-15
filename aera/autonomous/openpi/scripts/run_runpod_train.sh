@@ -17,7 +17,7 @@ echo "  Config: $CONFIG_NAME"
 echo "  Experiment Name: $EXP_NAME"
 echo "  Checkpoint Dir: /workspace"
 
-python aera/autonomous/openpi/scripts/train.py \
+uv run python aera/autonomous/openpi/scripts/train.py \
     "$CONFIG_NAME" \
     --checkpoint-base-dir "/workspace" \
     --exp-name "$EXP_NAME" \

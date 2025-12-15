@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     git \
     curl \
+    vim \
     build-essential \
     openssh-server \
     && rm -rf /var/lib/apt/lists/*

@@ -22,7 +22,6 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# CHANGED: Use /app instead of /workspace
 # RunPod mounts Network Volumes to /workspace. If you build code into 
 # /workspace here, the volume will cover it up and make it invisible.
 WORKDIR /app

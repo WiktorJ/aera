@@ -3,6 +3,7 @@ FROM nvidia/cuda:12.9.0-cudnn-runtime-ubuntu24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
+ENV XDG_CACHE_HOME="/workspace/.cache"
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

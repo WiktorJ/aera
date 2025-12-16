@@ -150,6 +150,18 @@ _CONFIGS = [
         log_interval=100,
         keep_period=1000,
     ),
+    openpi_config.TrainConfig(
+        name="debug_pi05",
+        model=pi0_config.Pi0Config(
+            pi05=True, paligemma_variant="dummy", action_expert_variant="dummy"
+        ),
+        data=openpi_config.FakeDataConfig(),
+        batch_size=2,
+        num_train_steps=10,
+        overwrite=True,
+        exp_name="debug_pi05",
+        wandb_enabled=False,
+    ),
 ]
 
 

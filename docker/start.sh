@@ -3,6 +3,9 @@ set -e
 
 echo "--- Starting Initialization ---"
 
+# 0. Save environment variables for SSH sessions
+printenv >> /etc/environment
+
 # 1. Setup SSH Keys (CRITICAL STEP)
 # RunPod passes your web-configured public key as the $PUBLIC_KEY env var.
 if [ -n "$PUBLIC_KEY" ]; then

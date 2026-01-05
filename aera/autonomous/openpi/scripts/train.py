@@ -63,7 +63,7 @@ def init_mlflow(
 ):
     if not enabled:
         return
-
+    mlflow.autolog()
     mlflow.set_experiment(config.project_name)
 
     ckpt_dir = config.checkpoint_dir

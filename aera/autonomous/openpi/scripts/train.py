@@ -1,6 +1,7 @@
 import dataclasses
 import functools
 import logging
+import os
 import platform
 from typing import Any
 
@@ -238,6 +239,12 @@ def train_step(
 def main(config: _config.TrainConfig):
     init_logging()
     logging.info(f"Running on: {platform.node()}")
+
+    if os.environ.get("CHECKPOINT_DIR"):
+        config = dataclasses.replace(
+            config, checkpoint_dir=epath.Path(os.environ.get("CHECKPOINT_DIR"))
+        )
+        logging.info(f"Overriding checkpoint directory to {config.checkpoint_dir}")
 
     if config.batch_size % jax.device_count() != 0:
         raise ValueError(

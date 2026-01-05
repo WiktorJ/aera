@@ -236,15 +236,20 @@ def train_step(
     return new_state, info
 
 
-def main(config: _config.TrainConfig):
-    init_logging()
-    logging.info(f"Running on: {platform.node()}")
-
+def _maybe_override_checkpoint_dir(config: _config.TrainConfig) -> _config.TrainConfig:
     if os.environ.get("CHECKPOINT_DIR"):
         config = dataclasses.replace(
             config, checkpoint_dir=epath.Path(os.environ.get("CHECKPOINT_DIR"))
         )
         logging.info(f"Overriding checkpoint directory to {config.checkpoint_dir}")
+    return config
+
+
+def main(config: _config.TrainConfig):
+    init_logging()
+    logging.info(f"Running on: {platform.node()}")
+
+    config = _maybe_override_checkpoint_dir(config)
 
     if config.batch_size % jax.device_count() != 0:
         raise ValueError(

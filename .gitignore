@@ -246,3 +246,4 @@ rl_training_data/
 rl_training_data_lerobot/
 uv.lock
 logs/
+.cecli*

@@ -15,7 +15,7 @@ Run finetuning:
 
 
 # Docker instructions
-build image fro RunPod: `docker build -t wiktorj/aera-runpod:1 -f docker/Dockerfile.runpod .`
+build image for RunPod: `docker build -t wiktorj/aera-runpod:1 -f docker/Dockerfile.runpod .`
 
 run with ssh and storage binding:
 ```

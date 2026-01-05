@@ -185,7 +185,7 @@ _CONFIGS = [
         num_train_steps=10,
         overwrite=True,
         exp_name="debug_pi05",
-        wandb_enabled=False,
+        wandb_enabled=True,
     ),
 ]
 

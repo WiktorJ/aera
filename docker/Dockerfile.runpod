@@ -5,7 +5,8 @@ ENV PYTHONUNBUFFERED=1
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 ENV XDG_CACHE_HOME="/workspace/.cache"
 ENV OPENPI_DATA_HOME="/workspace/.cache/openpi"
-ENV CHECKPOINT_DIR="/workspace/checkpoints"
+ENV MLFLOW_TRACKING_URI="sqlite:///workspace/mlruns.db"
+ENV AERA_CHECKPOINT_DIR="/workspace/checkpoints"
 
 
 # Install system dependencies

@@ -237,9 +237,9 @@ def train_step(
 
 
 def _maybe_override_checkpoint_dir(config: _config.TrainConfig) -> _config.TrainConfig:
-    if os.environ.get("CHECKPOINT_DIR"):
+    if os.environ.get("AERA_CHECKPOINT_DIR"):
         config = dataclasses.replace(
-            config, checkpoint_dir=epath.Path(os.environ.get("CHECKPOINT_DIR"))
+            config, checkpoint_dir=epath.Path(os.environ.get("AERA_CHECKPOINT_DIR"))
         )
         logging.info(f"Overriding checkpoint directory to {config.checkpoint_dir}")
     return config

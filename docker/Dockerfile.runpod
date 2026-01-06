@@ -5,8 +5,12 @@ ENV PYTHONUNBUFFERED=1
 ENV XLA_PYTHON_CLIENT_MEM_FRACTION=0.9
 ENV XDG_CACHE_HOME="/workspace/.cache"
 ENV OPENPI_DATA_HOME="/workspace/.cache/openpi"
-ENV MLFLOW_TRACKING_URI="http://127.0.0.1:5000"
 ENV AERA_CHECKPOINT_DIR="/workspace/checkpoints"
+ENV MLFLOW_TRACKING_URI="http://127.0.0.1:5000"
+
+# RunPod mounts the GPU driver files here. We must add this to the path
+# so JAX finds the real hardware driver (libcuda.so) before the venv libs.
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 
 # Install system dependencies

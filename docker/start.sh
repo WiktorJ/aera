@@ -4,7 +4,7 @@ set -e
 echo "--- Starting Initialization ---"
 
 # 0. Save environment variables for SSH sessions
-printenv >> /etc/environment
+printenv >>/etc/environment
 
 # 1. Setup SSH Keys (CRITICAL STEP)
 # RunPod passes your web-configured public key as the $PUBLIC_KEY env var.
@@ -33,6 +33,7 @@ nohup uv run mlflow ui \
   --host 0.0.0.0 \
   --port 5000 \
   --backend-store-uri sqlite:////workspace/mlflow.db \
+  --allowed-hosts "*" \
   --default-artifact-root /workspace/mlruns \
   >/app/mlflow.log 2>&1 &
 

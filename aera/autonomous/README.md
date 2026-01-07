@@ -30,4 +30,9 @@ docker run --rm -d \
     wiktorj/aera-runpod:1
 ```
 
-Connect to ssh server: ssh -p 2222 root@localhost -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+Connect to ssh server: 
+
+```
+ssh -p 2222 root@localhost -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+```
+```

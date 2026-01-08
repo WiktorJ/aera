@@ -18,7 +18,7 @@ classifiers = [
 dependencies = [
     "gymnasium==1.2.1",
     "gymnasium-robotics==1.4.1",
-    "mujoco==3.3.7",
+    mujoco==3.3.7",
     "numpy==2.3.4",
     "lerobot==0.4.2",
     "matplotlib==3.10.7",
@@ -40,7 +40,7 @@ dependencies = [
     "openpi",
 ]
 [tool.uv.sources]
-openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "d6a61087418fc64a5e5fa6f267bb0933ac1888de" }
+openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "95bec952ce3177c6cb0f204479676884e18fb7f4" }
 
 [tool.setuptools.packages.find]
 where = ["."]

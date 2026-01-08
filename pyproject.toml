@@ -18,7 +18,7 @@ classifiers = [
 dependencies = [
     "gymnasium==1.2.1",
     "gymnasium-robotics==1.4.1",
-    mujoco==3.3.7",
+    "mujoco==3.3.7",
     "numpy==2.3.4",
     "lerobot==0.4.2",
     "matplotlib==3.10.7",

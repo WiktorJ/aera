@@ -53,14 +53,17 @@ When using mamba run the following to install ros dependencies:
 
 `mamba install -c robostack-jazzy -c conda-forge ros-jazzy-geometry-msgs ros-jazzy-sensor-msgs open3d glfw  numpy scipy opencv`
 
-`pip install -e .`
+`python -m ensurepip --upgrade`
+
+`python -m pip install -e .`
 
 In semi-autonomous:
-`pip install -r requirements.txt`
+(maybe not necessary anymore) `pip install -r requirements.txt`
 `pip install --no-build-isolation -e GroundingDINO`
 
 In semi-autonomous/aera_semi_autonomous:
-`pip install -e . --use-pep517`
+`python -m pip install -e . --use-pep517` (may not need --use-pep517)
+
 
 ## Env for working with models
 Because of package conflicts, it is recommended to create a new environment for working with models.
@@ -78,3 +81,21 @@ In different directory
 ## Env variables
 To upload data to huggingface hub, set the following environment variables:
 `export HF_TOKEN="hf_xxxxxxxxxxxxx"`
+
+## Simulation Data Gathering
+Example commands to collect data for training:
+
+To collect trajectories:
+`python semi_autonomous/aera_semi_autonomous/scripts/collect_trajectories.py --num-trajectories 4 --save-dir aera_semi_pnp_dr_03_12_2025`
+
+Note, the command above doesn't use uv, because it requires lower python version:
+`python -m pip install "numpy<2"`
+with uv it's not possible to install numpy<2 because it enforces packages dependencies.
+
+
+To convert data to lerobot format:
+`uv run python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py --data-dir=aera_semi_pnp_dr_03_12_2025 --push-to-hub`
+
+To calculate norm stats:
+`uv run aera/autonomous/openpi/scripts/compute_norm_stats.py --config-name=pi0_fast_ar4_mk3_low_mem_finetune --push-to-hub`
+

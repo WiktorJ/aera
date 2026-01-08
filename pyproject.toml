@@ -40,7 +40,7 @@ dependencies = [
     "openpi",
 ]
 [tool.uv.sources]
-openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "95bec952ce3177c6cb0f204479676884e18fb7f4" }
+openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "75c18b78e7c8dc31e6fd861cb39d5d5680cdfeb9" }
 
 [tool.setuptools.packages.find]
 where = ["."]

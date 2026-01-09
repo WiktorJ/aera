@@ -92,7 +92,7 @@ _CONFIGS = [
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_03_12_2025/",
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",
             ),
         ),
@@ -128,7 +128,7 @@ _CONFIGS = [
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_03_12_2025/",
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",
             ),
         ),
@@ -164,7 +164,7 @@ _CONFIGS = [
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_03_12_2025/",
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",
             ),
         ),

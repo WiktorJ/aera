@@ -88,7 +88,7 @@ _CONFIGS = [
             action_horizon=10,
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_03_12_2025",
+            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(
@@ -124,7 +124,7 @@ _CONFIGS = [
             paligemma_variant="gemma_2b_lora",
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_03_12_2025",
+            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(
@@ -160,7 +160,7 @@ _CONFIGS = [
             max_token_len=100,
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_03_12_2025",
+            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=True,
             assets=openpi_config.AssetsConfig(

@@ -33,11 +33,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
+# Copy only project deps
+COPY pyproject.toml uv.lock ./
+
+# Install only deps without project to keep the cache valid
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --python 3.12  --frozen --no-install-project
+
 # Copy project files
 COPY . .
-
-# Install the project
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --python 3.12
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
 # Make the training script executable
 RUN chmod +x aera/autonomous/openpi/scripts/run_runpod_train.sh

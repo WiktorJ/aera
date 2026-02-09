@@ -27,6 +27,7 @@ import tqdm_loggable.auto as tqdm
 from flax.training import common_utils
 
 import aera.autonomous.openpi.training_config as _training_config
+from aera.autonomous.openpi.training_config import ExtendedTrainConfig
 
 
 def init_logging():
@@ -60,6 +61,7 @@ def init_mlflow(
     resuming: bool,
     log_code: bool = False,
     enabled: bool = True,
+    log_system_metrics: bool = False,
 ):
     if not enabled:
         return
@@ -71,9 +73,9 @@ def init_mlflow(
         raise FileNotFoundError(f"Checkpoint directory {ckpt_dir} does not exist.")
     if resuming:
         run_id = (ckpt_dir / "mlflow_run_id.txt").read_text().strip()
-        mlflow.start_run(run_id=run_id)
+        mlflow.start_run(run_id=run_id, log_system_metrics=log_system_metrics)
     else:
-        mlflow.start_run(run_name=config.exp_name)
+        mlflow.start_run(run_name=config.exp_name, log_system_metrics=log_system_metrics)
         mlflow.log_params(dataclasses.asdict(config))
         run_id = mlflow.active_run().info.run_id
         (ckpt_dir / "mlflow_run_id.txt").write_text(run_id)
@@ -246,10 +248,14 @@ def _maybe_override_checkpoint_dir(config: _config.TrainConfig) -> _config.Train
     return config
 
 
-def main(config: _config.TrainConfig):
+def main(extended_config: ExtendedTrainConfig):
     init_logging()
     logging.info(f"Running on: {platform.node()}")
 
+    # Extract the base config and additional options
+    config = extended_config.base_config
+    log_system_metrics = extended_config.log_system_metrics
+    
     config = _maybe_override_checkpoint_dir(config)
 
     if config.batch_size % jax.device_count() != 0:
@@ -276,7 +282,7 @@ def main(config: _config.TrainConfig):
         overwrite=config.overwrite,
         resume=config.resume,
     )
-    init_mlflow(config, resuming=resuming, enabled=config.wandb_enabled)
+    init_mlflow(config, resuming=resuming, enabled=config.wandb_enabled, log_system_metrics=log_system_metrics)
 
     data_loader = _data_loader.create_data_loader(
         config,

@@ -14,6 +14,21 @@ import openpi.transforms as _transforms
 
 
 @dataclasses.dataclass(frozen=True)
+class ExtendedTrainConfig:
+    """Extended training config that wraps openpi TrainConfig with additional options."""
+    
+    # The base openpi TrainConfig
+    base_config: openpi_config.TrainConfig
+    
+    # Additional options
+    log_system_metrics: bool = False
+    
+    def __getattr__(self, name):
+        """Delegate attribute access to the base config."""
+        return getattr(self.base_config, name)
+
+
+@dataclasses.dataclass(frozen=True)
 class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
     """
     This config is used to configure transforms that are applied at various parts of the data pipeline.
@@ -78,7 +93,7 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         )
 
 
-_CONFIGS = [
+_BASE_CONFIGS = [
     openpi_config.TrainConfig(
         name="pi0_ar4_mk3_low_mem_finetune",
         # Here is an example of loading a pi0 model for LoRA fine-tuning.
@@ -190,15 +205,21 @@ _CONFIGS = [
 ]
 
 
-_CONFIGS_DICT = {c.name: c for c in _CONFIGS}
+# Wrap base configs with extended config
+_CONFIGS = [
+    ExtendedTrainConfig(base_config=c, log_system_metrics=False)
+    for c in _BASE_CONFIGS
+]
+
+_CONFIGS_DICT = {c.base_config.name: c for c in _CONFIGS}
 
 
-def cli() -> openpi_config.TrainConfig:
+def cli() -> ExtendedTrainConfig:
     return tyro.extras.overridable_config_cli(
         {k: (k, v) for k, v in _CONFIGS_DICT.items()}
     )
 
 
-def get_config(config_name: str) -> openpi_config.TrainConfig:
+def get_config(config_name: str) -> ExtendedTrainConfig:
     """Get a config by name."""
     return _CONFIGS_DICT[config_name]

@@ -16,13 +16,13 @@ import openpi.transforms as _transforms
 @dataclasses.dataclass(frozen=True)
 class ExtendedTrainConfig:
     """Extended training config that wraps openpi TrainConfig with additional options."""
-    
+
     # The base openpi TrainConfig
     base_config: openpi_config.TrainConfig
-    
+
     # Additional options
-    log_system_metrics: bool = False
-    
+    log_system_metrics: bool = True
+
     def __getattr__(self, name):
         """Delegate attribute access to the base config."""
         return getattr(self.base_config, name)
@@ -207,8 +207,7 @@ _BASE_CONFIGS = [
 
 # Wrap base configs with extended config
 _CONFIGS = [
-    ExtendedTrainConfig(base_config=c, log_system_metrics=False)
-    for c in _BASE_CONFIGS
+    ExtendedTrainConfig(base_config=c, log_system_metrics=False) for c in _BASE_CONFIGS
 ]
 
 _CONFIGS_DICT = {c.base_config.name: c for c in _CONFIGS}

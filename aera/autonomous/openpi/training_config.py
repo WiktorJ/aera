@@ -167,8 +167,7 @@ _BASE_CONFIGS = [
     ),
     openpi_config.TrainConfig(
         name="pi0_fast_ar4_mk3_finetune",
-        # Here is an example of loading a pi0-FAST model for LoRA finetuning.
-        # For setting action_dim, action_horizon, and max_token_len, see the comments above.
+        # Full fine-tuning of pi0-FAST on a small aera dataset.
         model=pi0_fast.Pi0FASTConfig(
             action_dim=7,
             action_horizon=10,
@@ -186,9 +185,10 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=8_000,
+        num_train_steps=4_000,
         log_interval=100,
-        keep_period=1000,
+        save_interval=200,
+        batch_size=64,
     ),
     openpi_config.TrainConfig(
         name="debug_pi05",

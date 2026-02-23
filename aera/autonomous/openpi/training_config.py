@@ -185,9 +185,10 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=4_000,
+        num_train_steps=1_000,
         log_interval=100,
-        save_interval=200,
+        save_interval=250,
+        keep_period=None,
         batch_size=64,
     ),
     openpi_config.TrainConfig(

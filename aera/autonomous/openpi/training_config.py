@@ -76,10 +76,11 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         # leave the 7th action (gripper) unchanged, i.e. absolute.
 
         delta_action_mask = _transforms.make_bool_mask(6, -1)
-        data_transforms = data_transforms.push(
-            inputs=[_transforms.DeltaActions(delta_action_mask)],
-            outputs=[_transforms.AbsoluteActions(delta_action_mask)],
-        )
+        if self.extra_delta_transform:
+            data_transforms = data_transforms.push(
+                inputs=[_transforms.DeltaActions(delta_action_mask)],
+                outputs=[_transforms.AbsoluteActions(delta_action_mask)],
+            )
 
         # Model transforms include things like tokenizing the prompt and action targets
         # You do not need to change anything here for your own dataset.
@@ -105,7 +106,7 @@ _BASE_CONFIGS = [
         data=Ar4Mk3DataConfig(
             repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
-            extra_delta_transform=True,
+            extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
                 assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",
@@ -141,7 +142,7 @@ _BASE_CONFIGS = [
         data=Ar4Mk3DataConfig(
             repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
-            extra_delta_transform=True,
+            extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
                 assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",
@@ -176,7 +177,7 @@ _BASE_CONFIGS = [
         data=Ar4Mk3DataConfig(
             repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
-            extra_delta_transform=True,
+            extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
                 assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
                 asset_id="assets",

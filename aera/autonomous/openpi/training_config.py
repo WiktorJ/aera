@@ -151,7 +151,7 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=8_000,
+        num_train_steps=2_000,
         # Again, make sure to match the model config above when extracting the freeze filter
         # that specifies which parameters should be frozen during LoRA finetuning.
         freeze_filter=pi0_fast.Pi0FASTConfig(
@@ -164,7 +164,8 @@ _BASE_CONFIGS = [
         ema_decay=None,
         batch_size=16,
         log_interval=100,
-        keep_period=1000,
+        save_interval=500,
+        keep_period=500,
     ),
     openpi_config.TrainConfig(
         name="pi0_fast_ar4_mk3_finetune",

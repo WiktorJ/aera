@@ -75,8 +75,8 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         # In the example below, we would apply the delta conversion to the first 6 actions (joints) and
         # leave the 7th action (gripper) unchanged, i.e. absolute.
 
-        delta_action_mask = _transforms.make_bool_mask(6, -1)
         if self.extra_delta_transform:
+            delta_action_mask = _transforms.make_bool_mask(6, -1)
             data_transforms = data_transforms.push(
                 inputs=[_transforms.DeltaActions(delta_action_mask)],
                 outputs=[_transforms.AbsoluteActions(delta_action_mask)],
@@ -189,8 +189,8 @@ _BASE_CONFIGS = [
         ),
         num_train_steps=1_000,
         log_interval=100,
-        save_interval=250,
-        keep_period=None,
+        save_interval=200,
+        keep_period=200,
         batch_size=64,
     ),
     openpi_config.TrainConfig(

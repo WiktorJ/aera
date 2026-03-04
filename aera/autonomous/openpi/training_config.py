@@ -23,6 +23,8 @@ class ExtendedTrainConfig:
     # Additional options
     log_system_metrics: bool = True
 
+    subsample_interval: int = 5
+
     def __getattr__(self, name):
         """Delegate attribute access to the base config."""
         return getattr(self.base_config, name)

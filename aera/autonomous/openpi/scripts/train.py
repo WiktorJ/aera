@@ -4,6 +4,7 @@ import logging
 import os
 import platform
 from typing import Any
+import torch
 
 import etils.epath as epath
 import flax.nnx as nnx
@@ -75,7 +76,9 @@ def init_mlflow(
         run_id = (ckpt_dir / "mlflow_run_id.txt").read_text().strip()
         mlflow.start_run(run_id=run_id, log_system_metrics=log_system_metrics)
     else:
-        mlflow.start_run(run_name=config.exp_name, log_system_metrics=log_system_metrics)
+        mlflow.start_run(
+            run_name=config.exp_name, log_system_metrics=log_system_metrics
+        )
         mlflow.log_params(dataclasses.asdict(config))
         run_id = mlflow.active_run().info.run_id
         (ckpt_dir / "mlflow_run_id.txt").write_text(run_id)
@@ -101,6 +104,81 @@ def _load_weights_and_validate(
             if not isinstance(v, jax.ShapeDtypeStruct)
         }
     )
+
+
+def create_torch_data_loader(
+    data_config: _config.DataConfig,
+    model_config: _model.BaseModelConfig,
+    action_horizon: int,
+    batch_size: int,
+    *,
+    sharding: jax.sharding.Sharding | None = None,
+    skip_norm_stats: bool = False,
+    shuffle: bool = False,
+    num_batches: int | None = None,
+    num_workers: int = 0,
+    seed: int = 0,
+    framework: str = "jax",
+    subsample_interval: int = 5,
+) -> _data_loader.DataLoader[tuple[_model.Observation, _model.Actions]]:
+    """Create a data loader for training.
+
+    Args:
+        data_config: The data configuration.
+        action_horizon: The action horizon.
+        batch_size: The batch size.
+        sharding: The sharding to use for the data loader. If None, the data loader will
+            use a single device sharding.
+        skip_norm_stats: Whether to skip data normalization.
+        shuffle: Whether to shuffle the data.
+        num_batches: Determines the number of batches to return. If the number exceeds the
+            number of batches in the dataset, the data loader will loop over the dataset.
+            If not provided, will iterate over the dataset indefinitely.
+        num_workers: The number of worker processes to use. If zero, the data loader will
+            execute in the main process.
+        seed: The seed to use for shuffling the data.
+    """
+    dataset = _data_loader.create_torch_dataset(
+        data_config, action_horizon, model_config
+    )
+    dataset = _data_loader.transform_dataset(
+        dataset, data_config, skip_norm_stats=skip_norm_stats
+    )
+    torch.utils.data.Subset(dataset, range(0, len(dataset), subsample_interval))
+
+    # Use TorchDataLoader for both frameworks
+    # For PyTorch DDP, create DistributedSampler and divide batch size by world size
+    # For JAX, divide by process count
+    sampler = None
+    if framework == "pytorch":
+        if torch.distributed.is_initialized():
+            sampler = torch.utils.data.distributed.DistributedSampler(
+                dataset,
+                num_replicas=torch.distributed.get_world_size(),
+                rank=torch.distributed.get_rank(),
+                shuffle=shuffle,
+                drop_last=True,
+            )
+            local_batch_size = batch_size // torch.distributed.get_world_size()
+        else:
+            local_batch_size = batch_size
+    else:
+        local_batch_size = batch_size // jax.process_count()
+
+    logging.info(f"local_batch_size: {local_batch_size}")
+    data_loader = _data_loader.TorchDataLoader(
+        dataset,
+        local_batch_size=local_batch_size,
+        sharding=None if framework == "pytorch" else sharding,
+        shuffle=(sampler is None and shuffle),  # Don't shuffle if using sampler
+        sampler=sampler,
+        num_batches=num_batches,
+        num_workers=num_workers,
+        seed=seed,
+        framework=framework,
+    )
+
+    return _data_loader.DataLoaderImpl(data_config, data_loader)
 
 
 @at.typecheck
@@ -255,7 +333,7 @@ def main(extended_config: ExtendedTrainConfig):
     # Extract the base config and additional options
     config = extended_config.base_config
     log_system_metrics = extended_config.log_system_metrics
-    
+
     config = _maybe_override_checkpoint_dir(config)
 
     if config.batch_size % jax.device_count() != 0:
@@ -282,13 +360,32 @@ def main(extended_config: ExtendedTrainConfig):
         overwrite=config.overwrite,
         resume=config.resume,
     )
-    init_mlflow(config, resuming=resuming, enabled=config.wandb_enabled, log_system_metrics=log_system_metrics)
+    init_mlflow(
+        config,
+        resuming=resuming,
+        enabled=config.wandb_enabled,
+        log_system_metrics=log_system_metrics,
+    )
 
     data_loader = _data_loader.create_data_loader(
         config,
         sharding=data_sharding,
         shuffle=True,
     )
+
+    data_config = config.data.create(config.assets_dirs, config.model)
+    data_loader = create_torch_data_loader(
+        data_config,
+        model_config=config.model,
+        action_horizon=config.model.action_horizon,
+        batch_size=config.batch_size,
+        sharding=data_sharding,
+        shuffle=True,
+        num_workers=config.num_workers,
+        seed=config.seed,
+        framework="jax",
+    )
+
     data_iter = iter(data_loader)
     batch = next(data_iter)
     logging.info(

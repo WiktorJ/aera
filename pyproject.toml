@@ -37,10 +37,10 @@ dependencies = [
     "transformers==4.53.2",
     "tyro==0.9.35",
     "typing-extensions==4.15.0",
-    "openpi",
-    "opencv-python-headless",
-    "psutil",
-    "nvidia-ml-py"
+    "openpi==0.0.0",
+    "opencv-python-headless==4.12.0.86",
+    "psutil==7.1.3",
+    "nvidia-ml-py==13.590.48"
 ]
 [tool.uv.sources]
 openpi = { git = "https://github.com/WiktorJ/openpi.git", rev = "75c18b78e7c8dc31e6fd861cb39d5d5680cdfeb9" }

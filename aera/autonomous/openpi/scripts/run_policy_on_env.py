@@ -21,8 +21,9 @@ import os
 import pathlib
 from typing import Any
 
-import cv2
 import imageio
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import tyro
 
@@ -118,6 +119,18 @@ def run_on_env(args: Args) -> None:
         config=env_config,
     )
 
+    # Initialize matplotlib for interactive display
+    if not args.headless:
+        matplotlib.use("TkAgg")
+        plt.ion()
+        fig, (ax_env, ax_gripper) = plt.subplots(1, 2, figsize=(10, 5))
+        ax_env.set_title("AR4 Mk3 Env")
+        ax_env.axis("off")
+        ax_gripper.set_title("AR4 Mk3 Gripper")
+        ax_gripper.axis("off")
+        im_env = None
+        im_gripper = None
+
     total_episodes, total_successes = 0, 0
     for episode_idx in range(args.num_episodes):
         logging.info(f"\nStarting episode {episode_idx + 1}/{args.num_episodes}")
@@ -148,12 +161,16 @@ def run_on_env(args: Args) -> None:
                 gripper_img = obs["gripper_camera_image"]
 
                 if not args.headless:
-                    # Display the image
-                    display_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                    cv2.imshow("AR4 Mk3 Env", display_img)
-                    display_gripper_img = cv2.cvtColor(gripper_img, cv2.COLOR_RGB2BGR)
-                    cv2.imshow("AR4 Mk3 Gripper", display_gripper_img)
-                    cv2.waitKey(1)
+                    # Display the image (matplotlib uses RGB natively)
+                    if im_env is None:
+                        im_env = ax_env.imshow(img)
+                        im_gripper = ax_gripper.imshow(gripper_img)
+                    else:
+                        im_env.set_data(img)
+                        im_gripper.set_data(gripper_img)
+                    fig.canvas.draw_idle()
+                    fig.canvas.flush_events()
+                    plt.pause(0.001)
 
                 # Get arm and gripper joint positions
                 arm_qpos = env.data.qpos[arm_qpos_indices]
@@ -213,7 +230,8 @@ def run_on_env(args: Args) -> None:
 
     env.close()
     if not args.headless:
-        cv2.destroyAllWindows()
+        plt.ioff()
+        plt.close("all")
     logging.info("Evaluation finished.")
     if total_episodes > 0:
         final_rate = total_successes / total_episodes * 100

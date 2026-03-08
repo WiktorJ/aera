@@ -69,21 +69,24 @@ def compute_skip_statistics(
     print(f"  Skip-interval statistics for: {label}")
     print(f"  Shape: {data.shape}")
     print(f"{'=' * 70}")
-    print(f"{'Skip':>6} | {'Mean |Δ|':>12} | {'Std Δ':>12} | {'Max |Δ|':>12} | {'Median |Δ|':>12}")
-    print(f"{'-' * 6}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}")
+    print(f"{'Skip':>6} | {'Mean |Δ|':>12} | {'Std Δ':>12} | {'Max |Δ|':>12} | {'Median |Δ|':>12} | {'N pairs':>10}")
+    print(f"{'-' * 6}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 10}")
 
     for skip in skips:
         if skip >= len(data):
             print(f"{skip:>6} | {'(skip >= N, skipped)':>53}")
             continue
-        diffs = data[skip:] - data[:-skip]
+        # Strided pairs: (0, skip), (skip, 2*skip), (2*skip, 3*skip), ...
+        indices = np.arange(0, len(data) - skip, skip)
+        diffs = data[indices + skip] - data[indices]
         abs_diffs = np.abs(diffs)
         print(
             f"{skip:>6} | "
             f"{abs_diffs.mean():>12.6f} | "
             f"{diffs.std():>12.6f} | "
             f"{abs_diffs.max():>12.6f} | "
-            f"{np.median(abs_diffs):>12.6f}"
+            f"{np.median(abs_diffs):>12.6f} | "
+            f"n_pairs={len(indices)}"
         )
 
 
@@ -107,21 +110,25 @@ def compute_cross_statistics(
     print(f"  States shape: {states.shape}, Actions shape: {actions.shape}")
     print(f"  Comparing first {min_dim} dims")
     print(f"{'=' * 70}")
-    print(f"{'Skip':>6} | {'Mean |Δ|':>12} | {'Std Δ':>12} | {'Max |Δ|':>12} | {'Median |Δ|':>12}")
-    print(f"{'-' * 6}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}")
+    print(f"{'Skip':>6} | {'Mean |Δ|':>12} | {'Std Δ':>12} | {'Max |Δ|':>12} | {'Median |Δ|':>12} | {'N pairs':>10}")
+    print(f"{'-' * 6}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 12}-+-{'-' * 10}")
 
+    n = min(len(states_trimmed), len(actions_trimmed))
     for skip in skips:
-        if skip >= len(states) or skip >= len(actions_trimmed):
-            print(f"{skip:>6} | {'(skip >= N, skipped)':>53}")
+        if skip >= n:
+            print(f"{skip:>6} | {'(skip >= N, skipped)':>65}")
             continue
-        diffs = actions_trimmed[skip:] - states_trimmed[:-skip]
+        # Strided pairs: obs at t=0,skip,2*skip,... paired with action at t+skip
+        indices = np.arange(0, n - skip, skip)
+        diffs = actions_trimmed[indices + skip] - states_trimmed[indices]
         abs_diffs = np.abs(diffs)
         print(
             f"{skip:>6} | "
             f"{abs_diffs.mean():>12.6f} | "
             f"{diffs.std():>12.6f} | "
             f"{abs_diffs.max():>12.6f} | "
-            f"{np.median(abs_diffs):>12.6f}"
+            f"{np.median(abs_diffs):>12.6f} | "
+            f"n_pairs={len(indices)}"
         )
 
 

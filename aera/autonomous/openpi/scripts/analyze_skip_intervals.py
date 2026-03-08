@@ -76,10 +76,11 @@ def compute_skip_statistics(
         if skip >= len(data):
             print(f"{skip:>6} | {'(skip >= N, skipped)':>53}")
             continue
-        # Strided pairs: (0, skip), (skip, 2*skip), (2*skip, 3*skip), ...
-        step = max(skip, 1)
-        indices = np.arange(0, len(data) - skip, step)
-        diffs = data[indices + skip] - data[indices]
+        # Strided pairs with offset: obs at t, data at t + (skip-1)
+        # t = 0, skip, 2*skip, ... paired with t + skip - 1
+        offset = skip - 1
+        indices = np.arange(0, len(data) - offset, skip)
+        diffs = data[indices + offset] - data[indices]
         abs_diffs = np.abs(diffs)
         print(
             f"{skip:>6} | "
@@ -119,10 +120,10 @@ def compute_cross_statistics(
         if skip >= n:
             print(f"{skip:>6} | {'(skip >= N, skipped)':>65}")
             continue
-        # Strided pairs: obs at t=0,skip,2*skip,... paired with action at t+skip
-        step = max(skip, 1)
-        indices = np.arange(0, n - skip, step)
-        diffs = actions_trimmed[indices + skip] - states_trimmed[indices]
+        # Strided pairs: obs at t=0,skip,2*skip,... paired with action at t + skip - 1
+        offset = skip - 1
+        indices = np.arange(0, n - offset, skip)
+        diffs = actions_trimmed[indices + offset] - states_trimmed[indices]
         abs_diffs = np.abs(diffs)
         print(
             f"{skip:>6} | "
@@ -167,7 +168,12 @@ def parse_args() -> argparse.Namespace:
         "--skips",
         type=str,
         default="1,5,10,20,50",
-        help="Comma-separated list of skip intervals to analyze.",
+        help=(
+            "Comma-separated list of skip intervals to analyze. "
+            "skip=1 means no change (original pairs). "
+            "skip=5 means take every 5th frame, pairing obs[t] with action[t+4]. "
+            "All values must be >= 1."
+        ),
     )
     return parser.parse_args()
 
@@ -177,6 +183,8 @@ def main():
     args = parse_args()
 
     skips = [int(s) for s in args.skips.split(",")]
+    if any(s < 1 for s in skips):
+        raise ValueError(f"All skip values must be >= 1, got {skips}")
     logging.info(f"Config: {args.config}, num_samples: {args.num_samples}, skips: {skips}")
 
     # Load the training config the same way train.py does

@@ -52,7 +52,11 @@ def parse_args() -> argparse.Namespace:
         "--skip",
         type=int,
         required=True,
-        help="Number of frames to skip when pairing obs[t] with action[t+skip].",
+        help=(
+            "Subsample interval. skip=1 means no change (original pairs). "
+            "skip=5 means take every 5th frame and pair obs[t] with action[t+4]. "
+            "Must be >= 1."
+        ),
     )
     parser.add_argument(
         "--delta-actions",
@@ -217,15 +221,15 @@ def transform_dataset(
     frames_skipped_boundary = 0
     episodes_written = 0
 
-    step = max(skip, 1)
-    for t in range(0, total_samples, step):
+    offset = skip - 1
+    for t in range(0, total_samples, skip):
         if t % 1000 == 0:
             logging.info(
                 f"Processing frame {t}/{total_samples} "
                 f"(written: {frames_written}, skipped: {frames_skipped_boundary})"
             )
 
-        t_future = t + skip
+        t_future = t + offset
 
         # Check bounds
         if t_future >= total_samples:
@@ -320,6 +324,9 @@ def transform_dataset(
 def main():
     init_logging()
     args = parse_args()
+
+    if args.skip < 1:
+        raise ValueError(f"--skip must be >= 1, got {args.skip}")
 
     logging.info(
         f"Config: repo_id={args.repo_id}, skip={args.skip}, "

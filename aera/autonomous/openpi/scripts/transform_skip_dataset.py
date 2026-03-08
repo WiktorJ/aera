@@ -217,7 +217,8 @@ def transform_dataset(
     frames_skipped_boundary = 0
     episodes_written = 0
 
-    for t in range(0, total_samples, skip):
+    step = max(skip, 1)
+    for t in range(0, total_samples, step):
         if t % 1000 == 0:
             logging.info(
                 f"Processing frame {t}/{total_samples} "

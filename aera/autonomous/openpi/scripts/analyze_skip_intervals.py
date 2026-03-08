@@ -77,7 +77,8 @@ def compute_skip_statistics(
             print(f"{skip:>6} | {'(skip >= N, skipped)':>53}")
             continue
         # Strided pairs: (0, skip), (skip, 2*skip), (2*skip, 3*skip), ...
-        indices = np.arange(0, len(data) - skip, skip)
+        step = max(skip, 1)
+        indices = np.arange(0, len(data) - skip, step)
         diffs = data[indices + skip] - data[indices]
         abs_diffs = np.abs(diffs)
         print(
@@ -119,7 +120,8 @@ def compute_cross_statistics(
             print(f"{skip:>6} | {'(skip >= N, skipped)':>65}")
             continue
         # Strided pairs: obs at t=0,skip,2*skip,... paired with action at t+skip
-        indices = np.arange(0, n - skip, skip)
+        step = max(skip, 1)
+        indices = np.arange(0, n - skip, step)
         diffs = actions_trimmed[indices + skip] - states_trimmed[indices]
         abs_diffs = np.abs(diffs)
         print(

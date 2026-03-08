@@ -142,18 +142,18 @@ _BASE_CONFIGS = [
             paligemma_variant="gemma_2b_lora",
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
+            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026_skip10_delta",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026_skip10_delta/",
                 asset_id="assets",
             ),
         ),
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=2_000,
+        num_train_steps=800,
         # Again, make sure to match the model config above when extracting the freeze filter
         # that specifies which parameters should be frozen during LoRA finetuning.
         freeze_filter=pi0_fast.Pi0FASTConfig(
@@ -166,8 +166,8 @@ _BASE_CONFIGS = [
         ema_decay=None,
         batch_size=16,
         log_interval=100,
-        save_interval=500,
-        keep_period=500,
+        save_interval=200,
+        keep_period=200,
     ),
     openpi_config.TrainConfig(
         name="pi0_fast_ar4_mk3_finetune",

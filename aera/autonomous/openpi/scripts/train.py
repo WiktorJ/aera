@@ -119,7 +119,6 @@ def create_torch_data_loader(
     num_workers: int = 0,
     seed: int = 0,
     framework: str = "jax",
-    subsample_interval: int = 5,
 ) -> _data_loader.DataLoader[tuple[_model.Observation, _model.Actions]]:
     """Create a data loader for training.
 
@@ -144,7 +143,6 @@ def create_torch_data_loader(
     dataset = _data_loader.transform_dataset(
         dataset, data_config, skip_norm_stats=skip_norm_stats
     )
-    torch.utils.data.Subset(dataset, range(0, len(dataset), subsample_interval))
 
     # Use TorchDataLoader for both frameworks
     # For PyTorch DDP, create DistributedSampler and divide batch size by world size

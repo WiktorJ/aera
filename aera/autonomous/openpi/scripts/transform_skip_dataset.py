@@ -77,6 +77,16 @@ def parse_args() -> argparse.Namespace:
         help="Suffix for the output repo ID. Defaults to 'skip{N}' or 'skip{N}_delta'.",
     )
     parser.add_argument(
+        "--exclude-prompts",
+        type=str,
+        default=None,
+        help=(
+            "Comma-separated list of granular_prompt values to exclude from the output dataset. "
+            "Frames matching any of these prompts are dropped entirely. "
+            "E.g. --exclude-prompts 'go home,reset arm'"
+        ),
+    )
+    parser.add_argument(
         "--push-to-hub",
         action="store_true",
         default=False,
@@ -175,6 +185,7 @@ def transform_dataset(
     skip: int,
     delta_actions: bool,
     num_joint_dims: int,
+    exclude_prompts: set[str] | None = None,
 ) -> LeRobotDataset:
     """Transform the source dataset by pairing obs[t] with action[t+skip].
 
@@ -184,6 +195,8 @@ def transform_dataset(
         skip: Number of frames to skip for action pairing.
         delta_actions: Whether to convert actions to delta (action - state).
         num_joint_dims: Number of joint dims for delta conversion.
+        exclude_prompts: Set of granular_prompt values to exclude. Frames matching
+            any of these are dropped entirely.
 
     Returns:
         The new LeRobotDataset with transformed data.
@@ -219,6 +232,7 @@ def transform_dataset(
     current_episode = None
     frames_written = 0
     frames_skipped_boundary = 0
+    frames_skipped_prompt = 0
     episodes_written = 0
 
     offset = skip - 1
@@ -226,7 +240,8 @@ def transform_dataset(
         if t % 1000 == 0:
             logging.info(
                 f"Processing frame {t}/{total_samples} "
-                f"(written: {frames_written}, skipped: {frames_skipped_boundary})"
+                f"(written: {frames_written}, skipped_boundary: {frames_skipped_boundary}, "
+                f"skipped_prompt: {frames_skipped_prompt})"
             )
 
         t_future = t + offset
@@ -237,6 +252,16 @@ def transform_dataset(
 
         sample_t = source_dataset[t]
         sample_future = source_dataset[t_future]
+
+        # Filter out frames with excluded granular prompts
+        if exclude_prompts:
+            prompt_t = sample_t.get("granural_prompt", None)
+            prompt_future = sample_future.get("granural_prompt", None)
+            if (prompt_t is not None and prompt_t in exclude_prompts) or (
+                prompt_future is not None and prompt_future in exclude_prompts
+            ):
+                frames_skipped_prompt += 1
+                continue
 
         episode_t = _get_episode_index(sample_t)
         episode_future = _get_episode_index(sample_future)
@@ -312,10 +337,12 @@ def transform_dataset(
         f"  Source frames:          {total_samples}\n"
         f"  Output frames:          {frames_written}\n"
         f"  Skipped (boundary):     {frames_skipped_boundary}\n"
-        f"  Skipped (tail):         {total_samples - frames_written - frames_skipped_boundary}\n"
+        f"  Skipped (prompt filter):{frames_skipped_prompt}\n"
+        f"  Skipped (tail):         {total_samples - frames_written - frames_skipped_boundary - frames_skipped_prompt}\n"
         f"  Episodes written:       {episodes_written}\n"
         f"  Skip interval:          {skip}\n"
-        f"  Delta actions:          {delta_actions}"
+        f"  Delta actions:          {delta_actions}\n"
+        f"  Excluded prompts:       {exclude_prompts or 'none'}"
     )
 
     return output_dataset
@@ -328,9 +355,14 @@ def main():
     if args.skip < 1:
         raise ValueError(f"--skip must be >= 1, got {args.skip}")
 
+    exclude_prompts = None
+    if args.exclude_prompts:
+        exclude_prompts = {p.strip() for p in args.exclude_prompts.split(",")}
+
     logging.info(
         f"Config: repo_id={args.repo_id}, skip={args.skip}, "
-        f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}"
+        f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}, "
+        f"exclude_prompts={exclude_prompts}"
     )
 
     output_repo_id = _build_output_repo_id(
@@ -359,6 +391,7 @@ def main():
         skip=args.skip,
         delta_actions=args.delta_actions,
         num_joint_dims=args.num_joint_dims,
+        exclude_prompts=exclude_prompts,
     )
 
     # Optionally push to hub

@@ -11,6 +11,7 @@ import openpi.models.pi0_fast as pi0_fast
 import openpi.training.config as openpi_config
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
+import openpi.training.optimizer as _optimizer
 
 
 @dataclasses.dataclass(frozen=True)
@@ -197,6 +198,35 @@ _BASE_CONFIGS = [
         save_interval=200,
         keep_period=200,
         batch_size=64,
+    ),
+    openpi_config.TrainConfig(
+        name="pi05_ar4_mk3",
+        model=pi0_config.Pi0Config(
+            pi05=True, action_horizon=10, discrete_state_input=False
+        ),
+        data=Ar4Mk3DataConfig(
+            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home",
+            base_config=openpi_config.DataConfig(prompt_from_task=True),
+            extra_delta_transform=False,
+            assets=openpi_config.AssetsConfig(
+                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home/",
+                asset_id="assets",
+            ),
+        ),
+        batch_size=256,
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            warmup_steps=10_000,
+            peak_lr=5e-5,
+            decay_steps=1_000_000,
+            decay_lr=5e-5,
+        ),
+        optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
+        ema_decay=0.999,
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "gs://openpi-assets/checkpoints/pi05_base/params"
+        ),
+        pytorch_weight_path="/path/to/your/pytorch_weight_path",
+        num_train_steps=30_000,
     ),
     openpi_config.TrainConfig(
         name="debug_pi05",

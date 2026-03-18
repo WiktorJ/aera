@@ -39,6 +39,7 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 ENV_RESOLUTION = 256  # resolution used for rendered images
 ARM_JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 GRIPPER_JOINT_NAME = "gripper_jaw1_joint"
+GRIPPER_CLOSED_QPOS = -0.014  # Fully closed; range is [-0.014, 0] where 0 is open
 
 
 @dataclasses.dataclass
@@ -113,6 +114,13 @@ def run_on_env(args: Args) -> None:
         domain_rand=domain_rand_config,  # Add domain rand config if needed
         absolute_state_actions=True,
         include_images_in_obs=True,
+        initial_qpos={
+            "robot0:slide0": 0.0,
+            "robot0:slide1": 0.0,
+            "robot0:slide2": 0.0,
+            "gripper_jaw1_joint": GRIPPER_CLOSED_QPOS,
+            "gripper_jaw2_joint": GRIPPER_CLOSED_QPOS,
+        },
     )
     env = Ar4Mk3PickAndPlaceEnv(
         render_mode="rgb_array",
@@ -144,7 +152,8 @@ def run_on_env(args: Args) -> None:
         # Get initial joint positions for dummy action
         joint_names = ARM_JOINT_NAMES + [GRIPPER_JOINT_NAME]
         qpos_indices = [env.model.joint(name).qposadr[0] for name in joint_names]
-        initial_qpos = env.data.qpos[qpos_indices]
+        initial_qpos = env.data.qpos[qpos_indices].copy()
+        initial_qpos[-1] = GRIPPER_CLOSED_QPOS  # Ensure gripper starts closed
         gripper_qpos_addr = env.model.joint(GRIPPER_JOINT_NAME).qposadr[0]
         arm_qpos_indices = [
             env.model.joint(name).qposadr[0] for name in ARM_JOINT_NAMES

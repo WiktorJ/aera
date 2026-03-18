@@ -112,7 +112,7 @@ def run_on_env(args: Args) -> None:
         reward_type="sparse",
         use_eef_control=False,  # Policy outputs joint positions
         domain_rand=domain_rand_config,  # Add domain rand config if needed
-        absolute_state_actions=True,
+        absolute_state_actions=False,
         include_images_in_obs=True,
         initial_qpos={
             "robot0:slide0": 0.0,
@@ -249,3 +249,4 @@ def run_on_env(args: Args) -> None:
 
 if __name__ == "__main__":
     run_on_env(tyro.cli(Args))
+

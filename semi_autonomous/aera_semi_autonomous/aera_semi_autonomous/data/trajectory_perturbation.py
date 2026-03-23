@@ -6,9 +6,10 @@ to create varied arm trajectories while preserving the exact grasp/release targe
 Modes:
     offset_approach: Single waypoint on a disk above the target, creating a
                      different approach angle each run.
-    noisy_path:      Multiple tiny waypoints along the straight-line path from
-                     current pose to target, each slightly jittered.
-    both:            Noisy path leading to an offset approach point.
+    noisy_path:      Multiple tiny waypoints descending from above the target
+                     down toward it, each slightly jittered. Creates a wobbly
+                     approach path in the kinematically feasible zone near the target.
+    both:            Noisy descent path leading to an offset approach point.
 
 Usage:
     config = PerturbationConfig(mode="offset_approach")
@@ -19,7 +20,7 @@ Usage:
 """
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from geometry_msgs.msg import Pose
@@ -88,33 +89,39 @@ def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> l
 def generate_noisy_path(
     current_pose: Pose, target_pose: Pose, config: PerturbationConfig
 ) -> list:
-    """Generate intermediate waypoints along the path from current to target.
+    """Generate jittered waypoints descending from above the target down toward it.
 
-    Points are linearly interpolated between current_pose and target_pose,
-    then each is jittered by a small random offset. This creates a slightly
-    wobbly path rather than a straight line, while still converging on the target.
+    Instead of interpolating across the full home-to-target path (which produces
+    intermediate orientations that may be unreachable by the IK solver), waypoints
+    are generated in the approach zone directly above the target — from
+    approach_height down to just above the target. All waypoints use the target
+    orientation, which is known to be reachable in this zone.
 
-    The orientation is kept identical to current_pose for all waypoints so that
-    the robot does not attempt a large reorientation at the first waypoint.
-    The final orientation is handled by the subsequent grasp_at / release_at call.
+    Each waypoint is jittered by a small random XY and Z offset to create a
+    slightly different descent path each run.
 
     Args:
-        current_pose: The robot's current end-effector pose.
+        current_pose: The robot's current end-effector pose (unused, kept for
+                      API compatibility with generate_waypoints).
         target_pose: The final target pose.
         config: Perturbation configuration.
 
     Returns:
-        A list of Pose waypoints (excluding start and end).
+        A list of Pose waypoints descending toward the target.
     """
     waypoints = []
-    for i in range(1, config.num_path_points + 1):
-        alpha = i / (config.num_path_points + 1)
+    for i in range(config.num_path_points):
+        # alpha goes from 0 (top of approach zone) to ~1 (near target)
+        # We exclude alpha=1.0 so the last waypoint doesn't overlap with the target.
+        alpha = (i + 1) / (config.num_path_points + 1)
 
-        wp = copy.deepcopy(current_pose)
-        wp.position.x = (1 - alpha) * current_pose.position.x + alpha * target_pose.position.x
-        wp.position.y = (1 - alpha) * current_pose.position.y + alpha * target_pose.position.y
-        wp.position.z = (1 - alpha) * current_pose.position.z + alpha * target_pose.position.z
+        wp = copy.deepcopy(target_pose)
 
+        # Descend from approach_height above target down toward it
+        remaining_height = config.approach_height * (1.0 - alpha)
+        wp.position.z += remaining_height
+
+        # Add jitter
         wp.position.x += np.random.uniform(-config.path_pos_noise, config.path_pos_noise)
         wp.position.y += np.random.uniform(-config.path_pos_noise, config.path_pos_noise)
         wp.position.z += np.random.uniform(-config.path_height_noise, config.path_height_noise)

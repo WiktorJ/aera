@@ -247,6 +247,7 @@ def main():
             logger.error("Failed to move robot to home position")
             return False
         logger.info("Robot moved to home position")
+        time.sleep(3)
 
         # Step 2: Get object position
         logger.info("Locating object...")
@@ -266,7 +267,9 @@ def main():
 
         if perturbation_config.perturb_pick:
             current_pose = robot.get_end_effector_pose()
-            for wp in generate_waypoints(current_pose, object_pose, perturbation_config):
+            for wp in generate_waypoints(
+                current_pose, object_pose, perturbation_config
+            ):
                 robot.move_to(wp)
 
         if not robot.grasp_at(object_pose, gripper_pos):
@@ -294,7 +297,9 @@ def main():
 
         if perturbation_config.perturb_place:
             current_pose = robot.get_end_effector_pose()
-            for wp in generate_waypoints(current_pose, target_pose, perturbation_config):
+            for wp in generate_waypoints(
+                current_pose, target_pose, perturbation_config
+            ):
                 robot.move_to(wp)
 
         if not robot.release_at(target_pose):

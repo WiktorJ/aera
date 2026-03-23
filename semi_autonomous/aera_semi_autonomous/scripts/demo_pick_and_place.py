@@ -138,7 +138,7 @@ def main():
         "--perturbation-mode",
         type=str,
         default="none",
-        choices=["none", "offset_approach", "noisy_path", "both"],
+        choices=["none", "offset_approach"],
         help="Perturbation mode for trajectory diversity",
     )
     parser.add_argument(
@@ -148,24 +148,17 @@ def main():
         help="Max XY offset for offset_approach mode (meters)",
     )
     parser.add_argument(
-        "--num-path-points",
+        "--num-approach-waypoints",
         type=int,
-        default=5,
-        help="Number of intermediate waypoints for noisy_path mode",
-    )
-    parser.add_argument(
-        "--path-pos-noise",
-        type=float,
-        default=0.008,
-        help="Max XY deviation per noisy_path waypoint (meters)",
+        default=1,
+        help="Number of offset waypoints to generate per action",
     )
     args = parser.parse_args()
 
     perturbation_config = PerturbationConfig(
         mode=args.perturbation_mode,
         approach_max_offset=args.approach_max_offset,
-        num_path_points=args.num_path_points,
-        path_pos_noise=args.path_pos_noise,
+        num_approach_waypoints=args.num_approach_waypoints,
     )
 
     logger = setup_logging(args.debug)
@@ -247,7 +240,6 @@ def main():
             logger.error("Failed to move robot to home position")
             return False
         logger.info("Robot moved to home position")
-        time.sleep(3)
 
         # Step 2: Get object position
         logger.info("Locating object...")
@@ -266,10 +258,7 @@ def main():
         gripper_pos = 0.0  # Fully closed
 
         if perturbation_config.perturb_pick:
-            current_pose = robot.get_end_effector_pose()
-            for wp in generate_waypoints(
-                current_pose, object_pose, perturbation_config
-            ):
+            for wp in generate_waypoints(object_pose, perturbation_config):
                 robot.move_to(wp)
 
         if not robot.grasp_at(object_pose, gripper_pos):
@@ -296,10 +285,7 @@ def main():
         logger.info("Moving to target location and releasing object...")
 
         if perturbation_config.perturb_place:
-            current_pose = robot.get_end_effector_pose()
-            for wp in generate_waypoints(
-                current_pose, target_pose, perturbation_config
-            ):
+            for wp in generate_waypoints(target_pose, perturbation_config):
                 robot.move_to(wp)
 
         if not robot.release_at(target_pose):

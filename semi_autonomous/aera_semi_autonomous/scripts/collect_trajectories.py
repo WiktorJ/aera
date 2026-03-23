@@ -133,8 +133,7 @@ def run_pick_and_place_and_collect(
     # Pick up the object
     data_collector.record_current_prompt(f"pick {object_color} block")
     if perturbation_config.perturb_pick:
-        current_pose = robot.get_end_effector_pose()
-        for wp in generate_waypoints(current_pose, object_pose, perturbation_config):
+        for wp in generate_waypoints(object_pose, perturbation_config):
             robot.move_to(wp)
     if not robot.grasp_at(object_pose, gripper_pos=0.0):
         logger.error("Failed to pick up object")
@@ -153,8 +152,7 @@ def run_pick_and_place_and_collect(
     # Move to target and release
     data_collector.record_current_prompt(f"place on {target_color} target")
     if perturbation_config.perturb_place:
-        current_pose = robot.get_end_effector_pose()
-        for wp in generate_waypoints(current_pose, target_pose, perturbation_config):
+        for wp in generate_waypoints(target_pose, perturbation_config):
             robot.move_to(wp)
     if not robot.release_at(target_pose):
         logger.error("Failed to place object at target location")
@@ -216,7 +214,7 @@ def main():
         "--perturbation-mode",
         type=str,
         default="none",
-        choices=["none", "offset_approach", "noisy_path", "both"],
+        choices=["none", "offset_approach"],
         help="Perturbation mode for trajectory diversity",
     )
     parser.add_argument(
@@ -238,16 +236,10 @@ def main():
         help="Base height above target for offset waypoint (meters)",
     )
     parser.add_argument(
-        "--num-path-points",
+        "--num-approach-waypoints",
         type=int,
-        default=5,
-        help="Number of intermediate waypoints for noisy_path mode",
-    )
-    parser.add_argument(
-        "--path-pos-noise",
-        type=float,
-        default=0.008,
-        help="Max XY deviation per noisy_path waypoint (meters)",
+        default=1,
+        help="Number of offset waypoints to generate per action",
     )
     parser.add_argument(
         "--no-perturb-pick",
@@ -323,8 +315,7 @@ def main():
                 approach_min_offset=args.approach_min_offset,
                 approach_max_offset=args.approach_max_offset,
                 approach_height=args.approach_height,
-                num_path_points=args.num_path_points,
-                path_pos_noise=args.path_pos_noise,
+                num_approach_waypoints=args.num_approach_waypoints,
             )
             success = run_pick_and_place_and_collect(
                 robot, data_collector, object_color, target_color,

@@ -39,7 +39,7 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 ENV_RESOLUTION = 256  # resolution used for rendered images
 ARM_JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 GRIPPER_JOINT_NAME = "gripper_jaw1_joint"
-GRIPPER_CLOSED_ACTION = 1.0  # Normalized gripper action: +1 closed, -1 open
+GRIPPER_CLOSED_ACTION = -1.0  # Normalized gripper action: -1 closed, +1 open
 
 
 @dataclasses.dataclass
@@ -145,7 +145,7 @@ def run_on_env(args: Args) -> None:
         # Build a warm-up action that keeps the arm still and the gripper closed.
         # With absolute_state_actions=False, arm actions are relative deltas,
         # so zeros mean "no movement". The gripper uses a normalized convention
-        # where +1 = closed and -1 = open (see _set_action).
+        # where -1 = closed and +1 = open (see _set_action).
         warmup_action = np.zeros(7)
         warmup_action[-1] = GRIPPER_CLOSED_ACTION
         gripper_qpos_addr = env.model.joint(GRIPPER_JOINT_NAME).qposadr[0]

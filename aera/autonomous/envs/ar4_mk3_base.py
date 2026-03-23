@@ -319,7 +319,7 @@ class Ar4Mk3Env(BaseEnv):
                 self.model, self.data, "robot0:mocap", new_mocap_pos
             )
 
-            # Absolute position control for the gripper (+1 closed, -1 open)
+            # Absolute position control for the gripper (-1 closed, +1 open)
             gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
             gripper_action = np.array([gripper_target_pos, gripper_target_pos])
 
@@ -346,7 +346,7 @@ class Ar4Mk3Env(BaseEnv):
                 )
                 new_target_arm_qpos = current_arm_qpos + arm_joint_deltas
 
-            # Absolute position control for the gripper (+1 closed, -1 open)
+            # Absolute position control for the gripper (-1 closed, +1 open)
             gripper_ctrl = action[6]
             gripper_target_pos = -0.014 * (gripper_ctrl + 1.0) / 2.0
 

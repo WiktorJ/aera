@@ -34,6 +34,10 @@ from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInte
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
+from aera_semi_autonomous.data.trajectory_perturbation import (
+    PerturbationConfig,
+    generate_waypoints,
+)
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
 Q = (
@@ -130,7 +134,39 @@ def main():
     parser.add_argument(
         "--domain-rand", action="store_true", help="Enable domain randomization"
     )
+    parser.add_argument(
+        "--perturbation-mode",
+        type=str,
+        default="none",
+        choices=["none", "offset_approach", "noisy_path", "both"],
+        help="Perturbation mode for trajectory diversity",
+    )
+    parser.add_argument(
+        "--approach-max-offset",
+        type=float,
+        default=0.04,
+        help="Max XY offset for offset_approach mode (meters)",
+    )
+    parser.add_argument(
+        "--num-path-points",
+        type=int,
+        default=5,
+        help="Number of intermediate waypoints for noisy_path mode",
+    )
+    parser.add_argument(
+        "--path-pos-noise",
+        type=float,
+        default=0.008,
+        help="Max XY deviation per noisy_path waypoint (meters)",
+    )
     args = parser.parse_args()
+
+    perturbation_config = PerturbationConfig(
+        mode=args.perturbation_mode,
+        approach_max_offset=args.approach_max_offset,
+        num_path_points=args.num_path_points,
+        path_pos_noise=args.path_pos_noise,
+    )
 
     logger = setup_logging(args.debug)
     logger.info("Starting AR4 MK3 Pick and Place Demo")
@@ -228,6 +264,11 @@ def main():
         logger.info("Attempting to pick up object...")
         gripper_pos = 0.0  # Fully closed
 
+        if perturbation_config.perturb_pick:
+            current_pose = robot.get_end_effector_pose()
+            for wp in generate_waypoints(current_pose, object_pose, perturbation_config):
+                robot.move_to(wp)
+
         if not robot.grasp_at(object_pose, gripper_pos):
             logger.error("Failed to pick up object")
             return False
@@ -250,6 +291,12 @@ def main():
 
         # Step 5: Move to target and release
         logger.info("Moving to target location and releasing object...")
+
+        if perturbation_config.perturb_place:
+            current_pose = robot.get_end_effector_pose()
+            for wp in generate_waypoints(current_pose, target_pose, perturbation_config):
+                robot.move_to(wp)
+
         if not robot.release_at(target_pose):
             logger.error("Failed to place object at target location")
             return False

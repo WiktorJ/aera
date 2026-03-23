@@ -22,6 +22,10 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
+from aera_semi_autonomous.data.trajectory_perturbation import (
+    PerturbationConfig,
+    generate_waypoints,
+)
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
 Q = np.array(
@@ -102,6 +106,7 @@ def run_pick_and_place_and_collect(
     data_collector: TrajectoryDataCollector,
     object_color: str,
     target_color: str,
+    perturbation_config: PerturbationConfig = PerturbationConfig(),
 ) -> bool:
     """Run a single pick and place task and collect data."""
     logger = robot.get_logger()
@@ -127,6 +132,10 @@ def run_pick_and_place_and_collect(
 
     # Pick up the object
     data_collector.record_current_prompt(f"pick {object_color} block")
+    if perturbation_config.perturb_pick:
+        current_pose = robot.get_end_effector_pose()
+        for wp in generate_waypoints(current_pose, object_pose, perturbation_config):
+            robot.move_to(wp)
     if not robot.grasp_at(object_pose, gripper_pos=0.0):
         logger.error("Failed to pick up object")
         return False
@@ -143,6 +152,10 @@ def run_pick_and_place_and_collect(
 
     # Move to target and release
     data_collector.record_current_prompt(f"place on {target_color} target")
+    if perturbation_config.perturb_place:
+        current_pose = robot.get_end_effector_pose()
+        for wp in generate_waypoints(current_pose, target_pose, perturbation_config):
+            robot.move_to(wp)
     if not robot.release_at(target_pose):
         logger.error("Failed to place object at target location")
         return False
@@ -199,6 +212,55 @@ def main():
         default=-1,
         help="Seed for random number generator",
     )
+    parser.add_argument(
+        "--perturbation-mode",
+        type=str,
+        default="none",
+        choices=["none", "offset_approach", "noisy_path", "both"],
+        help="Perturbation mode for trajectory diversity",
+    )
+    parser.add_argument(
+        "--approach-min-offset",
+        type=float,
+        default=0.01,
+        help="Min XY offset for offset_approach mode (meters)",
+    )
+    parser.add_argument(
+        "--approach-max-offset",
+        type=float,
+        default=0.04,
+        help="Max XY offset for offset_approach mode (meters)",
+    )
+    parser.add_argument(
+        "--approach-height",
+        type=float,
+        default=0.06,
+        help="Base height above target for offset waypoint (meters)",
+    )
+    parser.add_argument(
+        "--num-path-points",
+        type=int,
+        default=5,
+        help="Number of intermediate waypoints for noisy_path mode",
+    )
+    parser.add_argument(
+        "--path-pos-noise",
+        type=float,
+        default=0.008,
+        help="Max XY deviation per noisy_path waypoint (meters)",
+    )
+    parser.add_argument(
+        "--no-perturb-pick",
+        action="store_true",
+        default=False,
+        help="Disable perturbation for the pick phase",
+    )
+    parser.add_argument(
+        "--no-perturb-place",
+        action="store_true",
+        default=False,
+        help="Disable perturbation for the place phase",
+    )
     args = parser.parse_args()
     if args.seed != -1:
         np.random.seed(args.seed)
@@ -254,8 +316,19 @@ def main():
             )
             robot.set_data_collector(data_collector)
 
+            perturbation_config = PerturbationConfig(
+                mode=args.perturbation_mode,
+                perturb_pick=not args.no_perturb_pick,
+                perturb_place=not args.no_perturb_place,
+                approach_min_offset=args.approach_min_offset,
+                approach_max_offset=args.approach_max_offset,
+                approach_height=args.approach_height,
+                num_path_points=args.num_path_points,
+                path_pos_noise=args.path_pos_noise,
+            )
             success = run_pick_and_place_and_collect(
-                robot, data_collector, object_color, target_color
+                robot, data_collector, object_color, target_color,
+                perturbation_config=perturbation_config,
             )
             successful_collections += int(success)
 

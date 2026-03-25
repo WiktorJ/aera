@@ -9,6 +9,7 @@ This script demonstrates how to use the Ar4Mk3RobotInterface to:
 4. Place it at the target0 location
 """
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass, field
@@ -29,7 +30,6 @@ from aera.autonomous.envs.ar4_mk3_config import (
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
-    IKConfig,
 )
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
 from aera_semi_autonomous.data.domain_rand_config_generator import (
@@ -57,6 +57,7 @@ class DemoConfig:
     steps: int = 1000
     domain_rand: bool = False
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
+    interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
@@ -209,10 +210,12 @@ def main():
 
         # Initialize robot interface
         logger.info("Initializing robot interface...")
-        ik_config = IKConfig()
+        interface_config = cfg.interface
         if cfg.perturbation.mode == "ik_noise":
-            ik_config = perturb_ik_config(ik_config, cfg.perturbation.ik_noise)
-        interface_config = Ar4Mk3InterfaceConfig(render_steps=True, ik=ik_config)
+            interface_config = dataclasses.replace(
+                cfg.interface,
+                ik=perturb_ik_config(cfg.interface.ik, cfg.perturbation.ik_noise),
+            )
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")
 

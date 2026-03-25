@@ -3,6 +3,7 @@
 Script for collecting pick-and-place trajectories with domain randomization.
 """
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass, field
@@ -17,7 +18,6 @@ from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
-    IKConfig,
 )
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
 from aera_semi_autonomous.data.domain_rand_config_generator import (
@@ -49,6 +49,7 @@ class CollectConfig:
     save_dir: str = "rl_training_data"
     seed: int = -1
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
+    interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
@@ -242,10 +243,12 @@ def main():
             )
             _, _ = env.reset()
 
-            ik_config = IKConfig()
+            interface_config = cfg.interface
             if cfg.perturbation.mode == "ik_noise":
-                ik_config = perturb_ik_config(ik_config, cfg.perturbation.ik_noise)
-            interface_config = Ar4Mk3InterfaceConfig(render_steps=cfg.render, ik=ik_config)
+                interface_config = dataclasses.replace(
+                    cfg.interface,
+                    ik=perturb_ik_config(cfg.interface.ik, cfg.perturbation.ik_noise),
+                )
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
 
             data_collector = TrajectoryDataCollector(

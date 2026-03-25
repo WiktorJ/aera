@@ -14,7 +14,7 @@ class IKConfig:
     integration_dt: float = 0.1
     pos_gain: float = 0.95
     orientation_gain: float = 0.95
-    max_steps: int = 1000
+    max_steps: int = 500
     min_height: float = 0.005
     include_rotation_in_target_error_measure: bool = False
     joints_update_scaling: typing.List[float] = field(

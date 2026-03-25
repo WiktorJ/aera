@@ -16,6 +16,7 @@ from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
+    IKConfig,
 )
 from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInterface
 from aera_semi_autonomous.data.domain_rand_config_generator import (
@@ -23,8 +24,10 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 )
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
+    IKNoisePerturbation,
     PerturbationConfig,
     generate_waypoints,
+    perturb_ik_config,
 )
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
@@ -214,7 +217,7 @@ def main():
         "--perturbation-mode",
         type=str,
         default="none",
-        choices=["none", "offset_approach"],
+        choices=["none", "offset_approach", "ik_noise"],
         help="Perturbation mode for trajectory diversity",
     )
     parser.add_argument(
@@ -252,6 +255,42 @@ def main():
         action="store_true",
         default=False,
         help="Disable perturbation for the place phase",
+    )
+    parser.add_argument(
+        "--ik-pos-gain-noise",
+        type=float,
+        default=0.0,
+        help="± noise on IK pos_gain (ik_noise mode)",
+    )
+    parser.add_argument(
+        "--ik-orientation-gain-noise",
+        type=float,
+        default=0.0,
+        help="± noise on IK orientation_gain (ik_noise mode)",
+    )
+    parser.add_argument(
+        "--ik-integration-dt-noise",
+        type=float,
+        default=0.0,
+        help="± noise on IK integration_dt (ik_noise mode)",
+    )
+    parser.add_argument(
+        "--ik-max-update-norm-noise",
+        type=float,
+        default=0.0,
+        help="± noise on IK max_update_norm (ik_noise mode)",
+    )
+    parser.add_argument(
+        "--ik-regularization-strength-noise",
+        type=float,
+        default=0.0,
+        help="± noise on IK regularization_strength (ik_noise mode)",
+    )
+    parser.add_argument(
+        "--ik-joints-update-scaling-noise",
+        type=float,
+        default=0.0,
+        help="± per-joint noise on IK joints_update_scaling (ik_noise mode)",
     )
     args = parser.parse_args()
     if args.seed != -1:
@@ -297,7 +336,10 @@ def main():
             )
             _, _ = env.reset()
 
-            interface_config = Ar4Mk3InterfaceConfig(render_steps=args.render)
+            ik_config = IKConfig()
+            if perturbation_config.mode == "ik_noise":
+                ik_config = perturb_ik_config(ik_config, perturbation_config.ik_noise)
+            interface_config = Ar4Mk3InterfaceConfig(render_steps=args.render, ik=ik_config)
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
 
             data_collector = TrajectoryDataCollector(
@@ -308,6 +350,14 @@ def main():
             )
             robot.set_data_collector(data_collector)
 
+            ik_noise = IKNoisePerturbation(
+                pos_gain_noise=args.ik_pos_gain_noise,
+                orientation_gain_noise=args.ik_orientation_gain_noise,
+                integration_dt_noise=args.ik_integration_dt_noise,
+                max_update_norm_noise=args.ik_max_update_norm_noise,
+                regularization_strength_noise=args.ik_regularization_strength_noise,
+                joints_update_scaling_noise=args.ik_joints_update_scaling_noise,
+            )
             perturbation_config = PerturbationConfig(
                 mode=args.perturbation_mode,
                 perturb_pick=not args.no_perturb_pick,
@@ -316,6 +366,7 @@ def main():
                 approach_max_offset=args.approach_max_offset,
                 approach_height=args.approach_height,
                 num_approach_waypoints=args.num_approach_waypoints,
+                ik_noise=ik_noise,
             )
             success = run_pick_and_place_and_collect(
                 robot, data_collector, object_color, target_color,

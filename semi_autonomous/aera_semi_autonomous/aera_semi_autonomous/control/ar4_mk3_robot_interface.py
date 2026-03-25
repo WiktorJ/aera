@@ -15,6 +15,7 @@ from std_msgs.msg import Header
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
+    IKConfig,
 )
 from aera_semi_autonomous.control.robot_interface import RobotInterface
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
@@ -262,14 +263,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data = mujoco.MjData(model)  # type: ignore
             data = copy.deepcopy(self.env.data)
 
-        ik_tol = tol if tol is not None else self.config.ik_tolerance
+        ik_tol = tol if tol is not None else self.config.ik.tolerance
 
         dtype = data.qpos.dtype
         err_norm = 0.0
         success = False
         steps = 0
         failure_reason = "Unknown"
-        joints_update_scaling = np.asarray(self.config.ik_joints_update_scaling)
+        joints_update_scaling = np.asarray(self.config.ik.joints_update_scaling)
 
         dof_indices = self._get_dof_indices(model, self.joint_names)
         qpos_indices = self._get_qpos_indices(model, self.joint_names)
@@ -290,13 +291,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_pos, err_rot = err[:3], err[3:]
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
-        for steps in range(self.config.ik_max_steps):
+        for steps in range(self.config.ik.max_steps):
             site_xpos = data.site_xpos[site_id]
 
             err_pos[:] = (
-                self.config.ik_pos_gain
+                self.config.ik.pos_gain
                 * (target_pos - site_xpos)
-                / self.config.ik_integration_dt
+                / self.config.ik.integration_dt
             )
 
             site_xmat = data.site_xmat[site_id].reshape(3, 3)
@@ -308,9 +309,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             mujoco.mju_mulQuat(err_rot_quat, target_quat, neg_site_quat)  # type: ignore
             mujoco.mju_quat2Vel(err_rot, err_rot_quat, 1.0)  # type: ignore
             err_norm = np.linalg.norm(target_pos - site_xpos)
-            err_rot *= self.config.ik_orientation_gain / self.config.ik_integration_dt
+            err_rot *= self.config.ik.orientation_gain / self.config.ik.integration_dt
 
-            if self.config.ik_include_rotation_in_target_error_measure:
+            if self.config.ik.include_rotation_in_target_error_measure:
                 err_norm += np.linalg.norm(err_rot)
 
             if err_norm < ik_tol:
@@ -322,16 +323,16 @@ class Ar4Mk3RobotInterface(RobotInterface):
             jac_joints = jac[:, dof_indices]
 
             reg_strength = (
-                self.config.ik_regularization_strength
-                if err_norm > self.config.ik_regularization_threshold
+                self.config.ik.regularization_strength
+                if err_norm > self.config.ik.regularization_threshold
                 else 0.0
             )
             update_joints = self._nullspace_method(jac_joints, err, reg_strength)
             update_joints *= joints_update_scaling
             update_norm = np.linalg.norm(update_joints)
 
-            if update_norm > self.config.ik_max_update_norm:
-                update_joints *= self.config.ik_max_update_norm / update_norm
+            if update_norm > self.config.ik.max_update_norm:
+                update_joints *= self.config.ik.max_update_norm / update_norm
 
             update_nv = np.zeros(model.nv, dtype=dtype)
             update_nv[dof_indices] = update_joints
@@ -339,7 +340,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             q = data.qpos.copy()
 
             # prev_qpos = data.qpos.copy()
-            mujoco.mj_integratePos(model, q, update_nv, self.config.ik_integration_dt)  # type: ignore
+            mujoco.mj_integratePos(model, q, update_nv, self.config.ik.integration_dt)  # type: ignore
 
             # Enforce joint limits
             q[qpos_indices] = np.clip(
@@ -357,16 +358,16 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self._record_step()
 
             new_site_xpos = data.site_xpos[site_id]
-            if new_site_xpos[2] < self.config.ik_min_height:
+            if new_site_xpos[2] < self.config.ik.min_height:
                 success = False
-                failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {self.config.ik_min_height})"
+                failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {self.config.ik.min_height})"
                 break
 
             if self.config.render_steps:
                 self.env.render()
         else:
             success = False
-            failure_reason = f"Max steps ({self.config.ik_max_steps}) reached"
+            failure_reason = f"Max steps ({self.config.ik.max_steps}) reached"
 
         if not success:
             self.logger.warning(

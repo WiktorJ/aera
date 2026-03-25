@@ -33,7 +33,7 @@ Usage:
 
 import copy
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Literal
 
 import numpy as np
 from geometry_msgs.msg import Pose
@@ -82,7 +82,7 @@ class PerturbationConfig:
         ik_noise: Noise configuration for the "ik_noise" mode.
     """
 
-    mode: str = "none"
+    mode: Literal["none", "offset_approach", "ik_noise"] = "none"
 
     perturb_pick: bool = True
     perturb_place: bool = True

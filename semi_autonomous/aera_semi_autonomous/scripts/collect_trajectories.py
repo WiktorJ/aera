@@ -3,12 +3,13 @@
 Script for collecting pick-and-place trajectories with domain randomization.
 """
 
-import argparse
 import logging
 import os
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
+import tyro
 from geometry_msgs.msg import Pose, Point, Quaternion
 from scipy.spatial.transform import Rotation
 
@@ -24,7 +25,6 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 )
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
-    IKNoisePerturbation,
     PerturbationConfig,
     generate_waypoints,
     perturb_ik_config,
@@ -39,6 +39,16 @@ Q = np.array(
         0.37769321910336584,
     ]
 )
+
+
+@dataclass
+class CollectConfig:
+    debug: bool = False
+    render: bool = False
+    num_trajectories: int = 1
+    save_dir: str = "rl_training_data"
+    seed: int = -1
+    perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
@@ -187,117 +197,13 @@ def run_pick_and_place_and_collect(
 
 def main():
     """Main function to collect trajectories."""
-    parser = argparse.ArgumentParser(description="AR4 MK3 Trajectory Collection")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument(
-        "--render",
-        type=bool,
-        default=False,
-        help="Enable rendering",
-    )
-    parser.add_argument(
-        "--num-trajectories",
-        type=int,
-        default=1,
-        help="Number of trajectories to collect",
-    )
-    parser.add_argument(
-        "--save-dir",
-        type=str,
-        default="rl_training_data",
-        help="Directory to save data",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=-1,
-        help="Seed for random number generator",
-    )
-    parser.add_argument(
-        "--perturbation-mode",
-        type=str,
-        default="none",
-        choices=["none", "offset_approach", "ik_noise"],
-        help="Perturbation mode for trajectory diversity",
-    )
-    parser.add_argument(
-        "--approach-min-offset",
-        type=float,
-        default=0.01,
-        help="Min XY offset for offset_approach mode (meters)",
-    )
-    parser.add_argument(
-        "--approach-max-offset",
-        type=float,
-        default=0.04,
-        help="Max XY offset for offset_approach mode (meters)",
-    )
-    parser.add_argument(
-        "--approach-height",
-        type=float,
-        default=0.06,
-        help="Base height above target for offset waypoint (meters)",
-    )
-    parser.add_argument(
-        "--num-approach-waypoints",
-        type=int,
-        default=1,
-        help="Number of offset waypoints to generate per action",
-    )
-    parser.add_argument(
-        "--no-perturb-pick",
-        action="store_true",
-        default=False,
-        help="Disable perturbation for the pick phase",
-    )
-    parser.add_argument(
-        "--no-perturb-place",
-        action="store_true",
-        default=False,
-        help="Disable perturbation for the place phase",
-    )
-    parser.add_argument(
-        "--ik-pos-gain-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK pos_gain (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-orientation-gain-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK orientation_gain (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-integration-dt-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK integration_dt (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-max-update-norm-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK max_update_norm (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-regularization-strength-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK regularization_strength (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-joints-update-scaling-noise",
-        type=float,
-        default=0.0,
-        help="± per-joint noise on IK joints_update_scaling (ik_noise mode)",
-    )
-    args = parser.parse_args()
-    if args.seed != -1:
-        np.random.seed(args.seed)
+    cfg = tyro.cli(CollectConfig)
 
-    logger = setup_logging(args.debug)
-    logger.info(f"Starting trajectory collection for {args.num_trajectories} episodes.")
+    if cfg.seed != -1:
+        np.random.seed(cfg.seed)
+
+    logger = setup_logging(cfg.debug)
+    logger.info(f"Starting trajectory collection for {cfg.num_trajectories} episodes.")
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
@@ -310,8 +216,8 @@ def main():
         return
 
     successful_collections = 0
-    for i in range(args.num_trajectories):
-        logger.info(f"--- Starting trajectory {i + 1}/{args.num_trajectories} ---")
+    for i in range(cfg.num_trajectories):
+        logger.info(f"--- Starting trajectory {i + 1}/{cfg.num_trajectories} ---")
         env = None
         try:
             (
@@ -331,46 +237,28 @@ def main():
                 domain_rand=domain_rand_config,
             )
             env = Ar4Mk3PickAndPlaceEnv(
-                render_mode="human" if args.render else None,
+                render_mode="human" if cfg.render else None,
                 config=env_config,
             )
             _, _ = env.reset()
 
             ik_config = IKConfig()
-            if perturbation_config.mode == "ik_noise":
-                ik_config = perturb_ik_config(ik_config, perturbation_config.ik_noise)
-            interface_config = Ar4Mk3InterfaceConfig(render_steps=args.render, ik=ik_config)
+            if cfg.perturbation.mode == "ik_noise":
+                ik_config = perturb_ik_config(ik_config, cfg.perturbation.ik_noise)
+            interface_config = Ar4Mk3InterfaceConfig(render_steps=cfg.render, ik=ik_config)
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
 
             data_collector = TrajectoryDataCollector(
                 logger=logger,
                 arm_joint_names=[f"joint_{j}" for j in range(1, 7)],
                 gripper_joint_names=["gripper_jaw1_joint", "gripper_jaw2_joint"],
-                save_directory=args.save_dir,
+                save_directory=cfg.save_dir,
             )
             robot.set_data_collector(data_collector)
 
-            ik_noise = IKNoisePerturbation(
-                pos_gain_noise=args.ik_pos_gain_noise,
-                orientation_gain_noise=args.ik_orientation_gain_noise,
-                integration_dt_noise=args.ik_integration_dt_noise,
-                max_update_norm_noise=args.ik_max_update_norm_noise,
-                regularization_strength_noise=args.ik_regularization_strength_noise,
-                joints_update_scaling_noise=args.ik_joints_update_scaling_noise,
-            )
-            perturbation_config = PerturbationConfig(
-                mode=args.perturbation_mode,
-                perturb_pick=not args.no_perturb_pick,
-                perturb_place=not args.no_perturb_place,
-                approach_min_offset=args.approach_min_offset,
-                approach_max_offset=args.approach_max_offset,
-                approach_height=args.approach_height,
-                num_approach_waypoints=args.num_approach_waypoints,
-                ik_noise=ik_noise,
-            )
             success = run_pick_and_place_and_collect(
                 robot, data_collector, object_color, target_color,
-                perturbation_config=perturbation_config,
+                perturbation_config=cfg.perturbation,
             )
             successful_collections += int(success)
 
@@ -384,7 +272,7 @@ def main():
 
     logger.info("--- Trajectory collection finished ---")
     logger.info(
-        f"Successfully collected {successful_collections}/{args.num_trajectories} trajectories."
+        f"Successfully collected {successful_collections}/{cfg.num_trajectories} trajectories."
     )
 
 

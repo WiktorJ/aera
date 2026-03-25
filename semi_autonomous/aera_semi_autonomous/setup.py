@@ -20,7 +20,7 @@ setup(
             glob(os.path.join("config", "*.yaml")),
         ),
     ],
-    install_requires=["setuptools"],
+    install_requires=["setuptools", "tyro"],
     zip_safe=True,
     author="Wiktor Jurasz",
     author_email="wiktor.jurasz@gmail.com",

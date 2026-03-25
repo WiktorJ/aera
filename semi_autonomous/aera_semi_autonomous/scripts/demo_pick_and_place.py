@@ -9,13 +9,13 @@ This script demonstrates how to use the Ar4Mk3RobotInterface to:
 4. Place it at the target0 location
 """
 
-import argparse
 import logging
-import time
-from typing import Optional
 import os
+from dataclasses import dataclass, field
+from typing import Optional
 
 import numpy as np
+import tyro
 from geometry_msgs.msg import Pose, Point, Quaternion
 from scipy.spatial.transform import Rotation
 
@@ -36,7 +36,6 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
 from aera_semi_autonomous.data.trajectory_perturbation import (
-    IKNoisePerturbation,
     PerturbationConfig,
     generate_waypoints,
     perturb_ik_config,
@@ -49,6 +48,15 @@ Q = (
     0.22865474664402222,
     0.37769321910336584,
 )
+
+
+@dataclass
+class DemoConfig:
+    debug: bool = False
+    render: bool = False
+    steps: int = 1000
+    domain_rand: bool = False
+    perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
@@ -130,86 +138,9 @@ def get_object_pose(env, logger: logging.Logger) -> Optional[Pose]:
 
 def main():
     """Main function to demonstrate pick and place operation."""
-    parser = argparse.ArgumentParser(description="AR4 MK3 Pick and Place Demo")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--render", action="store_true", help="Enable rendering")
-    parser.add_argument("--steps", type=int, default=1000, help="Max simulation steps")
-    parser.add_argument(
-        "--domain-rand", action="store_true", help="Enable domain randomization"
-    )
-    parser.add_argument(
-        "--perturbation-mode",
-        type=str,
-        default="none",
-        choices=["none", "offset_approach", "ik_noise"],
-        help="Perturbation mode for trajectory diversity",
-    )
-    parser.add_argument(
-        "--approach-max-offset",
-        type=float,
-        default=0.04,
-        help="Max XY offset for offset_approach mode (meters)",
-    )
-    parser.add_argument(
-        "--num-approach-waypoints",
-        type=int,
-        default=1,
-        help="Number of offset waypoints to generate per action",
-    )
-    parser.add_argument(
-        "--ik-pos-gain-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK pos_gain (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-orientation-gain-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK orientation_gain (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-integration-dt-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK integration_dt (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-max-update-norm-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK max_update_norm (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-regularization-strength-noise",
-        type=float,
-        default=0.0,
-        help="± noise on IK regularization_strength (ik_noise mode)",
-    )
-    parser.add_argument(
-        "--ik-joints-update-scaling-noise",
-        type=float,
-        default=0.0,
-        help="± per-joint noise on IK joints_update_scaling (ik_noise mode)",
-    )
-    args = parser.parse_args()
+    cfg = tyro.cli(DemoConfig)
 
-    ik_noise = IKNoisePerturbation(
-        pos_gain_noise=args.ik_pos_gain_noise,
-        orientation_gain_noise=args.ik_orientation_gain_noise,
-        integration_dt_noise=args.ik_integration_dt_noise,
-        max_update_norm_noise=args.ik_max_update_norm_noise,
-        regularization_strength_noise=args.ik_regularization_strength_noise,
-        joints_update_scaling_noise=args.ik_joints_update_scaling_noise,
-    )
-    perturbation_config = PerturbationConfig(
-        mode=args.perturbation_mode,
-        approach_max_offset=args.approach_max_offset,
-        num_approach_waypoints=args.num_approach_waypoints,
-        ik_noise=ik_noise,
-    )
-
-    logger = setup_logging(args.debug)
+    logger = setup_logging(cfg.debug)
     logger.info("Starting AR4 MK3 Pick and Place Demo")
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
@@ -249,7 +180,7 @@ def main():
         logger.info("Initializing AR4 MK3 environment...")
 
         domain_rand_config = None
-        if args.domain_rand:
+        if cfg.domain_rand:
             logger.info("Enabling domain randomization")
             domain_rand_config, object_color, target_color = (
                 generate_random_domain_rand_config()
@@ -268,7 +199,7 @@ def main():
             domain_rand=domain_rand_config,
         )
         env = Ar4Mk3PickAndPlaceEnv(
-            render_mode="human",
+            render_mode="human" if cfg.render else "rgb_array",
             config=env_config,
         )
 
@@ -279,8 +210,8 @@ def main():
         # Initialize robot interface
         logger.info("Initializing robot interface...")
         ik_config = IKConfig()
-        if perturbation_config.mode == "ik_noise":
-            ik_config = perturb_ik_config(ik_config, perturbation_config.ik_noise)
+        if cfg.perturbation.mode == "ik_noise":
+            ik_config = perturb_ik_config(ik_config, cfg.perturbation.ik_noise)
         interface_config = Ar4Mk3InterfaceConfig(render_steps=True, ik=ik_config)
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")
@@ -308,8 +239,8 @@ def main():
         logger.info("Attempting to pick up object...")
         gripper_pos = 0.0  # Fully closed
 
-        if perturbation_config.perturb_pick:
-            for wp in generate_waypoints(object_pose, perturbation_config):
+        if cfg.perturbation.perturb_pick:
+            for wp in generate_waypoints(object_pose, cfg.perturbation):
                 robot.move_to(wp)
 
         if not robot.grasp_at(object_pose, gripper_pos):
@@ -335,8 +266,8 @@ def main():
         # Step 5: Move to target and release
         logger.info("Moving to target location and releasing object...")
 
-        if perturbation_config.perturb_place:
-            for wp in generate_waypoints(target_pose, perturbation_config):
+        if cfg.perturbation.perturb_place:
+            for wp in generate_waypoints(target_pose, cfg.perturbation):
                 robot.move_to(wp)
 
         if not robot.release_at(target_pose):

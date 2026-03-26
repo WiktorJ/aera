@@ -13,12 +13,10 @@ import dataclasses
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 import tyro
 from geometry_msgs.msg import Pose, Point, Quaternion
-from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import (
     Ar4Mk3EnvConfig,
@@ -35,6 +33,7 @@ from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInte
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
+from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
     generate_waypoints,
@@ -67,74 +66,6 @@ def setup_logging(debug: bool = False) -> logging.Logger:
         level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     return logging.getLogger(__name__)
-
-
-def get_object_pose(env, logger: logging.Logger) -> Optional[Pose]:
-    """Get the current pose of object0 from the environment."""
-    try:
-        # Get object pose from MuJoCo's joint state, which is randomized at reset
-        object_qpos = env._utils.get_joint_qpos(env.model, env.data, "object0:joint")
-        object_pos = object_qpos[:3]
-
-        # Get object orientation to align gripper
-        object_body_id = env.model.body("object0").id
-
-        # Find the geom associated with the object body to check its dimensions
-        geom_id = -1
-        for i in range(env.model.ngeom):
-            if env.model.geom_bodyid[i] == object_body_id:
-                geom_id = i
-                break
-
-        additional_yaw = 0.0
-        if geom_id != -1:
-            geom_size = env.model.geom_size[geom_id]
-            # For a box, size is [dx, dy, dz] (half-lengths).
-            # If the object is longer along its y-axis (dy > dx), we want to
-            # align the gripper with the object's y-axis. This requires an
-            # additional 90-degree rotation.
-            if geom_size[1] < geom_size[0]:
-                additional_yaw = 90.0
-
-        # MuJoCo quat is w,x,y,z. Scipy is x,y,z,w
-        object_quat_wxyz = object_qpos[3:]
-        object_quat_xyzw = np.array(
-            [
-                object_quat_wxyz[1],
-                object_quat_wxyz[2],
-                object_quat_wxyz[3],
-                object_quat_wxyz[0],
-            ]
-        )
-        object_rotation = Rotation.from_quat(object_quat_xyzw)
-        object_yaw_deg = object_rotation.as_euler("xyz", degrees=True)[2]
-
-        # Create pose for the top surface of the object
-        pose = Pose()
-        pose.position = Point(
-            x=float(object_pos[0]),
-            y=float(object_pos[1]),
-            z=2 * float(object_pos[2]),
-        )
-
-        logger.info(f"object_yaw_deg: {object_yaw_deg}")
-        # Combine top-down orientation with object's yaw
-        top_down_rot = Rotation.from_quat([0, 1, 0, 0])  # x, y, z, w
-        z_rot = Rotation.from_euler("z", object_yaw_deg + additional_yaw, degrees=True)
-        grasp_rot = z_rot * top_down_rot
-        grasp_quat_xyzw = grasp_rot.as_quat()
-
-        pose.orientation = Quaternion(
-            x=grasp_quat_xyzw[0],
-            y=grasp_quat_xyzw[1],
-            z=grasp_quat_xyzw[2],
-            w=grasp_quat_xyzw[3],
-        )
-
-        return pose
-    except Exception as e:
-        logger.error(f"Failed to get object pose: {e}")
-        return None
 
 
 def main():

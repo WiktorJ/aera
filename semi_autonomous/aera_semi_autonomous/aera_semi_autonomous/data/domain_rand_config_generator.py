@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 
 import numpy as np
@@ -42,7 +43,7 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         target_distractor1_color_name,
         target_distractor2_color_name,
     ) = np.random.choice(list(NAMED_COLORS.keys()), 6, replace=False)
-    print(
+    logging.getLogger(__name__).debug(
         f"Object color: {object_color_name}\n"
         f"Target color: {target_color_name}\n"
         f"Object distractor 1 color: {object_distractor1_color_name}\n"

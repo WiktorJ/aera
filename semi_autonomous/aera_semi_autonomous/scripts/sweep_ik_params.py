@@ -7,12 +7,18 @@ other parameters at their defaults. For each value, N pick-and-place trials are
 executed with domain randomization. Results are printed as a summary table and
 written to CSV.
 
+When --baseline-trials > 0 (default 50), the script also:
+  - Runs a baseline block with the current IKConfig defaults before the sweep.
+  - After the sweep, builds a "new defaults" config using the best value found
+    for each swept parameter, and runs the same number of trials.
+  - Prints a comparison summary and includes both blocks in the CSV.
+
 Usage:
-    # Sweep all parameters, 5 trials each
+    # Sweep all parameters, 5 trials each, with 50-trial baseline comparison
     python sweep_ik_params.py
 
-    # Sweep a single parameter with 2 trials (quick sanity check)
-    python sweep_ik_params.py --params pos_gain --trials-per-config 2
+    # Sweep a single parameter with 2 trials (quick sanity check, no baseline)
+    python sweep_ik_params.py --params pos_gain --trials-per-config 2 --baseline-trials 0
 
     # Custom CSV output path
     python sweep_ik_params.py --csv-path /tmp/sweep.csv
@@ -20,8 +26,10 @@ Usage:
 
 import csv
 import dataclasses
+import json
 import logging
 import os
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -53,22 +61,51 @@ Q = np.array(
 
 # One-parameter-at-a-time sweep grid.
 # Each entry: parameter name → list of absolute values to test.
-# The parameter name matches the IKConfig field name, with one special case:
-#   "joints_update_scaling_3" → sets joints_update_scaling[3] (the wrist joint).
+# Special cases for joints_update_scaling:
+#   "joints_update_scaling_N" → varies index N, keeps all other indices at their IKConfig defaults.
+# Joints 0-2, 4-5 default to ~1.0 range; joint 3 (wrist) has a much smaller default.
+_JOINT_SCALING_FULL = [0.1, 0.3, 0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0]
+_JOINT_SCALING_WRIST = [0.001, 0.003, 0.005, 0.008, 0.01, 0.02, 0.05, 0.1]
 SWEEP_GRID: dict = {
     "pos_gain": [0.3, 0.5, 0.7, 0.85, 0.95, 1.05, 1.2, 1.5],
     "orientation_gain": [0.3, 0.5, 0.7, 0.85, 0.95, 1.05, 1.2, 1.5],
     "integration_dt": [0.01, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3],
     "max_update_norm": [0.1, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0],
     "regularization_strength": [0.0, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2],
-    "joints_update_scaling_3": [0.001, 0.005, 0.01, 0.02, 0.05, 0.1],
+    "joints_update_scaling_0": _JOINT_SCALING_FULL,
+    "joints_update_scaling_1": _JOINT_SCALING_FULL,
+    "joints_update_scaling_2": _JOINT_SCALING_FULL,
+    "joints_update_scaling_3": _JOINT_SCALING_WRIST,
+    "joints_update_scaling_4": _JOINT_SCALING_FULL,
+    "joints_update_scaling_5": _JOINT_SCALING_FULL,
 }
+
+
+class _Tee:
+    """Mirrors writes to both stdout and a file."""
+
+    def __init__(self, path: str) -> None:
+        self._file = open(path, "w")
+
+    def write(self, msg: str) -> None:
+        sys.__stdout__.write(msg)
+        self._file.write(msg)
+
+    def flush(self) -> None:
+        sys.__stdout__.flush()
+        self._file.flush()
+
+    def close(self) -> None:
+        self._file.close()
 
 
 @dataclass
 class SweepConfig:
     trials_per_config: int = 5
     """Number of pick-and-place trials per (parameter, value) combination."""
+    baseline_trials: int = 50
+    """Trials to run with current defaults before sweep and with new best values after.
+    Set to 0 to disable baseline comparison."""
     render: bool = False
     """Enable MuJoCo rendering (slow)."""
     seed: int = 42
@@ -77,6 +114,10 @@ class SweepConfig:
     """Parameters to sweep. Empty list = sweep all. E.g. --params pos_gain integration_dt"""
     csv_path: str = "ik_sweep_results.csv"
     """Path for the CSV output file."""
+    grid_path: Optional[str] = None
+    """Path to a JSON file defining the sweep grid. Overrides the hardcoded SWEEP_GRID when provided."""
+    summary_path: str = "ik_sweep_summary.txt"
+    """Path for the human-readable summary file (mirrors stdout)."""
     debug: bool = False
     """Enable debug logging."""
 
@@ -94,11 +135,42 @@ class TrialResult:
 def make_ik_config(param_name: str, value: float) -> IKConfig:
     """Return an IKConfig with one parameter overridden, all others at default."""
     base = IKConfig()
-    if param_name == "joints_update_scaling_3":
+    if param_name.startswith("joints_update_scaling_"):
+        idx = int(param_name.split("_")[-1])
         scaling = list(base.joints_update_scaling)
-        scaling[3] = value
+        scaling[idx] = value
         return dataclasses.replace(base, joints_update_scaling=scaling)
     return dataclasses.replace(base, **{param_name: value})
+
+
+def best_value_for_param(param_name: str, results: List[TrialResult]) -> float:
+    """Return the param value with the highest full-success rate among sweep results."""
+    param_results = [r for r in results if r.param_name == param_name]
+    values = sorted(set(r.param_value for r in param_results))
+    best_val, best_rate = values[0], -1.0
+    for v in values:
+        trials = [r for r in param_results if r.param_value == v]
+        rate = sum(r.full_success for r in trials) / len(trials)
+        if rate > best_rate:
+            best_rate, best_val = rate, v
+    return best_val
+
+
+def build_new_defaults_config(
+    all_results: List[TrialResult], params_swept: List[str]
+) -> IKConfig:
+    """Build an IKConfig using the best value found for each swept parameter."""
+    base = IKConfig()
+    scaling = list(base.joints_update_scaling)
+    kwargs = {}
+    for param_name in params_swept:
+        best = best_value_for_param(param_name, all_results)
+        if param_name.startswith("joints_update_scaling_"):
+            idx = int(param_name.split("_")[-1])
+            scaling[idx] = best
+        else:
+            kwargs[param_name] = best
+    return dataclasses.replace(base, joints_update_scaling=scaling, **kwargs)
 
 
 def run_trial(
@@ -172,6 +244,27 @@ def run_trial(
     )
 
 
+def run_named_block(
+    label: str,
+    ik_config: IKConfig,
+    n_trials: int,
+    seed: int,
+    model_path: str,
+    render: bool,
+    logger: logging.Logger,
+) -> List[TrialResult]:
+    """Run N trials with a fixed IKConfig, tagging results with param_name=label."""
+    results = []
+    for i in range(n_trials):
+        np.random.seed(seed + i)
+        result = run_trial(model_path, ik_config, render, logger)
+        result.param_name = label
+        result.param_value = 0.0
+        result.trial_idx = i
+        results.append(result)
+    return results
+
+
 def run_sweep(
     param_name: str,
     values: list,
@@ -195,9 +288,11 @@ def run_sweep(
 def print_sweep_summary(
     param_name: str, values: list, results: List[TrialResult], trials_per_config: int
 ) -> None:
-    default_value = getattr(IKConfig(), param_name if param_name != "joints_update_scaling_3" else "joints_update_scaling")
-    if param_name == "joints_update_scaling_3":
-        default_value = IKConfig().joints_update_scaling[3]
+    if param_name.startswith("joints_update_scaling_"):
+        idx = int(param_name.split("_")[-1])
+        default_value = IKConfig().joints_update_scaling[idx]
+    else:
+        default_value = getattr(IKConfig(), param_name)
 
     print(f"\n=== Sweeping {param_name} (default={default_value}) ===")
     header = f"  {'Value':>10} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}"
@@ -214,6 +309,35 @@ def print_sweep_summary(
         print(
             f"  {value:>10.4g} | {n:>6} | {pick_ok:>7} | {place_ok:>8} | {full_ok:>7} | {pct:>8.1f}%{marker}"
         )
+
+
+def print_comparison_summary(
+    baseline: List[TrialResult],
+    new_defaults: List[TrialResult],
+    new_config: IKConfig,
+) -> None:
+    def stats(results: List[TrialResult]):
+        n = len(results)
+        pick_ok = sum(r.pick_success for r in results)
+        place_ok = sum(r.place_success for r in results)
+        full_ok = sum(r.full_success for r in results)
+        return n, pick_ok, place_ok, full_ok, 100.0 * full_ok / n if n else 0.0
+
+    bn, bp, bpl, bf, bpct = stats(baseline)
+    nn, np_, npl, nf, npct = stats(new_defaults)
+    delta = npct - bpct
+
+    print("\n" + "=" * 62)
+    print("=== Baseline vs. New Defaults Comparison ===")
+    print("=" * 62)
+    print(f"  {'Config':<20} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}")
+    print("  " + "-" * 60)
+    print(f"  {'current defaults':<20} | {bn:>6} | {bp:>7} | {bpl:>8} | {bf:>7} | {bpct:>8.1f}%")
+    print(f"  {'new best values':<20} | {nn:>6} | {np_:>7} | {npl:>8} | {nf:>7} | {npct:>8.1f}%")
+    print("  " + "-" * 60)
+    print(f"  Delta: {delta:+.1f}%")
+    print(f"\n  New config: {dataclasses.asdict(new_config)}")
+    print("=" * 62)
 
 
 def write_csv(results: List[TrialResult], csv_path: str) -> None:
@@ -260,21 +384,52 @@ def main() -> None:
     )
     logger = logging.getLogger(__name__)
 
+    tee = _Tee(cfg.summary_path)
+    sys.stdout = tee
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     model_path = find_model_path(script_dir)
     if model_path is None:
         logger.error("Could not find AR4 MK3 model file.")
         return
 
-    params_to_sweep = cfg.params if cfg.params else list(SWEEP_GRID.keys())
-    unknown = [p for p in params_to_sweep if p not in SWEEP_GRID]
+    grid = SWEEP_GRID
+    if cfg.grid_path is not None:
+        if not os.path.exists(cfg.grid_path):
+            logger.error(f"Grid file not found: {cfg.grid_path}")
+            return
+        try:
+            with open(cfg.grid_path) as f:
+                grid = json.load(f)
+            logger.info(f"Loaded sweep grid from {cfg.grid_path}")
+        except Exception as e:
+            logger.error(f"Failed to parse grid file: {e}")
+            return
+
+    params_to_sweep = cfg.params if cfg.params else list(grid.keys())
+    unknown = [p for p in params_to_sweep if p not in grid]
     if unknown:
-        logger.error(f"Unknown parameters: {unknown}. Valid: {list(SWEEP_GRID.keys())}")
+        logger.error(f"Unknown parameters: {unknown}. Valid: {list(grid.keys())}")
         return
 
     all_results: List[TrialResult] = []
+
+    # --- Baseline block (current defaults) ---
+    baseline_results: List[TrialResult] = []
+    if cfg.baseline_trials > 0:
+        logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
+        baseline_results = run_named_block(
+            "__baseline__", IKConfig(), cfg.baseline_trials,
+            cfg.seed, model_path, cfg.render, logger,
+        )
+        all_results.extend(baseline_results)
+        n = len(baseline_results)
+        full_ok = sum(r.full_success for r in baseline_results)
+        logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
+
+    # --- Parameter sweeps ---
     for param_name in params_to_sweep:
-        values = SWEEP_GRID[param_name]
+        values = grid[param_name]
         logger.info(
             f"Sweeping {param_name} over {values} "
             f"({cfg.trials_per_config} trials each, {len(values) * cfg.trials_per_config} total)"
@@ -283,7 +438,26 @@ def main() -> None:
         all_results.extend(results)
         print_sweep_summary(param_name, values, results, cfg.trials_per_config)
 
+    # --- New-defaults comparison block ---
+    new_defaults_results: List[TrialResult] = []
+    if cfg.baseline_trials > 0:
+        new_config = build_new_defaults_config(
+            [r for r in all_results if r.param_name not in ("__baseline__", "__new_defaults__")],
+            params_to_sweep,
+        )
+        logger.info(f"Running {cfg.baseline_trials} trials with new best-value defaults...")
+        new_defaults_results = run_named_block(
+            "__new_defaults__", new_config, cfg.baseline_trials,
+            cfg.seed, model_path, cfg.render, logger,
+        )
+        all_results.extend(new_defaults_results)
+        print_comparison_summary(baseline_results, new_defaults_results, new_config)
+
     write_csv(all_results, cfg.csv_path)
+
+    sys.stdout = sys.__stdout__
+    tee.close()
+    logger.info(f"Summary written to {cfg.summary_path}")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ When --baseline-trials > 0 (default 50), the script also:
     for each swept parameter, and runs the same number of trials.
   - Prints a comparison summary and includes both blocks in the CSV.
 
+Outputs are written to a data/ subdirectory by default (git-ignored).
+
 Usage:
     # Sweep all parameters, 5 trials each, with 50-trial baseline comparison
     python sweep_ik_params.py
@@ -20,18 +22,19 @@ Usage:
     # Sweep a single parameter with 2 trials (quick sanity check, no baseline)
     python sweep_ik_params.py --params pos_gain --trials-per-config 2 --baseline-trials 0
 
-    # Custom CSV output path
-    python sweep_ik_params.py --csv-path /tmp/sweep.csv
+    # Custom output directory
+    python sweep_ik_params.py --csv-path /tmp/sweep.csv --json-path /tmp/sweep.json
 """
 
 import csv
 import dataclasses
+import itertools
 import json
 import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import tyro
@@ -80,6 +83,8 @@ SWEEP_GRID: dict = {
     "joints_update_scaling_5": _JOINT_SCALING_FULL,
 }
 
+_DEFAULT_DATA_DIR = "data"
+
 
 class _Tee:
     """Mirrors writes to both stdout and a file."""
@@ -112,12 +117,17 @@ class SweepConfig:
     """Base random seed. Trial i uses seed + i for reproducibility."""
     params: List[str] = field(default_factory=list)
     """Parameters to sweep. Empty list = sweep all. E.g. --params pos_gain integration_dt"""
-    csv_path: str = "ik_sweep_results.csv"
+    csv_path: str = f"{_DEFAULT_DATA_DIR}/ik_sweep_results.csv"
     """Path for the CSV output file."""
     grid_path: Optional[str] = None
     """Path to a JSON file defining the sweep grid. Overrides the hardcoded SWEEP_GRID when provided."""
-    summary_path: str = "ik_sweep_summary.txt"
+    summary_path: str = f"{_DEFAULT_DATA_DIR}/ik_sweep_summary.txt"
     """Path for the human-readable summary file (mirrors stdout)."""
+    json_path: Optional[str] = f"{_DEFAULT_DATA_DIR}/ik_sweep_summary.json"
+    """Path for the machine-readable JSON summary. Set to empty string to disable."""
+    grid_search: bool = False
+    """Run a full grid search over all (param, value) combinations instead of one-at-a-time sweeps.
+    Only practical with 2-3 params × 3-4 values each. Use --params and --grid-path to keep it small."""
     debug: bool = False
     """Enable debug logging."""
 
@@ -285,62 +295,166 @@ def run_sweep(
     return results
 
 
-def print_sweep_summary(
-    param_name: str, values: list, results: List[TrialResult], trials_per_config: int
-) -> None:
+# ---------------------------------------------------------------------------
+# JSON summary builders
+# ---------------------------------------------------------------------------
+
+
+def build_sweep_summary(
+    param_name: str, values: list, results: List[TrialResult]
+) -> dict:
+    """Build a JSON-serializable dict summarising one parameter's sweep."""
     if param_name.startswith("joints_update_scaling_"):
         idx = int(param_name.split("_")[-1])
         default_value = IKConfig().joints_update_scaling[idx]
     else:
         default_value = getattr(IKConfig(), param_name)
 
-    print(f"\n=== Sweeping {param_name} (default={default_value}) ===")
-    header = f"  {'Value':>10} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}"
-    print(header)
-    print("  " + "-" * (len(header) - 2))
+    value_rows = []
     for value in values:
         trial_results = [r for r in results if r.param_value == value]
         n = len(trial_results)
         pick_ok = sum(r.pick_success for r in trial_results)
         place_ok = sum(r.place_success for r in trial_results)
         full_ok = sum(r.full_success for r in trial_results)
-        pct = 100.0 * full_ok / n if n > 0 else 0.0
-        marker = "  <- default" if abs(value - default_value) < 1e-9 else ""
-        print(
-            f"  {value:>10.4g} | {n:>6} | {pick_ok:>7} | {place_ok:>8} | {full_ok:>7} | {pct:>8.1f}%{marker}"
+        value_rows.append(
+            {
+                "value": value,
+                "trials": n,
+                "pick_ok": pick_ok,
+                "place_ok": place_ok,
+                "full_ok": full_ok,
+                "success_pct": round(100.0 * full_ok / n, 2) if n > 0 else 0.0,
+                "is_default": abs(value - default_value) < 1e-9,
+            }
         )
 
+    return {
+        "param": param_name,
+        "default_value": default_value,
+        "values": value_rows,
+    }
 
-def print_comparison_summary(
+
+def build_comparison_summary(
     baseline: List[TrialResult],
     new_defaults: List[TrialResult],
     new_config: IKConfig,
-) -> None:
-    def stats(results: List[TrialResult]):
+) -> dict:
+    """Build a JSON-serializable dict for the baseline vs new-defaults comparison."""
+
+    def stats(results: List[TrialResult]) -> dict:
         n = len(results)
         pick_ok = sum(r.pick_success for r in results)
         place_ok = sum(r.place_success for r in results)
         full_ok = sum(r.full_success for r in results)
-        return n, pick_ok, place_ok, full_ok, 100.0 * full_ok / n if n else 0.0
+        return {
+            "trials": n,
+            "pick_ok": pick_ok,
+            "place_ok": place_ok,
+            "full_ok": full_ok,
+            "success_pct": round(100.0 * full_ok / n, 2) if n else 0.0,
+        }
 
-    bn, bp, bpl, bf, bpct = stats(baseline)
-    nn, np_, npl, nf, npct = stats(new_defaults)
-    delta = npct - bpct
+    baseline_stats = stats(baseline)
+    new_stats = stats(new_defaults)
+    return {
+        "baseline": baseline_stats,
+        "new_defaults": new_stats,
+        "delta_pct": round(new_stats["success_pct"] - baseline_stats["success_pct"], 2),
+        "new_config": dataclasses.asdict(new_config),
+    }
+
+
+def build_grid_search_summary(results: List[TrialResult]) -> dict:
+    """Build a JSON-serializable dict for grid-search results."""
+    labels = sorted(
+        set(r.param_name for r in results),
+        key=lambda l: min(r.param_value for r in results if r.param_name == l),
+    )
+    rows = []
+    for label in labels:
+        trial_results = [r for r in results if r.param_name == label]
+        n = len(trial_results)
+        full_ok = sum(r.full_success for r in trial_results)
+        rows.append(
+            {
+                "config": label,
+                "trials": n,
+                "full_ok": full_ok,
+                "success_pct": round(100.0 * full_ok / n, 2),
+            }
+        )
+    rows.sort(key=lambda r: r["success_pct"], reverse=True)
+    return {"configs": rows}
+
+
+# ---------------------------------------------------------------------------
+# Human-friendly printers (derived from the JSON dicts)
+# ---------------------------------------------------------------------------
+
+
+def print_sweep_summary(data: dict) -> None:
+    param_name = data["param"]
+    default_value = data["default_value"]
+    print(f"\n=== Sweeping {param_name} (default={default_value}) ===")
+    header = f"  {'Value':>10} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for row in data["values"]:
+        marker = "  <- default" if row["is_default"] else ""
+        print(
+            f"  {row['value']:>10.4g} | {row['trials']:>6} | {row['pick_ok']:>7} | "
+            f"{row['place_ok']:>8} | {row['full_ok']:>7} | {row['success_pct']:>8.1f}%{marker}"
+        )
+
+
+def print_comparison_summary(data: dict) -> None:
+    b = data["baseline"]
+    n = data["new_defaults"]
+    delta = data["delta_pct"]
 
     print("\n" + "=" * 62)
     print("=== Baseline vs. New Defaults Comparison ===")
     print("=" * 62)
     print(f"  {'Config':<20} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}")
     print("  " + "-" * 60)
-    print(f"  {'current defaults':<20} | {bn:>6} | {bp:>7} | {bpl:>8} | {bf:>7} | {bpct:>8.1f}%")
-    print(f"  {'new best values':<20} | {nn:>6} | {np_:>7} | {npl:>8} | {nf:>7} | {npct:>8.1f}%")
+    print(
+        f"  {'current defaults':<20} | {b['trials']:>6} | {b['pick_ok']:>7} | "
+        f"{b['place_ok']:>8} | {b['full_ok']:>7} | {b['success_pct']:>8.1f}%"
+    )
+    print(
+        f"  {'new best values':<20} | {n['trials']:>6} | {n['pick_ok']:>7} | "
+        f"{n['place_ok']:>8} | {n['full_ok']:>7} | {n['success_pct']:>8.1f}%"
+    )
     print("  " + "-" * 60)
     print(f"  Delta: {delta:+.1f}%")
-    print(f"\n  New config: {dataclasses.asdict(new_config)}")
+    print(f"\n  New config: {data['new_config']}")
     print("=" * 62)
 
 
+def print_grid_search_summary(data: dict) -> None:
+    rows = data["configs"]
+    print("\n" + "=" * 80)
+    print("=== Grid Search Results (sorted by success rate) ===")
+    print("=" * 80)
+    print(f"  {'Configuration':<50} | {'Trials':>6} | {'Full OK':>7} | {'Success%':>9}")
+    print("  " + "-" * 78)
+    for row in rows:
+        print(
+            f"  {row['config']:<50} | {row['trials']:>6} | {row['full_ok']:>7} | "
+            f"{row['success_pct']:>8.1f}%"
+        )
+    print("=" * 80)
+
+
+# ---------------------------------------------------------------------------
+# I/O helpers
+# ---------------------------------------------------------------------------
+
+
 def write_csv(results: List[TrialResult], csv_path: str) -> None:
+    _ensure_dir(csv_path)
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(
             f,
@@ -359,6 +473,19 @@ def write_csv(results: List[TrialResult], csv_path: str) -> None:
     print(f"\nResults written to {csv_path}")
 
 
+def write_json_summary(summary: dict, json_path: str) -> None:
+    _ensure_dir(json_path)
+    with open(json_path, "w") as f:
+        json.dump(summary, f, indent=2)
+    print(f"JSON summary written to {json_path}")
+
+
+def _ensure_dir(path: str) -> None:
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+
 def find_model_path(script_dir: str) -> Optional[str]:
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
     candidates = [
@@ -375,6 +502,59 @@ def find_model_path(script_dir: str) -> Optional[str]:
     return None
 
 
+def make_ik_config_multi(overrides: Dict[str, float]) -> IKConfig:
+    """Return an IKConfig with multiple parameters overridden."""
+    base = IKConfig()
+    scaling = list(base.joints_update_scaling)
+    kwargs = {}
+    for param_name, value in overrides.items():
+        if param_name.startswith("joints_update_scaling_"):
+            idx = int(param_name.split("_")[-1])
+            scaling[idx] = value
+        else:
+            kwargs[param_name] = value
+    return dataclasses.replace(base, joints_update_scaling=scaling, **kwargs)
+
+
+def run_grid_search(
+    param_grid: Dict[str, List[float]],
+    cfg: SweepConfig,
+    model_path: str,
+    logger: logging.Logger,
+) -> List[TrialResult]:
+    """Run a full grid search over all combinations of param values."""
+    param_names = list(param_grid.keys())
+    value_lists = [param_grid[p] for p in param_names]
+    combos = list(itertools.product(*value_lists))
+    total = len(combos) * cfg.trials_per_config
+    logger.info(
+        f"Grid search: {len(combos)} combinations × {cfg.trials_per_config} trials = {total} total"
+    )
+
+    all_results: List[TrialResult] = []
+    for combo_idx, values in enumerate(combos):
+        overrides = dict(zip(param_names, values))
+        ik_config = make_ik_config_multi(overrides)
+        label = " | ".join(f"{p}={v}" for p, v in overrides.items())
+
+        combo_results = []
+        for trial_idx in range(cfg.trials_per_config):
+            np.random.seed(cfg.seed + trial_idx)
+            result = run_trial(model_path, ik_config, cfg.render, logger)
+            result.param_name = label
+            result.param_value = combo_idx
+            result.trial_idx = trial_idx
+            combo_results.append(result)
+        all_results.extend(combo_results)
+
+        n = len(combo_results)
+        full_ok = sum(r.full_success for r in combo_results)
+        pct = 100.0 * full_ok / n
+        logger.info(f"  [{combo_idx+1}/{len(combos)}] {label} → {pct:.0f}%")
+
+    return all_results
+
+
 def main() -> None:
     cfg = tyro.cli(SweepConfig)
 
@@ -384,6 +564,7 @@ def main() -> None:
     )
     logger = logging.getLogger(__name__)
 
+    _ensure_dir(cfg.summary_path)
     tee = _Tee(cfg.summary_path)
     sys.stdout = tee
 
@@ -413,47 +594,98 @@ def main() -> None:
         return
 
     all_results: List[TrialResult] = []
+    json_summary: dict = {"sweeps": {}, "comparison": None, "grid_search": None}
 
-    # --- Baseline block (current defaults) ---
-    baseline_results: List[TrialResult] = []
-    if cfg.baseline_trials > 0:
-        logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
-        baseline_results = run_named_block(
-            "__baseline__", IKConfig(), cfg.baseline_trials,
-            cfg.seed, model_path, cfg.render, logger,
-        )
-        all_results.extend(baseline_results)
-        n = len(baseline_results)
-        full_ok = sum(r.full_success for r in baseline_results)
-        logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
+    if cfg.grid_search:
+        # --- Grid search mode ---
+        param_grid = {p: grid[p] for p in params_to_sweep}
+        combo_count = 1
+        for v in param_grid.values():
+            combo_count *= len(v)
+        total_trials = combo_count * cfg.trials_per_config
+        logger.info(f"Grid search: {combo_count} combos × {cfg.trials_per_config} trials = {total_trials} total")
 
-    # --- Parameter sweeps ---
-    for param_name in params_to_sweep:
-        values = grid[param_name]
-        logger.info(
-            f"Sweeping {param_name} over {values} "
-            f"({cfg.trials_per_config} trials each, {len(values) * cfg.trials_per_config} total)"
-        )
-        results = run_sweep(param_name, values, cfg, model_path, logger)
-        all_results.extend(results)
-        print_sweep_summary(param_name, values, results, cfg.trials_per_config)
+        baseline_results: List[TrialResult] = []
+        if cfg.baseline_trials > 0:
+            logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
+            baseline_results = run_named_block(
+                "__baseline__", IKConfig(), cfg.baseline_trials,
+                cfg.seed, model_path, cfg.render, logger,
+            )
+            all_results.extend(baseline_results)
+            n = len(baseline_results)
+            full_ok = sum(r.full_success for r in baseline_results)
+            logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
 
-    # --- New-defaults comparison block ---
-    new_defaults_results: List[TrialResult] = []
-    if cfg.baseline_trials > 0:
-        new_config = build_new_defaults_config(
-            [r for r in all_results if r.param_name not in ("__baseline__", "__new_defaults__")],
-            params_to_sweep,
-        )
-        logger.info(f"Running {cfg.baseline_trials} trials with new best-value defaults...")
-        new_defaults_results = run_named_block(
-            "__new_defaults__", new_config, cfg.baseline_trials,
-            cfg.seed, model_path, cfg.render, logger,
-        )
-        all_results.extend(new_defaults_results)
-        print_comparison_summary(baseline_results, new_defaults_results, new_config)
+        grid_results = run_grid_search(param_grid, cfg, model_path, logger)
+        all_results.extend(grid_results)
+
+        gs_data = build_grid_search_summary(grid_results)
+        json_summary["grid_search"] = gs_data
+        print_grid_search_summary(gs_data)
+
+        if cfg.baseline_trials > 0 and grid_results:
+            best_row = gs_data["configs"][0]
+            best_label = best_row["config"]
+            overrides = {}
+            for part in best_label.split(" | "):
+                k, v = part.split("=")
+                overrides[k] = float(v)
+            best_config = make_ik_config_multi(overrides)
+            logger.info(f"Running {cfg.baseline_trials} trials with best grid combo: {best_label}")
+            new_defaults_results = run_named_block(
+                "__new_defaults__", best_config, cfg.baseline_trials,
+                cfg.seed, model_path, cfg.render, logger,
+            )
+            all_results.extend(new_defaults_results)
+            comp_data = build_comparison_summary(baseline_results, new_defaults_results, best_config)
+            json_summary["comparison"] = comp_data
+            print_comparison_summary(comp_data)
+    else:
+        # --- One-at-a-time sweep mode ---
+        baseline_results: List[TrialResult] = []
+        if cfg.baseline_trials > 0:
+            logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
+            baseline_results = run_named_block(
+                "__baseline__", IKConfig(), cfg.baseline_trials,
+                cfg.seed, model_path, cfg.render, logger,
+            )
+            all_results.extend(baseline_results)
+            n = len(baseline_results)
+            full_ok = sum(r.full_success for r in baseline_results)
+            logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
+
+        for param_name in params_to_sweep:
+            values = grid[param_name]
+            logger.info(
+                f"Sweeping {param_name} over {values} "
+                f"({cfg.trials_per_config} trials each, {len(values) * cfg.trials_per_config} total)"
+            )
+            results = run_sweep(param_name, values, cfg, model_path, logger)
+            all_results.extend(results)
+            sweep_data = build_sweep_summary(param_name, values, results)
+            json_summary["sweeps"][param_name] = sweep_data
+            print_sweep_summary(sweep_data)
+
+        if cfg.baseline_trials > 0:
+            new_config = build_new_defaults_config(
+                [r for r in all_results if r.param_name not in ("__baseline__", "__new_defaults__")],
+                params_to_sweep,
+            )
+            logger.info(f"Running {cfg.baseline_trials} trials with new best-value defaults...")
+            new_defaults_results = run_named_block(
+                "__new_defaults__", new_config, cfg.baseline_trials,
+                cfg.seed, model_path, cfg.render, logger,
+            )
+            all_results.extend(new_defaults_results)
+            comp_data = build_comparison_summary(baseline_results, new_defaults_results, new_config)
+            json_summary["comparison"] = comp_data
+            print_comparison_summary(comp_data)
 
     write_csv(all_results, cfg.csv_path)
+
+    if cfg.json_path:
+        write_json_summary(json_summary, cfg.json_path)
 
     sys.stdout = sys.__stdout__
     tee.close()

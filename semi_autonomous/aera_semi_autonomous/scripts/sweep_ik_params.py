@@ -16,14 +16,14 @@ When --baseline-trials > 0 (default 50), the script also:
 Outputs are written to a data/ subdirectory by default (git-ignored).
 
 Usage:
-    # Sweep all parameters, 5 trials each, with 50-trial baseline comparison
-    python sweep_ik_params.py
+    # Sweep all parameters defined in my_grid.json, 5 trials each
+    python sweep_ik_params.py --grid-path my_grid.json
 
     # Sweep a single parameter with 2 trials (quick sanity check, no baseline)
-    python sweep_ik_params.py --params pos_gain --trials-per-config 2 --baseline-trials 0
+    python sweep_ik_params.py --grid-path my_grid.json --params pos_gain --trials-per-config 2 --baseline-trials 0
 
     # Custom output directory
-    python sweep_ik_params.py --csv-path /tmp/sweep.csv --json-path /tmp/sweep.json
+    python sweep_ik_params.py --grid-path my_grid.json --csv-path /tmp/sweep.csv --json-path /tmp/sweep.json
 """
 
 import csv
@@ -62,25 +62,19 @@ Q = np.array(
     ]
 )
 
-# One-parameter-at-a-time sweep grid.
-# Each entry: parameter name → list of absolute values to test.
-# Special cases for joints_update_scaling:
-#   "joints_update_scaling_N" → varies index N, keeps all other indices at their IKConfig defaults.
-# Joints 0-2, 4-5 default to ~1.0 range; joint 3 (wrist) has a much smaller default.
-_JOINT_SCALING_FULL = [0.1, 0.3, 0.5, 0.7, 0.85, 1.0, 1.2, 1.5, 2.0]
-_JOINT_SCALING_WRIST = [0.001, 0.003, 0.005, 0.008, 0.01, 0.02, 0.05, 0.1]
-SWEEP_GRID: dict = {
-    "pos_gain": [0.3, 0.5, 0.7, 0.85, 0.95, 1.05, 1.2, 1.5],
-    "orientation_gain": [0.3, 0.5, 0.7, 0.85, 0.95, 1.05, 1.2, 1.5],
-    "integration_dt": [0.01, 0.03, 0.05, 0.08, 0.1, 0.15, 0.2, 0.3],
-    "max_update_norm": [0.1, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0],
-    "regularization_strength": [0.0, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2],
-    "joints_update_scaling_0": _JOINT_SCALING_FULL,
-    "joints_update_scaling_1": _JOINT_SCALING_FULL,
-    "joints_update_scaling_2": _JOINT_SCALING_FULL,
-    "joints_update_scaling_3": _JOINT_SCALING_WRIST,
-    "joints_update_scaling_4": _JOINT_SCALING_FULL,
-    "joints_update_scaling_5": _JOINT_SCALING_FULL,
+# Parameters that are allowed to be swept. Sweep values must be provided via --grid-path.
+SWEEP_PARAMS: set = {
+    "pos_gain",
+    "orientation_gain",
+    "integration_dt",
+    "max_update_norm",
+    "regularization_strength",
+    "joints_update_scaling_0",
+    "joints_update_scaling_1",
+    "joints_update_scaling_2",
+    "joints_update_scaling_3",
+    "joints_update_scaling_4",
+    "joints_update_scaling_5",
 }
 
 _DEFAULT_DATA_DIR = "data"
@@ -574,23 +568,28 @@ def main() -> None:
         logger.error("Could not find AR4 MK3 model file.")
         return
 
-    grid = SWEEP_GRID
-    if cfg.grid_path is not None:
-        if not os.path.exists(cfg.grid_path):
-            logger.error(f"Grid file not found: {cfg.grid_path}")
-            return
-        try:
-            with open(cfg.grid_path) as f:
-                grid = json.load(f)
-            logger.info(f"Loaded sweep grid from {cfg.grid_path}")
-        except Exception as e:
-            logger.error(f"Failed to parse grid file: {e}")
-            return
+    if cfg.grid_path is None:
+        logger.error("--grid-path is required. Provide a JSON file mapping parameter names to sweep values.")
+        return
+    if not os.path.exists(cfg.grid_path):
+        logger.error(f"Grid file not found: {cfg.grid_path}")
+        return
+    try:
+        with open(cfg.grid_path) as f:
+            grid = json.load(f)
+        logger.info(f"Loaded sweep grid from {cfg.grid_path}")
+    except Exception as e:
+        logger.error(f"Failed to parse grid file: {e}")
+        return
 
     params_to_sweep = cfg.params if cfg.params else list(grid.keys())
-    unknown = [p for p in params_to_sweep if p not in grid]
+    unknown = [p for p in params_to_sweep if p not in SWEEP_PARAMS]
     if unknown:
-        logger.error(f"Unknown parameters: {unknown}. Valid: {list(grid.keys())}")
+        logger.error(f"Unknown parameters: {unknown}. Valid: {sorted(SWEEP_PARAMS)}")
+        return
+    missing = [p for p in params_to_sweep if p not in grid]
+    if missing:
+        logger.error(f"Parameters not in grid file: {missing}")
         return
 
     all_results: List[TrialResult] = []

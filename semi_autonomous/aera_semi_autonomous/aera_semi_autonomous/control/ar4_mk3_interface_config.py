@@ -10,10 +10,10 @@ class IKConfig:
     tolerance: float = 1e-3
     regularization_threshold: float = 1e-5
     regularization_strength: float = 1e-3
-    max_update_norm: float = 2.0
+    max_update_norm: float = 1.5
     integration_dt: float = 0.2
     pos_gain: float = 0.95
-    orientation_gain: float = 1.05
+    orientation_gain: float = 1.15
     max_steps: int = 1000
     min_height: float = 0.005
     include_rotation_in_target_error_measure: bool = False

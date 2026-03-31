@@ -250,5 +250,4 @@ logs/
 
 # IK sweep output data
 semi_autonomous/aera_semi_autonomous/scripts/data/
-ik_sweep_*.csv
-ik_sweep_*.txt
+data/**

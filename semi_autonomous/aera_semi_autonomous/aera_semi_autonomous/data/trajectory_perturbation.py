@@ -24,16 +24,28 @@ Usage:
         robot.move_to(wp)
     robot.grasp_at(target_pose, gripper_pos=0.0)
 
-    # IK noise (applied once per episode, before robot construction):
-    config = PerturbationConfig(mode="ik_noise", ik_noise=IKNoisePerturbation(...))
+    # IK noise — 10% multiplicative noise on all params:
+    config = PerturbationConfig(
+        mode="ik_noise",
+        ik_noise=IKNoisePerturbation(default_fraction=0.1),
+    )
     noisy_ik = perturb_ik_config(IKConfig(), config.ik_noise)
     interface_config = Ar4Mk3InterfaceConfig(ik=noisy_ik)
     robot = Ar4Mk3RobotInterface(env, config=interface_config)
+
+    # Per-joint override — 5% on joint 3 (wrist roll), 15% on the rest:
+    config = PerturbationConfig(
+        mode="ik_noise",
+        ik_noise=IKNoisePerturbation(
+            default_fraction=0.15,
+            per_joint_scaling_fractions={3: 0.05},
+        ),
+    )
 """
 
 import copy
 from dataclasses import dataclass, field
-from typing import List, Literal
+from typing import Dict, List, Literal
 
 import numpy as np
 from geometry_msgs.msg import Pose
@@ -43,27 +55,42 @@ from aera_semi_autonomous.control.ar4_mk3_interface_config import IKConfig
 
 @dataclass
 class IKNoisePerturbation:
-    """Noise ranges for randomizing IK solver config values.
+    """Multiplicative noise for randomizing IK solver config values.
 
-    Each field specifies the half-width of a uniform distribution centred on
-    the base ``IKConfig`` value.  A value of ``0.0`` (the default) means no
-    noise is applied to that parameter.
+    Each field specifies the fraction of the base value used as the half-width
+    of a uniform distribution.  For a parameter with base value ``v`` and
+    fraction ``f``, the noisy value is sampled from
+    ``v * Uniform(1 - f, 1 + f)``.
+
+    A fraction of ``0.0`` (the default) means no noise.  Set
+    ``default_fraction`` to apply the same noise level to every parameter at
+    once; per-parameter fields override the default when set to a value > 0.
 
     Attributes:
-        pos_gain_noise: ± noise on ``IKConfig.pos_gain``.
-        orientation_gain_noise: ± noise on ``IKConfig.orientation_gain``.
-        integration_dt_noise: ± noise on ``IKConfig.integration_dt``.
-        max_update_norm_noise: ± noise on ``IKConfig.max_update_norm``.
-        regularization_strength_noise: ± noise on ``IKConfig.regularization_strength``.
-        joints_update_scaling_noise: ± per-joint noise on ``IKConfig.joints_update_scaling``.
+        default_fraction: Global noise fraction applied to all parameters
+            unless overridden by a per-parameter field.
+        pos_gain_fraction: Override for ``IKConfig.pos_gain``.
+        orientation_gain_fraction: Override for ``IKConfig.orientation_gain``.
+        integration_dt_fraction: Override for ``IKConfig.integration_dt``.
+        max_update_norm_fraction: Override for ``IKConfig.max_update_norm``.
+        regularization_strength_fraction: Override for ``IKConfig.regularization_strength``.
+        joints_update_scaling_fraction: Default fraction for all joints in
+            ``IKConfig.joints_update_scaling``.  Individual joints can be
+            overridden via ``per_joint_scaling_fractions``.
+        per_joint_scaling_fractions: Optional per-joint fraction overrides.
+            A dict mapping joint index (0-5) to a fraction.  Joints not
+            present fall back to ``joints_update_scaling_fraction``, then
+            ``default_fraction``.
     """
 
-    pos_gain_noise: float = 0.0
-    orientation_gain_noise: float = 0.0
-    integration_dt_noise: float = 0.0
-    max_update_norm_noise: float = 0.0
-    regularization_strength_noise: float = 0.0
-    joints_update_scaling_noise: float = 0.0
+    default_fraction: float = 0.0
+    pos_gain_fraction: float = 0.0
+    orientation_gain_fraction: float = 0.0
+    integration_dt_fraction: float = 0.0
+    max_update_norm_fraction: float = 0.0
+    regularization_strength_fraction: float = 0.0
+    joints_update_scaling_fraction: float = 0.0
+    per_joint_scaling_fractions: Dict[int, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -150,41 +177,90 @@ def generate_waypoints(target_pose: Pose, config: PerturbationConfig) -> list:
     return []
 
 
-def perturb_ik_config(base: IKConfig, noise: IKNoisePerturbation) -> IKConfig:
-    """Return a new IKConfig with each float field perturbed by uniform noise.
+def _effective_fraction(
+    per_param: float, noise: IKNoisePerturbation
+) -> float:
+    """Return per-param fraction if > 0, else fall back to default_fraction."""
+    return per_param if per_param > 0.0 else noise.default_fraction
 
-    Each parameter is sampled from ``Uniform(base - noise, base + noise)``.
-    Gains and norms are clamped to stay positive.  Integer and boolean fields
-    are copied unchanged.
+
+def _noisy_mul(value: float, fraction: float) -> float:
+    """Multiply *value* by ``Uniform(1 - fraction, 1 + fraction)``."""
+    if fraction == 0.0:
+        return value
+    return float(value * np.random.uniform(1.0 - fraction, 1.0 + fraction))
+
+
+def perturb_ik_config(base: IKConfig, noise: IKNoisePerturbation) -> IKConfig:
+    """Return a new IKConfig with each float field perturbed by multiplicative noise.
+
+    For a parameter with base value ``v`` and effective fraction ``f``, the
+    noisy value is ``v * Uniform(1 - f, 1 + f)``.  This keeps perturbations
+    proportional to the parameter's scale (e.g. joint 3 at 0.01 gets ±0.001
+    with 10% noise, while joint 0 at 1.0 gets ±0.1).
+
+    Per-parameter fractions override ``default_fraction`` when set to > 0.
+    For ``joints_update_scaling``, each joint can be individually overridden
+    via ``per_joint_scaling_fractions``; joints not listed fall back to
+    ``joints_update_scaling_fraction``, then ``default_fraction``.
+
+    All results are clamped to stay positive.
 
     Args:
         base: The baseline IK solver configuration.
-        noise: Half-widths of the uniform noise distributions.
+        noise: Multiplicative noise fractions.
 
     Returns:
         A new IKConfig instance with randomized values.
     """
-
-    def _noisy(value: float, half_width: float) -> float:
-        if half_width == 0.0:
-            return value
-        return float(value + np.random.uniform(-half_width, half_width))
-
-    noisy_scaling: List[float] = [
-        max(1e-6, _noisy(s, noise.joints_update_scaling_noise))
-        for s in base.joints_update_scaling
-    ]
+    joint_default_frac = (
+        noise.joints_update_scaling_fraction
+        if noise.joints_update_scaling_fraction > 0.0
+        else noise.default_fraction
+    )
+    noisy_scaling: List[float] = []
+    for idx, s in enumerate(base.joints_update_scaling):
+        frac = noise.per_joint_scaling_fractions.get(idx, joint_default_frac)
+        noisy_scaling.append(max(1e-6, _noisy_mul(s, frac)))
 
     return IKConfig(
         tolerance=base.tolerance,
         regularization_threshold=base.regularization_threshold,
         regularization_strength=max(
-            0.0, _noisy(base.regularization_strength, noise.regularization_strength_noise)
+            0.0,
+            _noisy_mul(
+                base.regularization_strength,
+                _effective_fraction(noise.regularization_strength_fraction, noise),
+            ),
         ),
-        max_update_norm=max(1e-6, _noisy(base.max_update_norm, noise.max_update_norm_noise)),
-        integration_dt=max(1e-6, _noisy(base.integration_dt, noise.integration_dt_noise)),
-        pos_gain=max(1e-6, _noisy(base.pos_gain, noise.pos_gain_noise)),
-        orientation_gain=max(1e-6, _noisy(base.orientation_gain, noise.orientation_gain_noise)),
+        max_update_norm=max(
+            1e-6,
+            _noisy_mul(
+                base.max_update_norm,
+                _effective_fraction(noise.max_update_norm_fraction, noise),
+            ),
+        ),
+        integration_dt=max(
+            1e-6,
+            _noisy_mul(
+                base.integration_dt,
+                _effective_fraction(noise.integration_dt_fraction, noise),
+            ),
+        ),
+        pos_gain=max(
+            1e-6,
+            _noisy_mul(
+                base.pos_gain,
+                _effective_fraction(noise.pos_gain_fraction, noise),
+            ),
+        ),
+        orientation_gain=max(
+            1e-6,
+            _noisy_mul(
+                base.orientation_gain,
+                _effective_fraction(noise.orientation_gain_fraction, noise),
+            ),
+        ),
         max_steps=base.max_steps,
         min_height=base.min_height,
         include_rotation_in_target_error_measure=base.include_rotation_in_target_error_measure,

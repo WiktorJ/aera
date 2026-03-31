@@ -53,6 +53,10 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
 from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
+from aera_semi_autonomous.data.trajectory_perturbation import (
+    IKNoisePerturbation,
+    perturb_ik_config,
+)
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
 Q = np.array(
@@ -124,6 +128,12 @@ class SweepConfig:
     grid_search: bool = False
     """Run a full grid search over all (param, value) combinations instead of one-at-a-time sweeps.
     Only practical with 2-3 params × 3-4 values each. Use --params and --grid-path to keep it small."""
+    noise_sweep: bool = False
+    """Run noise tolerance sweep: for each fraction in --noise-fractions, run N trials with
+    multiplicative IK noise at that level, then compare against a baseline block."""
+    noise_fractions: List[float] = field(default_factory=list)
+    """List of global noise fractions to test (e.g. --noise-fractions 0.05 0.1 0.15 0.2).
+    Each fraction is applied uniformly to all IK parameters via IKNoisePerturbation.default_fraction."""
     debug: bool = False
     """Enable debug logging."""
 
@@ -575,6 +585,91 @@ def run_grid_search(
     return all_results
 
 
+def run_noise_block(
+    noise_fraction: float,
+    n_trials: int,
+    seed: int,
+    model_path: str,
+    render: bool,
+    logger: logging.Logger,
+) -> List[TrialResult]:
+    """Run N trials where each trial gets a fresh noisy IKConfig.
+
+    On every trial the base IKConfig is perturbed with multiplicative noise
+    at the given global fraction, so each trial sees a different IK config.
+    """
+    noise_cfg = IKNoisePerturbation(default_fraction=noise_fraction)
+    label = f"noise_{noise_fraction:.3f}"
+    results = []
+    with tqdm(total=n_trials, desc=label, unit="trial", leave=True) as pbar:
+        for i in range(n_trials):
+            np.random.seed(seed + i)
+            ik_config = perturb_ik_config(IKConfig(), noise_cfg)
+            result = run_trial(model_path, ik_config, render, logger)
+            result.param_name = label
+            result.param_value = noise_fraction
+            result.trial_idx = i
+            results.append(result)
+            n_ok = sum(r.full_success for r in results)
+            pbar.set_postfix(success=f"{n_ok}/{i + 1}")
+            pbar.update(1)
+    return results
+
+
+def build_noise_sweep_summary(
+    baseline: List[TrialResult],
+    noise_blocks: Dict[float, List[TrialResult]],
+) -> dict:
+    """Build a JSON-serializable summary for the noise tolerance sweep."""
+
+    def stats(results: List[TrialResult]) -> dict:
+        n = len(results)
+        pick_ok = sum(r.pick_success for r in results)
+        place_ok = sum(r.place_success for r in results)
+        full_ok = sum(r.full_success for r in results)
+        return {
+            "trials": n,
+            "pick_ok": pick_ok,
+            "place_ok": place_ok,
+            "full_ok": full_ok,
+            "success_pct": round(100.0 * full_ok / n, 2) if n else 0.0,
+        }
+
+    baseline_stats = stats(baseline)
+    rows = []
+    for frac in sorted(noise_blocks.keys()):
+        s = stats(noise_blocks[frac])
+        s["noise_fraction"] = frac
+        s["delta_pct"] = round(s["success_pct"] - baseline_stats["success_pct"], 2)
+        rows.append(s)
+
+    return {"baseline": baseline_stats, "noise_levels": rows}
+
+
+def print_noise_sweep_summary(data: dict) -> None:
+    b = data["baseline"]
+    print("\n" + "=" * 80)
+    print("=== Noise Tolerance Sweep Results ===")
+    print("=" * 80)
+    print(
+        f"  {'Noise %':<10} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} "
+        f"| {'Full OK':>7} | {'Success%':>9} | {'Delta':>7}"
+    )
+    print("  " + "-" * 78)
+    print(
+        f"  {'baseline':<10} | {b['trials']:>6} | {b['pick_ok']:>7} | "
+        f"{b['place_ok']:>8} | {b['full_ok']:>7} | {b['success_pct']:>8.1f}% | {'—':>7}"
+    )
+    for row in data["noise_levels"]:
+        pct_label = f"{row['noise_fraction'] * 100:.1f}%"
+        print(
+            f"  {pct_label:<10} | {row['trials']:>6} | {row['pick_ok']:>7} | "
+            f"{row['place_ok']:>8} | {row['full_ok']:>7} | {row['success_pct']:>8.1f}% "
+            f"| {row['delta_pct']:>+6.1f}%"
+        )
+    print("=" * 80)
+
+
 def main() -> None:
     cfg = tyro.cli(SweepConfig)
 
@@ -594,158 +689,197 @@ def main() -> None:
         logger.error("Could not find AR4 MK3 model file.")
         return
 
-    if cfg.grid_path is None:
-        logger.error(
-            "--grid-path is required. Provide a JSON file mapping parameter names to sweep values."
-        )
-        return
-    if not os.path.exists(cfg.grid_path):
-        logger.error(f"Grid file not found: {cfg.grid_path}")
-        return
-    try:
-        with open(cfg.grid_path) as f:
-            grid = json.load(f)
-        logger.info(f"Loaded sweep grid from {cfg.grid_path}")
-    except Exception as e:
-        logger.error(f"Failed to parse grid file: {e}")
-        return
-
-    params_to_sweep = cfg.params if cfg.params else list(grid.keys())
-    unknown = [p for p in params_to_sweep if p not in SWEEP_PARAMS]
-    if unknown:
-        logger.error(f"Unknown parameters: {unknown}. Valid: {sorted(SWEEP_PARAMS)}")
-        return
-    missing = [p for p in params_to_sweep if p not in grid]
-    if missing:
-        logger.error(f"Parameters not in grid file: {missing}")
-        return
-
     all_results: List[TrialResult] = []
-    json_summary: dict = {"sweeps": {}, "comparison": None, "grid_search": None}
+    json_summary: dict = {"sweeps": {}, "comparison": None, "grid_search": None, "noise_sweep": None}
 
-    if cfg.grid_search:
-        # --- Grid search mode ---
-        param_grid = {p: grid[p] for p in params_to_sweep}
-        combo_count = 1
-        for v in param_grid.values():
-            combo_count *= len(v)
-        total_trials = combo_count * cfg.trials_per_config
-        logger.info(
-            f"Grid search: {combo_count} combos × {cfg.trials_per_config} trials = {total_trials} total"
+    if cfg.noise_sweep:
+        # --- Noise tolerance sweep mode ---
+        if not cfg.noise_fractions:
+            logger.error("--noise-fractions is required for --noise-sweep mode.")
+            return
+        if cfg.baseline_trials <= 0:
+            logger.error("--baseline-trials must be > 0 for --noise-sweep mode.")
+            return
+
+        baseline_results = run_named_block(
+            "__baseline__",
+            IKConfig(),
+            cfg.baseline_trials,
+            cfg.seed,
+            model_path,
+            cfg.render,
+            logger,
         )
+        all_results.extend(baseline_results)
 
-        baseline_results: List[TrialResult] = []
-        if cfg.baseline_trials > 0:
-            logger.info(
-                f"Running {cfg.baseline_trials} baseline trials with current defaults..."
-            )
-            baseline_results = run_named_block(
-                "__baseline__",
-                IKConfig(),
+        noise_blocks: Dict[float, List[TrialResult]] = {}
+        for frac in cfg.noise_fractions:
+            block = run_noise_block(
+                frac,
                 cfg.baseline_trials,
                 cfg.seed,
                 model_path,
                 cfg.render,
                 logger,
             )
-            all_results.extend(baseline_results)
-            n = len(baseline_results)
-            full_ok = sum(r.full_success for r in baseline_results)
-            logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
+            noise_blocks[frac] = block
+            all_results.extend(block)
 
-        grid_results = run_grid_search(param_grid, cfg, model_path, logger)
-        all_results.extend(grid_results)
+        ns_data = build_noise_sweep_summary(baseline_results, noise_blocks)
+        json_summary["noise_sweep"] = ns_data
+        print_noise_sweep_summary(ns_data)
 
-        gs_data = build_grid_search_summary(grid_results)
-        json_summary["grid_search"] = gs_data
-        print_grid_search_summary(gs_data)
-
-        if cfg.baseline_trials > 0 and grid_results:
-            best_row = gs_data["configs"][0]
-            best_label = best_row["config"]
-            overrides = {}
-            for part in best_label.split(" | "):
-                k, v = part.split("=")
-                overrides[k] = float(v)
-            best_config = make_ik_config_multi(overrides)
-            logger.info(
-                f"Running {cfg.baseline_trials} trials with best grid combo: {best_label}"
-            )
-            new_defaults_results = run_named_block(
-                "__new_defaults__",
-                best_config,
-                cfg.baseline_trials,
-                cfg.seed,
-                model_path,
-                cfg.render,
-                logger,
-            )
-            all_results.extend(new_defaults_results)
-            comp_data = build_comparison_summary(
-                baseline_results, new_defaults_results, best_config
-            )
-            json_summary["comparison"] = comp_data
-            print_comparison_summary(comp_data)
     else:
-        # --- One-at-a-time sweep mode ---
-        baseline_results: List[TrialResult] = []
-        if cfg.baseline_trials > 0:
-            logger.info(
-                f"Running {cfg.baseline_trials} baseline trials with current defaults..."
+        # --- Grid / one-at-a-time sweep modes (require --grid-path) ---
+        if cfg.grid_path is None:
+            logger.error(
+                "--grid-path is required. Provide a JSON file mapping parameter names to sweep values."
             )
-            baseline_results = run_named_block(
-                "__baseline__",
-                IKConfig(),
-                cfg.baseline_trials,
-                cfg.seed,
-                model_path,
-                cfg.render,
-                logger,
-            )
-            all_results.extend(baseline_results)
-            n = len(baseline_results)
-            full_ok = sum(r.full_success for r in baseline_results)
-            logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
+            return
+        if not os.path.exists(cfg.grid_path):
+            logger.error(f"Grid file not found: {cfg.grid_path}")
+            return
+        try:
+            with open(cfg.grid_path) as f:
+                grid = json.load(f)
+            logger.info(f"Loaded sweep grid from {cfg.grid_path}")
+        except Exception as e:
+            logger.error(f"Failed to parse grid file: {e}")
+            return
 
-        for param_name in params_to_sweep:
-            values = grid[param_name]
-            logger.info(
-                f"Sweeping {param_name} over {values} "
-                f"({cfg.trials_per_config} trials each, {len(values) * cfg.trials_per_config} total)"
-            )
-            results = run_sweep(param_name, values, cfg, model_path, logger)
-            all_results.extend(results)
-            sweep_data = build_sweep_summary(param_name, values, results)
-            json_summary["sweeps"][param_name] = sweep_data
-            print_sweep_summary(sweep_data)
+        params_to_sweep = cfg.params if cfg.params else list(grid.keys())
+        unknown = [p for p in params_to_sweep if p not in SWEEP_PARAMS]
+        if unknown:
+            logger.error(f"Unknown parameters: {unknown}. Valid: {sorted(SWEEP_PARAMS)}")
+            return
+        missing = [p for p in params_to_sweep if p not in grid]
+        if missing:
+            logger.error(f"Parameters not in grid file: {missing}")
+            return
 
-        if cfg.baseline_trials > 0:
-            new_config = build_new_defaults_config(
-                [
-                    r
-                    for r in all_results
-                    if r.param_name not in ("__baseline__", "__new_defaults__")
-                ],
-                params_to_sweep,
-            )
+        if cfg.grid_search:
+            # --- Grid search mode ---
+            param_grid = {p: grid[p] for p in params_to_sweep}
+            combo_count = 1
+            for v in param_grid.values():
+                combo_count *= len(v)
+            total_trials = combo_count * cfg.trials_per_config
             logger.info(
-                f"Running {cfg.baseline_trials} trials with new best-value defaults..."
+                f"Grid search: {combo_count} combos × {cfg.trials_per_config} trials = {total_trials} total"
             )
-            new_defaults_results = run_named_block(
-                "__new_defaults__",
-                new_config,
-                cfg.baseline_trials,
-                cfg.seed,
-                model_path,
-                cfg.render,
-                logger,
-            )
-            all_results.extend(new_defaults_results)
-            comp_data = build_comparison_summary(
-                baseline_results, new_defaults_results, new_config
-            )
-            json_summary["comparison"] = comp_data
-            print_comparison_summary(comp_data)
+
+            baseline_results: List[TrialResult] = []
+            if cfg.baseline_trials > 0:
+                logger.info(
+                    f"Running {cfg.baseline_trials} baseline trials with current defaults..."
+                )
+                baseline_results = run_named_block(
+                    "__baseline__",
+                    IKConfig(),
+                    cfg.baseline_trials,
+                    cfg.seed,
+                    model_path,
+                    cfg.render,
+                    logger,
+                )
+                all_results.extend(baseline_results)
+                n = len(baseline_results)
+                full_ok = sum(r.full_success for r in baseline_results)
+                logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
+
+            grid_results = run_grid_search(param_grid, cfg, model_path, logger)
+            all_results.extend(grid_results)
+
+            gs_data = build_grid_search_summary(grid_results)
+            json_summary["grid_search"] = gs_data
+            print_grid_search_summary(gs_data)
+
+            if cfg.baseline_trials > 0 and grid_results:
+                best_row = gs_data["configs"][0]
+                best_label = best_row["config"]
+                overrides = {}
+                for part in best_label.split(" | "):
+                    k, v = part.split("=")
+                    overrides[k] = float(v)
+                best_config = make_ik_config_multi(overrides)
+                logger.info(
+                    f"Running {cfg.baseline_trials} trials with best grid combo: {best_label}"
+                )
+                new_defaults_results = run_named_block(
+                    "__new_defaults__",
+                    best_config,
+                    cfg.baseline_trials,
+                    cfg.seed,
+                    model_path,
+                    cfg.render,
+                    logger,
+                )
+                all_results.extend(new_defaults_results)
+                comp_data = build_comparison_summary(
+                    baseline_results, new_defaults_results, best_config
+                )
+                json_summary["comparison"] = comp_data
+                print_comparison_summary(comp_data)
+        else:
+            # --- One-at-a-time sweep mode ---
+            baseline_results: List[TrialResult] = []
+            if cfg.baseline_trials > 0:
+                logger.info(
+                    f"Running {cfg.baseline_trials} baseline trials with current defaults..."
+                )
+                baseline_results = run_named_block(
+                    "__baseline__",
+                    IKConfig(),
+                    cfg.baseline_trials,
+                    cfg.seed,
+                    model_path,
+                    cfg.render,
+                    logger,
+                )
+                all_results.extend(baseline_results)
+                n = len(baseline_results)
+                full_ok = sum(r.full_success for r in baseline_results)
+                logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
+
+            for param_name in params_to_sweep:
+                values = grid[param_name]
+                logger.info(
+                    f"Sweeping {param_name} over {values} "
+                    f"({cfg.trials_per_config} trials each, {len(values) * cfg.trials_per_config} total)"
+                )
+                results = run_sweep(param_name, values, cfg, model_path, logger)
+                all_results.extend(results)
+                sweep_data = build_sweep_summary(param_name, values, results)
+                json_summary["sweeps"][param_name] = sweep_data
+                print_sweep_summary(sweep_data)
+
+            if cfg.baseline_trials > 0:
+                new_config = build_new_defaults_config(
+                    [
+                        r
+                        for r in all_results
+                        if r.param_name not in ("__baseline__", "__new_defaults__")
+                    ],
+                    params_to_sweep,
+                )
+                logger.info(
+                    f"Running {cfg.baseline_trials} trials with new best-value defaults..."
+                )
+                new_defaults_results = run_named_block(
+                    "__new_defaults__",
+                    new_config,
+                    cfg.baseline_trials,
+                    cfg.seed,
+                    model_path,
+                    cfg.render,
+                    logger,
+                )
+                all_results.extend(new_defaults_results)
+                comp_data = build_comparison_summary(
+                    baseline_results, new_defaults_results, new_config
+                )
+                json_summary["comparison"] = comp_data
+                print_comparison_summary(comp_data)
 
     write_csv(all_results, cfg.csv_path)
 

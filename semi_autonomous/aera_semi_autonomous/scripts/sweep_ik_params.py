@@ -36,6 +36,8 @@ import sys
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+from tqdm import tqdm
+
 import numpy as np
 import tyro
 from geometry_msgs.msg import Point, Pose, Quaternion
@@ -259,13 +261,17 @@ def run_named_block(
 ) -> List[TrialResult]:
     """Run N trials with a fixed IKConfig, tagging results with param_name=label."""
     results = []
-    for i in range(n_trials):
-        np.random.seed(seed + i)
-        result = run_trial(model_path, ik_config, render, logger)
-        result.param_name = label
-        result.param_value = 0.0
-        result.trial_idx = i
-        results.append(result)
+    with tqdm(total=n_trials, desc=label, unit="trial", leave=True) as pbar:
+        for i in range(n_trials):
+            np.random.seed(seed + i)
+            result = run_trial(model_path, ik_config, render, logger)
+            result.param_name = label
+            result.param_value = 0.0
+            result.trial_idx = i
+            results.append(result)
+            n_ok = sum(r.full_success for r in results)
+            pbar.set_postfix(success=f"{n_ok}/{i + 1}")
+            pbar.update(1)
     return results
 
 
@@ -277,15 +283,24 @@ def run_sweep(
     logger: logging.Logger,
 ) -> List[TrialResult]:
     results = []
-    for value in values:
-        ik_config = make_ik_config(param_name, value)
-        for trial_idx in range(cfg.trials_per_config):
-            np.random.seed(cfg.seed + trial_idx)
-            result = run_trial(model_path, ik_config, cfg.render, logger)
-            result.param_name = param_name
-            result.param_value = value
-            result.trial_idx = trial_idx
-            results.append(result)
+    total = len(values) * cfg.trials_per_config
+    with tqdm(total=total, desc=param_name, unit="trial", leave=True) as pbar:
+        for value in values:
+            ik_config = make_ik_config(param_name, value)
+            value_results = []
+            for trial_idx in range(cfg.trials_per_config):
+                np.random.seed(cfg.seed + trial_idx)
+                result = run_trial(model_path, ik_config, cfg.render, logger)
+                result.param_name = param_name
+                result.param_value = value
+                result.trial_idx = trial_idx
+                results.append(result)
+                value_results.append(result)
+                n_ok = sum(r.full_success for r in value_results)
+                pbar.set_postfix(
+                    value=f"{value:.4g}", success=f"{n_ok}/{len(value_results)}"
+                )
+                pbar.update(1)
     return results
 
 
@@ -411,7 +426,9 @@ def print_comparison_summary(data: dict) -> None:
     print("\n" + "=" * 62)
     print("=== Baseline vs. New Defaults Comparison ===")
     print("=" * 62)
-    print(f"  {'Config':<20} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}")
+    print(
+        f"  {'Config':<20} | {'Trials':>6} | {'Pick OK':>7} | {'Place OK':>8} | {'Full OK':>7} | {'Success%':>9}"
+    )
     print("  " + "-" * 60)
     print(
         f"  {'current defaults':<20} | {b['trials']:>6} | {b['pick_ok']:>7} | "
@@ -484,7 +501,13 @@ def find_model_path(script_dir: str) -> Optional[str]:
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
     candidates = [
         os.path.join(
-            project_root, "aera", "autonomous", "simulation", "mujoco", "ar4_mk3", "scene.xml"
+            project_root,
+            "aera",
+            "autonomous",
+            "simulation",
+            "mujoco",
+            "ar4_mk3",
+            "scene.xml",
         ),
         "aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
         "../aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml",
@@ -526,25 +549,28 @@ def run_grid_search(
     )
 
     all_results: List[TrialResult] = []
-    for combo_idx, values in enumerate(combos):
-        overrides = dict(zip(param_names, values))
-        ik_config = make_ik_config_multi(overrides)
-        label = " | ".join(f"{p}={v}" for p, v in overrides.items())
+    with tqdm(total=total, desc="grid search", unit="trial", leave=True) as pbar:
+        for combo_idx, values in enumerate(combos):
+            overrides = dict(zip(param_names, values))
+            ik_config = make_ik_config_multi(overrides)
+            label = " | ".join(f"{p}={v}" for p, v in overrides.items())
 
-        combo_results = []
-        for trial_idx in range(cfg.trials_per_config):
-            np.random.seed(cfg.seed + trial_idx)
-            result = run_trial(model_path, ik_config, cfg.render, logger)
-            result.param_name = label
-            result.param_value = combo_idx
-            result.trial_idx = trial_idx
-            combo_results.append(result)
-        all_results.extend(combo_results)
+            combo_results = []
+            for trial_idx in range(cfg.trials_per_config):
+                np.random.seed(cfg.seed + trial_idx)
+                result = run_trial(model_path, ik_config, cfg.render, logger)
+                result.param_name = label
+                result.param_value = combo_idx
+                result.trial_idx = trial_idx
+                combo_results.append(result)
+                pbar.set_postfix(combo=f"{combo_idx + 1}/{len(combos)}")
+                pbar.update(1)
+            all_results.extend(combo_results)
 
-        n = len(combo_results)
-        full_ok = sum(r.full_success for r in combo_results)
-        pct = 100.0 * full_ok / n
-        logger.info(f"  [{combo_idx+1}/{len(combos)}] {label} → {pct:.0f}%")
+            n = len(combo_results)
+            full_ok = sum(r.full_success for r in combo_results)
+            pct = 100.0 * full_ok / n
+            logger.info(f"  [{combo_idx + 1}/{len(combos)}] {label} → {pct:.0f}%")
 
     return all_results
 
@@ -552,7 +578,7 @@ def run_grid_search(
 def main() -> None:
     cfg = tyro.cli(SweepConfig)
 
-    level = logging.DEBUG if cfg.debug else logging.INFO
+    level = logging.DEBUG if cfg.debug else logging.CRITICAL
     logging.basicConfig(
         level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
@@ -569,7 +595,9 @@ def main() -> None:
         return
 
     if cfg.grid_path is None:
-        logger.error("--grid-path is required. Provide a JSON file mapping parameter names to sweep values.")
+        logger.error(
+            "--grid-path is required. Provide a JSON file mapping parameter names to sweep values."
+        )
         return
     if not os.path.exists(cfg.grid_path):
         logger.error(f"Grid file not found: {cfg.grid_path}")
@@ -602,19 +630,28 @@ def main() -> None:
         for v in param_grid.values():
             combo_count *= len(v)
         total_trials = combo_count * cfg.trials_per_config
-        logger.info(f"Grid search: {combo_count} combos × {cfg.trials_per_config} trials = {total_trials} total")
+        logger.info(
+            f"Grid search: {combo_count} combos × {cfg.trials_per_config} trials = {total_trials} total"
+        )
 
         baseline_results: List[TrialResult] = []
         if cfg.baseline_trials > 0:
-            logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
+            logger.info(
+                f"Running {cfg.baseline_trials} baseline trials with current defaults..."
+            )
             baseline_results = run_named_block(
-                "__baseline__", IKConfig(), cfg.baseline_trials,
-                cfg.seed, model_path, cfg.render, logger,
+                "__baseline__",
+                IKConfig(),
+                cfg.baseline_trials,
+                cfg.seed,
+                model_path,
+                cfg.render,
+                logger,
             )
             all_results.extend(baseline_results)
             n = len(baseline_results)
             full_ok = sum(r.full_success for r in baseline_results)
-            logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
+            logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
 
         grid_results = run_grid_search(param_grid, cfg, model_path, logger)
         all_results.extend(grid_results)
@@ -631,28 +668,44 @@ def main() -> None:
                 k, v = part.split("=")
                 overrides[k] = float(v)
             best_config = make_ik_config_multi(overrides)
-            logger.info(f"Running {cfg.baseline_trials} trials with best grid combo: {best_label}")
+            logger.info(
+                f"Running {cfg.baseline_trials} trials with best grid combo: {best_label}"
+            )
             new_defaults_results = run_named_block(
-                "__new_defaults__", best_config, cfg.baseline_trials,
-                cfg.seed, model_path, cfg.render, logger,
+                "__new_defaults__",
+                best_config,
+                cfg.baseline_trials,
+                cfg.seed,
+                model_path,
+                cfg.render,
+                logger,
             )
             all_results.extend(new_defaults_results)
-            comp_data = build_comparison_summary(baseline_results, new_defaults_results, best_config)
+            comp_data = build_comparison_summary(
+                baseline_results, new_defaults_results, best_config
+            )
             json_summary["comparison"] = comp_data
             print_comparison_summary(comp_data)
     else:
         # --- One-at-a-time sweep mode ---
         baseline_results: List[TrialResult] = []
         if cfg.baseline_trials > 0:
-            logger.info(f"Running {cfg.baseline_trials} baseline trials with current defaults...")
+            logger.info(
+                f"Running {cfg.baseline_trials} baseline trials with current defaults..."
+            )
             baseline_results = run_named_block(
-                "__baseline__", IKConfig(), cfg.baseline_trials,
-                cfg.seed, model_path, cfg.render, logger,
+                "__baseline__",
+                IKConfig(),
+                cfg.baseline_trials,
+                cfg.seed,
+                model_path,
+                cfg.render,
+                logger,
             )
             all_results.extend(baseline_results)
             n = len(baseline_results)
             full_ok = sum(r.full_success for r in baseline_results)
-            logger.info(f"Baseline: {full_ok}/{n} ({100.0*full_ok/n:.1f}%) success")
+            logger.info(f"Baseline: {full_ok}/{n} ({100.0 * full_ok / n:.1f}%) success")
 
         for param_name in params_to_sweep:
             values = grid[param_name]
@@ -668,16 +721,29 @@ def main() -> None:
 
         if cfg.baseline_trials > 0:
             new_config = build_new_defaults_config(
-                [r for r in all_results if r.param_name not in ("__baseline__", "__new_defaults__")],
+                [
+                    r
+                    for r in all_results
+                    if r.param_name not in ("__baseline__", "__new_defaults__")
+                ],
                 params_to_sweep,
             )
-            logger.info(f"Running {cfg.baseline_trials} trials with new best-value defaults...")
+            logger.info(
+                f"Running {cfg.baseline_trials} trials with new best-value defaults..."
+            )
             new_defaults_results = run_named_block(
-                "__new_defaults__", new_config, cfg.baseline_trials,
-                cfg.seed, model_path, cfg.render, logger,
+                "__new_defaults__",
+                new_config,
+                cfg.baseline_trials,
+                cfg.seed,
+                model_path,
+                cfg.render,
+                logger,
             )
             all_results.extend(new_defaults_results)
-            comp_data = build_comparison_summary(baseline_results, new_defaults_results, new_config)
+            comp_data = build_comparison_summary(
+                baseline_results, new_defaults_results, new_config
+            )
             json_summary["comparison"] = comp_data
             print_comparison_summary(comp_data)
 

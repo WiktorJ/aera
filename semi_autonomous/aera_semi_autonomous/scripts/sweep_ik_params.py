@@ -81,6 +81,7 @@ SWEEP_PARAMS: set = {
     "joints_update_scaling_3",
     "joints_update_scaling_4",
     "joints_update_scaling_5",
+    "max_steps",
 }
 
 _DEFAULT_DATA_DIR = "data"
@@ -148,6 +149,9 @@ class TrialResult:
     full_success: bool
 
 
+_INT_PARAMS: set = {"max_steps"}
+
+
 def make_ik_config(param_name: str, value: float) -> IKConfig:
     """Return an IKConfig with one parameter overridden, all others at default."""
     base = IKConfig()
@@ -156,7 +160,8 @@ def make_ik_config(param_name: str, value: float) -> IKConfig:
         scaling = list(base.joints_update_scaling)
         scaling[idx] = value
         return dataclasses.replace(base, joints_update_scaling=scaling)
-    return dataclasses.replace(base, **{param_name: value})
+    typed_value = int(value) if param_name in _INT_PARAMS else value
+    return dataclasses.replace(base, **{param_name: typed_value})
 
 
 def best_value_for_param(param_name: str, results: List[TrialResult]) -> float:

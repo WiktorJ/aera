@@ -19,8 +19,8 @@ COLLECT="$SCRIPT_DIR/collect_trajectories.py"
 TOTAL="${1:-100}"
 SAVE_DIR="${2:-rl_training_data}"
 
-BASE_N=$((TOTAL * 0.3))
-OFFSET_N=$((TOTAL * 0.2))
+BASE_N=$((TOTAL * 30 / 100))
+OFFSET_N=$((TOTAL * 20 / 100))
 NOISE_N=$((TOTAL - BASE_N - OFFSET_N)) # remainder goes to ik_noise (~50%)
 
 echo "============================================"

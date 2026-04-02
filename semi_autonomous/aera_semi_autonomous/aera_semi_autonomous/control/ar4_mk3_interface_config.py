@@ -18,7 +18,7 @@ class IKConfig:
     min_height: float = 0.005
     include_rotation_in_target_error_measure: bool = False
     joints_update_scaling: typing.List[float] = field(
-        default_factory=lambda: [1.0, 1.0, 1.0, 0.01, 1.0, 1.0]
+        default_factory=lambda: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     )
 
 

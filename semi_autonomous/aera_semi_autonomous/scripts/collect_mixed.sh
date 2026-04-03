@@ -5,11 +5,12 @@
 #   50% IK noise (0.3 default fraction)
 #
 # Usage:
-#   ./collect_mixed.sh [total_trajectories] [save_dir]
+#   ./collect_mixed.sh [total_trajectories] [save_dir] [seed]
 #
 # Examples:
 #   ./collect_mixed.sh 100
 #   ./collect_mixed.sh 500 /data/my_run
+#   ./collect_mixed.sh 500 /data/my_run 42
 
 set -euo pipefail
 
@@ -18,6 +19,7 @@ COLLECT="$SCRIPT_DIR/collect_trajectories.py"
 
 TOTAL="${1:-100}"
 SAVE_DIR="${2:-rl_training_data}"
+SEED="${3:--1}"
 
 BASE_N=$((TOTAL * 30 / 100))
 OFFSET_N=$((TOTAL * 20 / 100))
@@ -30,6 +32,7 @@ echo "  Base (none):   $BASE_N  (30%)"
 echo "  Offset:        $OFFSET_N  (20%)"
 echo "  IK noise:      $NOISE_N  (~50%)"
 echo "  Save dir:      $SAVE_DIR"
+echo "  Seed:          $SEED"
 echo "============================================"
 
 echo ""
@@ -37,6 +40,7 @@ echo "[1/3] Base trajectories ($BASE_N)..."
 python3 "$COLLECT" \
   --num-trajectories "$BASE_N" \
   --save-dir "$SAVE_DIR" \
+  --seed "$SEED" \
   --perturbation.mode none
 
 echo ""
@@ -44,6 +48,7 @@ echo "[2/3] Offset-approach trajectories ($OFFSET_N)..."
 python3 "$COLLECT" \
   --num-trajectories "$OFFSET_N" \
   --save-dir "$SAVE_DIR" \
+  --seed "$SEED" \
   --perturbation.mode offset_approach \
   --perturbation.num-approach-waypoints 1
 
@@ -52,6 +57,7 @@ echo "[3/3] IK-noise trajectories ($NOISE_N)..."
 python3 "$COLLECT" \
   --num-trajectories "$NOISE_N" \
   --save-dir "$SAVE_DIR" \
+  --seed "$SEED" \
   --perturbation.mode ik_noise \
   --perturbation.ik-noise.default-fraction 0.3
 

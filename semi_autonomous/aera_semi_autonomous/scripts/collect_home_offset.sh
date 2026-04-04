@@ -39,7 +39,7 @@ python3 "$COLLECT" \
   --save-dir "$SAVE_DIR" \
   --seed "$SEED" \
   --perturbation.mode none \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.1
 
 echo ""
@@ -49,7 +49,7 @@ python3 "$COLLECT" \
   --save-dir "$SAVE_DIR" \
   --seed "$SEED" \
   --perturbation.mode none \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.2
 
 echo ""
@@ -59,7 +59,7 @@ python3 "$COLLECT" \
   --save-dir "$SAVE_DIR" \
   --seed "$SEED" \
   --perturbation.mode none \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.3
 
 echo ""
@@ -70,7 +70,7 @@ python3 "$COLLECT" \
   --seed "$SEED" \
   --perturbation.mode ik_noise \
   --perturbation.ik-noise.default-fraction 0.3 \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.1
 
 echo ""
@@ -81,7 +81,7 @@ python3 "$COLLECT" \
   --seed "$SEED" \
   --perturbation.mode ik_noise \
   --perturbation.ik-noise.default-fraction 0.3 \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.2
 
 echo ""
@@ -92,7 +92,7 @@ python3 "$COLLECT" \
   --seed "$SEED" \
   --perturbation.mode ik_noise \
   --perturbation.ik-noise.default-fraction 0.3 \
-  --perturbation.perturb-home True \
+  --perturbation.perturb-home \
   --perturbation.home-offset.default-max-offset 0.3
 
 echo ""

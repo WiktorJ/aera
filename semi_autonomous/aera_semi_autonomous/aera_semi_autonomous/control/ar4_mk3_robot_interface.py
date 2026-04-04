@@ -414,12 +414,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def get_logger(self) -> logging.Logger:
         return self.logger
 
-    def go_home(self) -> bool:
-        """Move robot to home position by interpolating joint positions."""
+    def get_home_qpos(self) -> np.ndarray:
+        """Return the home joint positions (arm joints only)."""
+        qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
+        return self.env.initial_qpos[qpos_indices].copy()
+
+    def teleport_to_qpos(self, target_qpos: np.ndarray) -> None:
+        """Instantly set arm joint positions without interpolation or recording."""
+        qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
+        self.env.data.qpos[qpos_indices] = target_qpos
+        mujoco.mj_forward(self.env.model, self.env.data)
+
+    def go_to_qpos(self, target_qpos: np.ndarray) -> bool:
+        """Move robot to arbitrary joint positions by interpolating."""
         try:
-            self.logger.info("Going home.")
             qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
-            target_qpos = self.env.initial_qpos[qpos_indices]
             start_qpos = self.env.data.qpos[qpos_indices].copy()
 
             if (
@@ -457,15 +466,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
             qpos_error = np.linalg.norm(target_qpos - final_qpos)
             if qpos_error > self.config.home_qpos_error_tolerance:
                 self.logger.warning(
-                    f"Go home may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
+                    f"go_to_qpos may not have reached target precisely. Final qpos error: {qpos_error:.4f}"
                 )
                 return False
 
             return True
 
         except Exception as e:
-            self.logger.error(f"An error occurred during go_home: {e}", exc_info=True)
+            self.logger.error(f"An error occurred during go_to_qpos: {e}", exc_info=True)
             return False
+
+    def go_home(self) -> bool:
+        """Move robot to home position by interpolating joint positions."""
+        self.logger.info("Going home.")
+        return self.go_to_qpos(self.get_home_qpos())
 
     def move_to(self, pose: Pose) -> bool:
         """Move end-effector to specified pose using inverse kinematics."""

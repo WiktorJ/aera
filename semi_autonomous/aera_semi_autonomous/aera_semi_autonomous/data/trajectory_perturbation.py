@@ -17,6 +17,12 @@ ik_noise
     interface. Use ``perturb_ik_config`` to obtain a noisy ``IKConfig`` and
     pass it inside ``Ar4Mk3InterfaceConfig`` when creating the robot interface.
 
+home_offset (composable flag)
+    Small random offsets are added to the home joint angles so the robot
+    starts each episode from a slightly different configuration.  Enable via
+    ``perturb_home=True`` on ``PerturbationConfig``.  This is orthogonal to
+    the other modes and can be combined with any of them.
+
 Usage:
     config = PerturbationConfig(mode="offset_approach", num_approach_waypoints=2)
     waypoints = generate_waypoints(target_pose, config)
@@ -41,16 +47,27 @@ Usage:
             per_joint_scaling_fractions={3: 0.05},
         ),
     )
+
+    # Home offset — start from a slightly perturbed home position:
+    config = PerturbationConfig(perturb_home=True)
+    go_home_perturbed(robot, config)  # instead of robot.go_home()
 """
+
+from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal
+from typing import TYPE_CHECKING, Dict, List, Literal
 
 import numpy as np
 from geometry_msgs.msg import Pose
 
 from aera_semi_autonomous.control.ar4_mk3_interface_config import IKConfig
+
+if TYPE_CHECKING:
+    from aera_semi_autonomous.control.ar4_mk3_robot_interface import (
+        Ar4Mk3RobotInterface,
+    )
 
 
 @dataclass
@@ -94,6 +111,25 @@ class IKNoisePerturbation:
 
 
 @dataclass
+class HomeOffsetPerturbation:
+    """Additive noise for randomizing the robot's home joint positions.
+
+    Each arm joint's home angle is offset by a sample from
+    ``Uniform(-max_offset, +max_offset)`` (radians).
+
+    Attributes:
+        default_max_offset: Max offset applied to all joints (radians).
+            Default ~0.05 rad ≈ 2.9°.
+        per_joint_max_offsets: Optional per-joint overrides.  Dict mapping
+            joint index (0-5) to a max offset in radians.  Joints not
+            present fall back to ``default_max_offset``.
+    """
+
+    default_max_offset: float = 0.05
+    per_joint_max_offsets: Dict[int, float] = field(default_factory=dict)
+
+
+@dataclass
 class PerturbationConfig:
     """Configuration for trajectory perturbation.
 
@@ -106,6 +142,8 @@ class PerturbationConfig:
         approach_max_offset: Maximum XY distance from target for offset waypoint (meters).
         approach_height: Base height above target for the offset waypoint (meters).
         approach_height_noise: Random additional height variation (meters).
+        perturb_home: Whether to perturb the home joint positions before the episode.
+        home_offset: Noise configuration for the home position perturbation.
         ik_noise: Noise configuration for the "ik_noise" mode.
     """
 
@@ -119,6 +157,9 @@ class PerturbationConfig:
     approach_max_offset: float = 0.04
     approach_height: float = 0.06
     approach_height_noise: float = 0.02
+
+    perturb_home: bool = False
+    home_offset: HomeOffsetPerturbation = field(default_factory=HomeOffsetPerturbation)
 
     ik_noise: IKNoisePerturbation = field(default_factory=IKNoisePerturbation)
 
@@ -266,3 +307,55 @@ def perturb_ik_config(base: IKConfig, noise: IKNoisePerturbation) -> IKConfig:
         include_rotation_in_target_error_measure=base.include_rotation_in_target_error_measure,
         joints_update_scaling=noisy_scaling,
     )
+
+
+def perturb_home_qpos(
+    home_qpos: np.ndarray,
+    config: HomeOffsetPerturbation,
+    num_arm_joints: int = 6,
+) -> np.ndarray:
+    """Return a copy of home_qpos with random additive offsets on arm joints.
+
+    Each arm joint (indices 0 to ``num_arm_joints - 1``) is offset by
+    ``Uniform(-max_offset, +max_offset)`` where ``max_offset`` comes from
+    ``per_joint_max_offsets`` if present, else ``default_max_offset``.
+
+    Args:
+        home_qpos: The baseline home joint positions.
+        config: Home offset perturbation configuration.
+        num_arm_joints: Number of arm joints to perturb (default 6).
+
+    Returns:
+        A new array with perturbed joint positions.
+    """
+    result = home_qpos.copy()
+    for i in range(min(num_arm_joints, len(result))):
+        max_off = config.per_joint_max_offsets.get(i, config.default_max_offset)
+        result[i] += np.random.uniform(-max_off, max_off)
+    return result
+
+
+def go_home_perturbed(robot: Ar4Mk3RobotInterface, config: PerturbationConfig) -> bool:
+    """Move the robot home, optionally with a perturbed home position.
+
+    When ``config.perturb_home`` is True, the robot moves to a slightly
+    offset version of the home joint configuration.  Otherwise this is
+    equivalent to ``robot.go_home()``.
+
+    Args:
+        robot: The robot interface.
+        config: Perturbation configuration.
+
+    Returns:
+        True if the robot reached the (perturbed) home position.
+    """
+    if not config.perturb_home:
+        return robot.go_home()
+
+    if not robot.go_home():
+        return False
+
+    home_qpos = robot.get_home_qpos()
+    perturbed = perturb_home_qpos(home_qpos, config.home_offset)
+    robot.teleport_to_qpos(perturbed)
+    return True

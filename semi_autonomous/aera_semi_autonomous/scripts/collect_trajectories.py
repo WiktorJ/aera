@@ -26,6 +26,7 @@ from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCo
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
     generate_waypoints,
+    go_home_perturbed,
     perturb_ik_config,
 )
 
@@ -79,7 +80,7 @@ def run_pick_and_place_and_collect(
 
     # Go home
     data_collector.record_current_prompt("go home")
-    if not robot.go_home():
+    if not go_home_perturbed(robot, perturbation_config):
         logger.error("Failed to move robot to home position")
         return False
 

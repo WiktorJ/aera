@@ -24,6 +24,9 @@ Usage:
 
     # Custom output directory
     python sweep_ik_params.py --grid-path my_grid.json --csv-path /tmp/sweep.csv --json-path /tmp/sweep.json
+
+    # Sweep home-offset magnitudes alongside IK params (values from grid JSON)
+    python sweep_ik_params.py --grid-path my_grid.json --params home_offset --baseline-trials 200 --trials-per-config 100
 """
 
 import csv
@@ -54,7 +57,10 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 )
 from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
 from aera_semi_autonomous.data.trajectory_perturbation import (
+    HomeOffsetPerturbation,
     IKNoisePerturbation,
+    PerturbationConfig,
+    go_home_perturbed,
     perturb_ik_config,
 )
 
@@ -82,7 +88,11 @@ SWEEP_PARAMS: set = {
     "joints_update_scaling_4",
     "joints_update_scaling_5",
     "max_steps",
+    "home_offset",
 }
+
+# Params that configure PerturbationConfig rather than IKConfig.
+_PERTURBATION_PARAMS: set = {"home_offset"}
 
 _DEFAULT_DATA_DIR = "data"
 
@@ -164,6 +174,18 @@ def make_ik_config(param_name: str, value: float) -> IKConfig:
     return dataclasses.replace(base, **{param_name: typed_value})
 
 
+def make_trial_configs(
+    param_name: str, value: float
+) -> tuple:
+    """Return (IKConfig, PerturbationConfig) for a given sweep param and value."""
+    if param_name in _PERTURBATION_PARAMS:
+        return IKConfig(), PerturbationConfig(
+            perturb_home=True,
+            home_offset=HomeOffsetPerturbation(default_max_offset=value),
+        )
+    return make_ik_config(param_name, value), PerturbationConfig()
+
+
 def best_value_for_param(param_name: str, results: List[TrialResult]) -> float:
     """Return the param value with the highest full-success rate among sweep results."""
     param_results = [r for r in results if r.param_name == param_name]
@@ -180,11 +202,17 @@ def best_value_for_param(param_name: str, results: List[TrialResult]) -> float:
 def build_new_defaults_config(
     all_results: List[TrialResult], params_swept: List[str]
 ) -> IKConfig:
-    """Build an IKConfig using the best value found for each swept parameter."""
+    """Build an IKConfig using the best value found for each swept IK parameter.
+
+    Perturbation parameters (e.g. home_offset) are skipped — they don't
+    map to IKConfig fields.
+    """
     base = IKConfig()
     scaling = list(base.joints_update_scaling)
     kwargs = {}
     for param_name in params_swept:
+        if param_name in _PERTURBATION_PARAMS:
+            continue
         best = best_value_for_param(param_name, all_results)
         if param_name.startswith("joints_update_scaling_"):
             idx = int(param_name.split("_")[-1])
@@ -199,11 +227,13 @@ def run_trial(
     ik_config: IKConfig,
     render: bool,
     logger: logging.Logger,
+    perturbation_config: Optional[PerturbationConfig] = None,
 ) -> TrialResult:
     """Run one pick-and-place episode and return action-level success flags."""
     env = None
     pick_success = False
     place_success = False
+    _perturbation = perturbation_config or PerturbationConfig()
     try:
         domain_rand_config, _, _ = generate_random_domain_rand_config()
         env_config = Ar4Mk3EnvConfig(
@@ -225,7 +255,7 @@ def run_trial(
         interface_config = Ar4Mk3InterfaceConfig(render_steps=render, ik=ik_config)
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
 
-        if not robot.go_home():
+        if not go_home_perturbed(robot, _perturbation):
             return TrialResult("", 0.0, 0, False, False, False)
 
         object_pose = get_object_pose(env, logger)
@@ -245,7 +275,7 @@ def run_trial(
             target_pose.orientation = Quaternion(x=0.0, y=1.0, z=0.0, w=0.0)
             place_success = robot.release_at(target_pose)
 
-        robot.go_home()
+        go_home_perturbed(robot, _perturbation)
     except Exception as e:
         logger.warning(f"Trial raised exception: {e}")
     finally:
@@ -301,11 +331,11 @@ def run_sweep(
     total = len(values) * cfg.trials_per_config
     with tqdm(total=total, desc=param_name, unit="trial", leave=True) as pbar:
         for value in values:
-            ik_config = make_ik_config(param_name, value)
+            ik_config, perturbation_config = make_trial_configs(param_name, value)
             value_results = []
             for trial_idx in range(cfg.trials_per_config):
                 np.random.seed(cfg.seed + trial_idx)
-                result = run_trial(model_path, ik_config, cfg.render, logger)
+                result = run_trial(model_path, ik_config, cfg.render, logger, perturbation_config)
                 result.param_name = param_name
                 result.param_value = value
                 result.trial_idx = trial_idx
@@ -328,7 +358,9 @@ def build_sweep_summary(
     param_name: str, values: list, results: List[TrialResult]
 ) -> dict:
     """Build a JSON-serializable dict summarising one parameter's sweep."""
-    if param_name.startswith("joints_update_scaling_"):
+    if param_name in _PERTURBATION_PARAMS:
+        default_value = getattr(HomeOffsetPerturbation(), "default_max_offset")
+    elif param_name.startswith("joints_update_scaling_"):
         idx = int(param_name.split("_")[-1])
         default_value = IKConfig().joints_update_scaling[idx]
     else:

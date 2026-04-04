@@ -37,6 +37,7 @@ from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
     generate_waypoints,
+    go_home_perturbed,
     perturb_ik_config,
 )
 
@@ -150,9 +151,9 @@ def main():
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")
 
-        # Step 1: Go to home position
+        # Step 1: Go to home position (possibly perturbed)
         logger.info("Moving robot to home position...")
-        if not robot.go_home():
+        if not go_home_perturbed(robot, cfg.perturbation):
             logger.error("Failed to move robot to home position")
             return False
         logger.info("Robot moved to home position")

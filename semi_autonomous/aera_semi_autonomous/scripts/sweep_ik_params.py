@@ -139,6 +139,10 @@ class SweepConfig:
     grid_search: bool = False
     """Run a full grid search over all (param, value) combinations instead of one-at-a-time sweeps.
     Only practical with 2-3 params × 3-4 values each. Use --params and --grid-path to keep it small."""
+    background_ik_noise_fraction: float = 0.0
+    """When > 0, apply multiplicative IK noise at this global fraction on every trial in grid/one-at-a-time
+    sweeps. Each trial gets a fresh noisy IKConfig sampled around the swept value. Use this to measure
+    how a swept parameter (e.g. home_offset) behaves under combined perturbation."""
     noise_sweep: bool = False
     """Run noise tolerance sweep: for each fraction in --noise-fractions, run N trials with
     multiplicative IK noise at that level, then compare against a baseline block."""
@@ -303,13 +307,19 @@ def run_named_block(
     model_path: str,
     render: bool,
     logger: logging.Logger,
+    ik_noise_fraction: float = 0.0,
 ) -> List[TrialResult]:
     """Run N trials with a fixed IKConfig, tagging results with param_name=label."""
     results = []
     with tqdm(total=n_trials, desc=label, unit="trial", leave=True) as pbar:
         for i in range(n_trials):
             np.random.seed(seed + i)
-            result = run_trial(model_path, ik_config, render, logger)
+            trial_ik = (
+                perturb_ik_config(ik_config, IKNoisePerturbation(default_fraction=ik_noise_fraction))
+                if ik_noise_fraction > 0
+                else ik_config
+            )
+            result = run_trial(model_path, trial_ik, render, logger)
             result.param_name = label
             result.param_value = 0.0
             result.trial_idx = i
@@ -335,7 +345,12 @@ def run_sweep(
             value_results = []
             for trial_idx in range(cfg.trials_per_config):
                 np.random.seed(cfg.seed + trial_idx)
-                result = run_trial(model_path, ik_config, cfg.render, logger, perturbation_config)
+                trial_ik = (
+                    perturb_ik_config(ik_config, IKNoisePerturbation(default_fraction=cfg.background_ik_noise_fraction))
+                    if cfg.background_ik_noise_fraction > 0
+                    else ik_config
+                )
+                result = run_trial(model_path, trial_ik, cfg.render, logger, perturbation_config)
                 result.param_name = param_name
                 result.param_value = value
                 result.trial_idx = trial_idx
@@ -818,6 +833,7 @@ def main() -> None:
                     model_path,
                     cfg.render,
                     logger,
+                    ik_noise_fraction=cfg.background_ik_noise_fraction,
                 )
                 all_results.extend(baseline_results)
                 n = len(baseline_results)
@@ -850,6 +866,7 @@ def main() -> None:
                     model_path,
                     cfg.render,
                     logger,
+                    ik_noise_fraction=cfg.background_ik_noise_fraction,
                 )
                 all_results.extend(new_defaults_results)
                 comp_data = build_comparison_summary(
@@ -872,6 +889,7 @@ def main() -> None:
                     model_path,
                     cfg.render,
                     logger,
+                    ik_noise_fraction=cfg.background_ik_noise_fraction,
                 )
                 all_results.extend(baseline_results)
                 n = len(baseline_results)
@@ -910,6 +928,7 @@ def main() -> None:
                     model_path,
                     cfg.render,
                     logger,
+                    ik_noise_fraction=cfg.background_ik_noise_fraction,
                 )
                 all_results.extend(new_defaults_results)
                 comp_data = build_comparison_summary(

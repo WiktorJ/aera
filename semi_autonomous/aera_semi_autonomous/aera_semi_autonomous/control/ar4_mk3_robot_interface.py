@@ -355,6 +355,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
             previous_site_xpos = site_xpos.copy()
             mujoco.mj_step(model, data)  # type: ignore
+            # mj_step only calls mj_forward at the *beginning* of the step, not the end.
+            # site_xpos is therefore stale (pre-integration) after mj_step.
+            # Refresh it so that the no-progress check and min_height check below
+            # compare actual post-integration positions.
+            mujoco.mj_forward(model, data)  # type: ignore
             self._record_step()
 
             new_site_xpos = data.site_xpos[site_id]
@@ -420,10 +425,24 @@ class Ar4Mk3RobotInterface(RobotInterface):
         return self.env.initial_qpos[qpos_indices].copy()
 
     def teleport_to_qpos(self, target_qpos: np.ndarray) -> None:
-        """Instantly set arm joint positions without interpolation or recording."""
+        """Instantly set arm joint positions without interpolation or recording.
+
+        Both qpos and ctrl are updated so the actuators start from a consistent
+        state — otherwise the IK solver fights against stale ctrl targets.
+        """
         qpos_indices = self._get_qpos_indices(self.env.model, self.joint_names)
+        actuator_ids = np.array(
+            [self.env.model.actuator(name).id for name in self.actuator_names]
+        )
         self.env.data.qpos[qpos_indices] = target_qpos
+        self.env.data.ctrl[actuator_ids] = target_qpos
         mujoco.mj_forward(self.env.model, self.env.data)
+        # One warm-up mj_step (no trailing mj_forward) puts the simulation in the
+        # same regime as after go_home(), which also ends with mj_step.
+        # Ending with mj_forward instead would mean the IK's first mj_step is the
+        # "first-after-mj_forward" call, which has zero delta on site_xpos — causing
+        # the IK no-progress check to fire immediately on iteration 1.
+        mujoco.mj_step(self.env.model, self.env.data)
 
     def go_to_qpos(self, target_qpos: np.ndarray) -> bool:
         """Move robot to arbitrary joint positions by interpolating."""

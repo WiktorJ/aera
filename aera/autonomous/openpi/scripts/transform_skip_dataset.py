@@ -378,36 +378,46 @@ def main():
     )
     logging.info(f"Output repo ID: {output_repo_id}")
 
-    # Load source dataset
-    logging.info(f"Loading source dataset: {args.repo_id}")
-    source_dataset = LeRobotDataset(args.repo_id)
-    logging.info(f"Source dataset loaded: {len(source_dataset)} frames")
+    # Check if the output dataset already exists locally in the HuggingFace cache
+    hf_cache_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / output_repo_id
+    if hf_cache_dir.exists():
+        logging.info(
+            f"Output dataset already exists at {hf_cache_dir}. "
+            "Skipping transformation and loading existing dataset."
+        )
+        output_dataset = LeRobotDataset(output_repo_id)
+        logging.info(f"Loaded existing dataset: {len(output_dataset)} frames")
+    else:
+        # Load source dataset
+        logging.info(f"Loading source dataset: {args.repo_id}")
+        source_dataset = LeRobotDataset(args.repo_id)
+        logging.info(f"Source dataset loaded: {len(source_dataset)} frames")
 
-    # Log a sample to help debug
-    sample = source_dataset[0]
-    logging.info(f"Sample keys: {list(sample.keys())}")
-    for key, val in sample.items():
-        if isinstance(val, (torch.Tensor, np.ndarray)):
-            logging.info(
-                f"  {key}: shape={getattr(val, 'shape', 'N/A')}, dtype={getattr(val, 'dtype', 'N/A')}"
-            )
-        else:
-            logging.info(f"  {key}: {type(val).__name__} = {val}")
+        # Log a sample to help debug
+        sample = source_dataset[0]
+        logging.info(f"Sample keys: {list(sample.keys())}")
+        for key, val in sample.items():
+            if isinstance(val, (torch.Tensor, np.ndarray)):
+                logging.info(
+                    f"  {key}: shape={getattr(val, 'shape', 'N/A')}, dtype={getattr(val, 'dtype', 'N/A')}"
+                )
+            else:
+                logging.info(f"  {key}: {type(val).__name__} = {val}")
 
-    # Transform
-    output_dataset = transform_dataset(
-        source_dataset,
-        output_repo_id=output_repo_id,
-        skip=args.skip,
-        delta_actions=args.delta_actions,
-        num_joint_dims=args.num_joint_dims,
-        exclude_prompts=exclude_prompts,
-    )
+        # Transform
+        output_dataset = transform_dataset(
+            source_dataset,
+            output_repo_id=output_repo_id,
+            skip=args.skip,
+            delta_actions=args.delta_actions,
+            num_joint_dims=args.num_joint_dims,
+            exclude_prompts=exclude_prompts,
+        )
+        output_dataset.finalize()
 
     # Optionally push to hub
     if args.push_to_hub:
-        logging.info("Finalizing and pushing to HuggingFace Hub...")
-        output_dataset.finalize()
+        logging.info("Pushing to HuggingFace Hub...")
         output_dataset.push_to_hub(
             tags=["aera", "ar4_mk3", f"skip{args.skip}"]
             + (["delta_actions"] if args.delta_actions else []),
@@ -418,7 +428,6 @@ def main():
         )
         logging.info(f"Dataset pushed to hub: {output_repo_id}")
     else:
-        output_dataset.finalize()
         logging.info(f"Dataset saved locally. Use --push-to-hub to upload.")
 
     logging.info("Done.")

@@ -192,6 +192,7 @@ def main(
             private=False,
             push_videos=True,
             license="apache-2.0",
+            upload_large_folder=True,
         )
     print(f"Finished converting dataset. Saved to {output_path}")
     print(f"Processed {processed_prompts} prompts")

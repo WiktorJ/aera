@@ -110,7 +110,9 @@ def _to_numpy(value):
     return np.asarray(value)
 
 
-def _build_output_repo_id(source_repo_id: str, skip: int, delta: bool, suffix: str | None) -> str:
+def _build_output_repo_id(
+    source_repo_id: str, skip: int, delta: bool, suffix: str | None
+) -> str:
     """Build the output repo ID from the source repo ID and options."""
     if suffix is not None:
         tag = suffix
@@ -279,7 +281,9 @@ def transform_dataset(
         if current_episode is not None and episode_t != current_episode:
             output_dataset.save_episode()
             episodes_written += 1
-            logging.info(f"Saved episode {current_episode} (total episodes: {episodes_written})")
+            logging.info(
+                f"Saved episode {current_episode} (total episodes: {episodes_written})"
+            )
 
         current_episode = episode_t
 
@@ -304,7 +308,9 @@ def transform_dataset(
                 # Delta = action[t+skip] - state[t] for joint dims
                 # Keep gripper dims absolute
                 delta = action_future.copy()
-                delta[:num_joint_dims] = action_future[:num_joint_dims] - state_t[:num_joint_dims]
+                delta[:num_joint_dims] = (
+                    action_future[:num_joint_dims] - state_t[:num_joint_dims]
+                )
                 frame["actions"] = delta
             else:
                 frame["actions"] = action_future
@@ -330,7 +336,9 @@ def transform_dataset(
     if frames_written > 0 and current_episode is not None:
         output_dataset.save_episode()
         episodes_written += 1
-        logging.info(f"Saved final episode {current_episode} (total episodes: {episodes_written})")
+        logging.info(
+            f"Saved final episode {current_episode} (total episodes: {episodes_written})"
+        )
 
     logging.info(
         f"\nTransformation complete:\n"
@@ -380,7 +388,9 @@ def main():
     logging.info(f"Sample keys: {list(sample.keys())}")
     for key, val in sample.items():
         if isinstance(val, (torch.Tensor, np.ndarray)):
-            logging.info(f"  {key}: shape={getattr(val, 'shape', 'N/A')}, dtype={getattr(val, 'dtype', 'N/A')}")
+            logging.info(
+                f"  {key}: shape={getattr(val, 'shape', 'N/A')}, dtype={getattr(val, 'dtype', 'N/A')}"
+            )
         else:
             logging.info(f"  {key}: {type(val).__name__} = {val}")
 
@@ -404,6 +414,7 @@ def main():
             private=args.private,
             push_videos=True,
             license="apache-2.0",
+            upload_large_folder=True,
         )
         logging.info(f"Dataset pushed to hub: {output_repo_id}")
     else:

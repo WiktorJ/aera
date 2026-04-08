@@ -97,6 +97,11 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         )
 
 
+DEFAULT_TRAINING_DATA_REPO = (
+    "Purple69/aera_semi_pnp_dr_02_04_2026_skip3_delta_no_go_home"
+)
+
+
 _BASE_CONFIGS = [
     openpi_config.TrainConfig(
         name="pi0_ar4_mk3_low_mem_finetune",
@@ -107,11 +112,11 @@ _BASE_CONFIGS = [
             action_horizon=10,
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home",
+            repo_id=DEFAULT_TRAINING_DATA_REPO,
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home/",
+                assets_dir=f"hf://datasets/{DEFAULT_TRAINING_DATA_REPO}",
                 asset_id="assets",
             ),
         ),
@@ -146,11 +151,11 @@ _BASE_CONFIGS = [
             paligemma_variant="gemma_2b_lora",
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home",
+            repo_id=DEFAULT_TRAINING_DATA_REPO,
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home/",
+                assets_dir=f"hf://datasets/{DEFAULT_TRAINING_DATA_REPO}",
                 asset_id="assets",
             ),
         ),
@@ -182,11 +187,11 @@ _BASE_CONFIGS = [
             max_token_len=100,
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026",
+            repo_id=DEFAULT_TRAINING_DATA_REPO,
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026/",
+                assets_dir=f"hf://datasets/{DEFAULT_TRAINING_DATA_REPO}",
                 asset_id="assets",
             ),
         ),
@@ -205,11 +210,11 @@ _BASE_CONFIGS = [
             pi05=True, action_horizon=10, discrete_state_input=False
         ),
         data=Ar4Mk3DataConfig(
-            repo_id="Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home",
+            repo_id=DEFAULT_TRAINING_DATA_REPO,
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(
-                assets_dir="hf://datasets/Purple69/aera_semi_pnp_dr_08_01_2026_skip5_delta_no_go_home/",
+                assets_dir=f"hf://datasets/{DEFAULT_TRAINING_DATA_REPO}",
                 asset_id="assets",
             ),
         ),

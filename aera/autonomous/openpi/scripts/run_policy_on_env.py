@@ -202,6 +202,9 @@ def run_on_env(args: Args) -> None:
                     action_plan.extend(action_chunk[: args.replan_steps])
 
                 action = action_plan.popleft()
+                # Policy outputs raw gripper position (-0.014=open, 0=closed)
+                # but env expects normalized (-1=closed, +1=open).
+                action[6] = (2.0 * action[6] / -0.014) - 1.0
                 obs, _, done, _, info = env.step(action)
 
                 if done:

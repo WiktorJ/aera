@@ -63,7 +63,8 @@ class Args:
     headless: bool = False
 
     # --- Safety ---
-    skip_decode_failures: bool = False  # Skip actions when FAST decode likely failed (all-identical action chunk)
+    skip_decode_failures: bool = False  # When enabled, handle likely FAST decode failures (all-identical action chunk)
+    replan_steps_on_failure: int = 1  # Steps to execute from a failed decode chunk before replanning
 
     # --- Utils ---
     video_out_path: str = "data/ar4_mk3/videos"
@@ -154,6 +155,7 @@ def run_on_env(args: Args) -> None:
         action_plan = collections.deque()
         replay_images = []
         done = False
+        last_successful_gripper_action: float = 0.0  # 0 = closed in server output space
 
         # Build a warm-up action that keeps the arm still and the gripper closed.
         # With absolute_state_actions=False, arm actions are relative deltas,
@@ -213,9 +215,13 @@ def run_on_env(args: Args) -> None:
                     }
                     action_chunk = client.infer(element)["actions"]
                     if args.skip_decode_failures and _is_decode_failure(action_chunk):
-                        logging.warning("Detected FAST decode failure at step %d, skipping action chunk", t)
-                        continue
-                    action_plan.extend(action_chunk[: args.replan_steps])
+                        logging.warning("Detected FAST decode failure at step %d, applying limited steps with frozen gripper", t)
+                        steps = action_chunk[: args.replan_steps_on_failure].copy()
+                        steps[:, 6] = last_successful_gripper_action
+                        action_plan.extend(steps)
+                    else:
+                        last_successful_gripper_action = action_chunk[0, 6]
+                        action_plan.extend(action_chunk[: args.replan_steps])
 
                 action = np.array(action_plan.popleft())
                 # Policy outputs raw gripper position (-0.014=open, 0=closed)

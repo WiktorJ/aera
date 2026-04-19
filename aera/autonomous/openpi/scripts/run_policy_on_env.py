@@ -62,9 +62,22 @@ class Args:
     domain_rand: bool = False
     headless: bool = False
 
+    # --- Safety ---
+    skip_decode_failures: bool = False  # Skip actions when FAST decode likely failed (all-identical action chunk)
+
     # --- Utils ---
     video_out_path: str = "data/ar4_mk3/videos"
     seed: int = 7
+
+
+def _is_decode_failure(action_chunk: np.ndarray) -> bool:
+    """Detect likely FAST tokenizer decode failures.
+
+    When decoding fails, the server returns the unnormalized mean action
+    (zeros in normalized space passed through Unnormalize), resulting in
+    all rows of the action chunk being identical.
+    """
+    return np.allclose(action_chunk, action_chunk[0], atol=1e-5)
 
 
 def run_on_env(args: Args) -> None:
@@ -199,6 +212,9 @@ def run_on_env(args: Args) -> None:
                         "prompt": prompt,
                     }
                     action_chunk = client.infer(element)["actions"]
+                    if args.skip_decode_failures and _is_decode_failure(action_chunk):
+                        logging.warning("Detected FAST decode failure at step %d, skipping action chunk", t)
+                        continue
                     action_plan.extend(action_chunk[: args.replan_steps])
 
                 action = np.array(action_plan.popleft())

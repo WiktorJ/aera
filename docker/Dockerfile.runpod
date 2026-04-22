@@ -33,8 +33,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copy only project deps
+# Copy only project deps + the path-source dependency so uv can resolve it
 COPY pyproject.toml uv.lock ./
+COPY semi_autonomous/aera_semi_autonomous semi_autonomous/aera_semi_autonomous
 
 # Install only deps without project to keep the cache valid
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --python 3.12  --frozen --no-install-project

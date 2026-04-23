@@ -198,11 +198,11 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=1_000,
-        log_interval=100,
-        save_interval=200,
-        keep_period=200,
-        batch_size=64,
+        num_train_steps=5_000,
+        log_interval=200,
+        save_interval=500,
+        keep_period=500,
+        batch_size=256,
     ),
     openpi_config.TrainConfig(
         name="pi05_ar4_mk3",
@@ -218,7 +218,6 @@ _BASE_CONFIGS = [
                 asset_id="assets",
             ),
         ),
-        batch_size=256,
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=10_000,
             peak_lr=5e-5,
@@ -230,8 +229,11 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
-        pytorch_weight_path="/path/to/your/pytorch_weight_path",
-        num_train_steps=30_000,
+        num_train_steps=5_000,
+        log_interval=200,
+        save_interval=500,
+        keep_period=500,
+        batch_size=256,
     ),
     openpi_config.TrainConfig(
         name="debug_pi05",

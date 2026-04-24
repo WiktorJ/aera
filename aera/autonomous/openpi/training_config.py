@@ -198,11 +198,11 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi0_fast_base/params"
         ),
-        num_train_steps=5_000,
-        log_interval=200,
-        save_interval=500,
-        keep_period=500,
-        batch_size=256,
+        num_train_steps=20_000,
+        log_interval=400,
+        save_interval=5_000,
+        keep_period=5_000,
+        batch_size=32,
     ),
     openpi_config.TrainConfig(
         name="pi05_ar4_mk3",
@@ -229,11 +229,11 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
-        num_train_steps=5_000,
-        log_interval=200,
-        save_interval=500,
-        keep_period=500,
-        batch_size=256,
+        num_train_steps=20_000,
+        log_interval=400,
+        save_interval=5_000,
+        keep_period=5_000,
+        batch_size=32,
     ),
     openpi_config.TrainConfig(
         name="debug_pi05",

@@ -77,6 +77,17 @@ def parse_args() -> argparse.Namespace:
         help="Suffix for the output repo ID. Defaults to 'skip{N}' or 'skip{N}_delta'.",
     )
     parser.add_argument(
+        "--min-action-delta",
+        type=float,
+        default=None,
+        help=(
+            "If set, drop frames whose action is closer than this L2 distance "
+            "(over joint dims) to the previously written frame's action within "
+            "the same episode. Useful for filtering out static/idle frames "
+            "where the robot pauses between sub-tasks."
+        ),
+    )
+    parser.add_argument(
         "--exclude-prompts",
         type=str,
         default=None,
@@ -188,6 +199,7 @@ def transform_dataset(
     delta_actions: bool,
     num_joint_dims: int,
     exclude_prompts: set[str] | None = None,
+    min_action_delta: float | None = None,
 ) -> LeRobotDataset:
     """Transform the source dataset by pairing obs[t] with action[t+skip].
 
@@ -235,7 +247,9 @@ def transform_dataset(
     frames_written = 0
     frames_skipped_boundary = 0
     frames_skipped_prompt = 0
+    frames_skipped_static = 0
     episodes_written = 0
+    last_action_for_episode: np.ndarray | None = None
 
     offset = skip - 1
     for t in range(0, total_samples, skip):
@@ -243,7 +257,8 @@ def transform_dataset(
             logging.info(
                 f"Processing frame {t}/{total_samples} "
                 f"(written: {frames_written}, skipped_boundary: {frames_skipped_boundary}, "
-                f"skipped_prompt: {frames_skipped_prompt})"
+                f"skipped_prompt: {frames_skipped_prompt}, "
+                f"skipped_static: {frames_skipped_static})"
             )
 
         t_future = t + offset
@@ -284,6 +299,7 @@ def transform_dataset(
             logging.info(
                 f"Saved episode {current_episode} (total episodes: {episodes_written})"
             )
+            last_action_for_episode = None
 
         current_episode = episode_t
 
@@ -301,8 +317,19 @@ def transform_dataset(
             frame["state"] = state_t
 
         # Get actions from time t+skip
+        action_future = None
         if "actions" in sample_future:
             action_future = _to_numpy(sample_future["actions"]).astype(np.float32)
+
+            # Drop frames where the action barely moved relative to the last
+            # written frame in this episode (filters static/idle pauses).
+            if min_action_delta is not None and last_action_for_episode is not None:
+                joint_now = action_future[:num_joint_dims]
+                joint_prev = last_action_for_episode[:num_joint_dims]
+                dist = float(np.linalg.norm(joint_now - joint_prev))
+                if dist < min_action_delta:
+                    frames_skipped_static += 1
+                    continue
 
             if delta_actions and "state" in sample_t:
                 # Delta = action[t+skip] - state[t] for joint dims
@@ -331,6 +358,8 @@ def transform_dataset(
 
         output_dataset.add_frame(frame)
         frames_written += 1
+        if action_future is not None:
+            last_action_for_episode = action_future
 
     # Save the last episode
     if frames_written > 0 and current_episode is not None:
@@ -346,11 +375,13 @@ def transform_dataset(
         f"  Output frames:          {frames_written}\n"
         f"  Skipped (boundary):     {frames_skipped_boundary}\n"
         f"  Skipped (prompt filter):{frames_skipped_prompt}\n"
-        f"  Skipped (tail):         {total_samples - frames_written - frames_skipped_boundary - frames_skipped_prompt}\n"
+        f"  Skipped (static):       {frames_skipped_static}\n"
+        f"  Skipped (tail):         {total_samples - frames_written - frames_skipped_boundary - frames_skipped_prompt - frames_skipped_static}\n"
         f"  Episodes written:       {episodes_written}\n"
         f"  Skip interval:          {skip}\n"
         f"  Delta actions:          {delta_actions}\n"
-        f"  Excluded prompts:       {exclude_prompts or 'none'}"
+        f"  Excluded prompts:       {exclude_prompts or 'none'}\n"
+        f"  Min action delta:       {min_action_delta if min_action_delta is not None else 'disabled'}"
     )
 
     return output_dataset
@@ -370,7 +401,7 @@ def main():
     logging.info(
         f"Config: repo_id={args.repo_id}, skip={args.skip}, "
         f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}, "
-        f"exclude_prompts={exclude_prompts}"
+        f"exclude_prompts={exclude_prompts}, min_action_delta={args.min_action_delta}"
     )
 
     output_repo_id = _build_output_repo_id(
@@ -412,6 +443,7 @@ def main():
             delta_actions=args.delta_actions,
             num_joint_dims=args.num_joint_dims,
             exclude_prompts=exclude_prompts,
+            min_action_delta=args.min_action_delta,
         )
         output_dataset.finalize()
 

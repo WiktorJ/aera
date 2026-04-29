@@ -135,6 +135,116 @@ def compute_cross_statistics(
         )
 
 
+def compute_consecutive_action_distances(
+    actions: np.ndarray,
+    skips: list[int],
+    num_joint_dims: int,
+    thresholds: list[float],
+    histogram_bins: int = 20,
+) -> None:
+    """Analyze L2 distances between consecutive output actions at each skip.
+
+    For each skip, builds the sequence of "kept" actions (the ones that would
+    end up in the transformed dataset) and reports the distribution of L2
+    distances between successive entries over the first `num_joint_dims` dims.
+    This is the same quantity used by transform_skip_dataset.py's
+    --min-action-delta filter, so the percentiles / fraction-below tables
+    here can be read directly as candidate thresholds.
+    """
+    # Take first action timestep if there's an action horizon
+    if actions.ndim == 3:
+        action_seq = actions[:, 0, :]
+    else:
+        action_seq = actions
+
+    dim = min(num_joint_dims, action_seq.shape[-1])
+    joint_actions = action_seq[..., :dim]
+
+    print(f"\n{'=' * 78}")
+    print(f"  Consecutive action L2 distances (joint dims [:{dim}])")
+    print(f"  Use these to pick --min-action-delta in transform_skip_dataset.py")
+    print(f"{'=' * 78}")
+
+    percentile_qs = [50, 75, 90, 95, 99]
+    header_pcts = " | ".join(f"p{q:>2}={'':>0}".rstrip() + " " * 0 for q in percentile_qs)
+    print(
+        f"{'Skip':>5} | {'N':>7} | {'mean':>10} | {'std':>10} | {'max':>10} | "
+        + " | ".join(f"{'p'+str(q):>9}" for q in percentile_qs)
+    )
+    print("-" * 78)
+
+    for skip in skips:
+        offset = skip - 1
+        if skip >= len(joint_actions):
+            print(f"{skip:>5} | (skip >= N, skipped)")
+            continue
+        # Output kept actions: action[t + offset] for t = 0, skip, 2*skip, ...
+        indices = np.arange(0, len(joint_actions) - offset, skip) + offset
+        kept = joint_actions[indices]
+        if len(kept) < 2:
+            print(f"{skip:>5} | (not enough pairs)")
+            continue
+        diffs = kept[1:] - kept[:-1]
+        dists = np.linalg.norm(diffs, axis=-1)
+
+        pcts = [np.percentile(dists, q) for q in percentile_qs]
+        print(
+            f"{skip:>5} | {len(dists):>7d} | "
+            f"{dists.mean():>10.6f} | {dists.std():>10.6f} | {dists.max():>10.6f} | "
+            + " | ".join(f"{p:>9.6f}" for p in pcts)
+        )
+
+    # Fraction-below-threshold table: shows what % of consecutive frames
+    # would be dropped at each candidate threshold.
+    print(f"\n{'=' * 78}")
+    print(f"  Fraction of consecutive pairs with distance < threshold")
+    print(f"  (= fraction of frames that would be dropped as 'static')")
+    print(f"{'=' * 78}")
+    header = f"{'Skip':>5} | " + " | ".join(f"{t:>10.4f}" for t in thresholds)
+    print(header)
+    print("-" * len(header))
+    for skip in skips:
+        offset = skip - 1
+        if skip >= len(joint_actions):
+            continue
+        indices = np.arange(0, len(joint_actions) - offset, skip) + offset
+        kept = joint_actions[indices]
+        if len(kept) < 2:
+            continue
+        diffs = kept[1:] - kept[:-1]
+        dists = np.linalg.norm(diffs, axis=-1)
+        fracs = [(dists < t).mean() for t in thresholds]
+        print(
+            f"{skip:>5} | "
+            + " | ".join(f"{f * 100:>9.2f}%" for f in fracs)
+        )
+
+    # Histogram for the smallest skip — gives a visual feel for the bulk
+    # of the distribution and where the "static" mode sits.
+    if skips:
+        skip = min(skips)
+        offset = skip - 1
+        if skip < len(joint_actions):
+            indices = np.arange(0, len(joint_actions) - offset, skip) + offset
+            kept = joint_actions[indices]
+            if len(kept) >= 2:
+                dists = np.linalg.norm(kept[1:] - kept[:-1], axis=-1)
+                print(f"\n{'=' * 78}")
+                print(f"  Histogram of consecutive distances at skip={skip} (N={len(dists)})")
+                print(f"{'=' * 78}")
+                hist, edges = np.histogram(dists, bins=histogram_bins)
+                max_count = hist.max() if hist.max() > 0 else 1
+                bar_width = 40
+                cum = 0
+                for i, count in enumerate(hist):
+                    cum += count
+                    bar = "#" * int(round(bar_width * count / max_count))
+                    print(
+                        f"  [{edges[i]:>9.6f}, {edges[i + 1]:>9.6f})  "
+                        f"{count:>7d}  {cum / len(dists) * 100:>5.1f}%  {bar}"
+                    )
+
+
 def print_summary(states: np.ndarray, actions: np.ndarray) -> None:
     """Print basic summary statistics of the raw data."""
     print(f"\n{'=' * 70}")
@@ -175,6 +285,22 @@ def parse_args() -> argparse.Namespace:
             "All values must be >= 1."
         ),
     )
+    parser.add_argument(
+        "--num_joint_dims",
+        type=int,
+        default=6,
+        help="Number of joint dims used for the consecutive-action distance analysis (default: 6, matches transform_skip_dataset.py).",
+    )
+    parser.add_argument(
+        "--thresholds",
+        type=str,
+        default="0.001,0.005,0.01,0.02,0.05,0.1,0.2",
+        help=(
+            "Comma-separated candidate thresholds to evaluate as "
+            "--min-action-delta values. The script reports what fraction of "
+            "consecutive frames would be dropped at each threshold per skip."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -185,7 +311,13 @@ def main():
     skips = [int(s) for s in args.skips.split(",")]
     if any(s < 1 for s in skips):
         raise ValueError(f"All skip values must be >= 1, got {skips}")
-    logging.info(f"Config: {args.config}, num_samples: {args.num_samples}, skips: {skips}")
+    thresholds = [float(t) for t in args.thresholds.split(",")]
+    if any(t < 0 for t in thresholds):
+        raise ValueError(f"All thresholds must be >= 0, got {thresholds}")
+    logging.info(
+        f"Config: {args.config}, num_samples: {args.num_samples}, "
+        f"skips: {skips}, num_joint_dims: {args.num_joint_dims}, thresholds: {thresholds}"
+    )
 
     # Load the training config the same way train.py does
     extended_config = _training_config.get_config(args.config)
@@ -211,6 +343,9 @@ def main():
     compute_skip_statistics(states, skips, label="States (observations)")
     compute_skip_statistics(actions.reshape(len(actions), -1), skips, label="Actions (flattened)")
     compute_cross_statistics(states, actions, skips)
+    compute_consecutive_action_distances(
+        actions, skips, args.num_joint_dims, thresholds
+    )
 
     print(f"\n{'=' * 70}")
     print(f"  Analysis complete. {len(states)} samples analyzed.")

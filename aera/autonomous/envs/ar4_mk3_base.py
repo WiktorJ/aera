@@ -201,9 +201,15 @@ class Ar4Mk3Env(BaseEnv):
     ):
         default_camera_config = config.default_camera_config
         if config.translation is not None and config.quaterion is not None:
+            cam_cfg = (
+                config.domain_rand.default_camera if config.domain_rand else None
+            )
+            translation, quaterion = self._apply_camera_offset(
+                config.translation, config.quaterion, cam_cfg
+            )
             default_camera_config = self._calculate_camera_config_from_transform(
-                config.translation,
-                config.quaterion,
+                translation,
+                quaterion,
                 config.z_offset,
                 config.distance_multiplier,
             )
@@ -244,6 +250,41 @@ class Ar4Mk3Env(BaseEnv):
             self.model, self._mujoco.mjtObj.mjOBJ_SITE, "target0"
         )
         self.model.site_pos[site_id] = self.goal
+
+    @staticmethod
+    def _apply_camera_offset(translation, quaterion, cam_cfg):
+        translation = np.array(translation, dtype=float)
+        quaterion = np.array(quaterion, dtype=float)
+        if cam_cfg is None:
+            return translation, quaterion
+        if cam_cfg.pos_offset is not None:
+            translation = translation + np.array(cam_cfg.pos_offset)
+        if cam_cfg.rot_offset_euler is not None:
+            offset_rot = Rotation.from_euler("xyz", cam_cfg.rot_offset_euler)
+            quaterion = (Rotation.from_quat(quaterion) * offset_rot).as_quat()
+        return translation, quaterion
+
+    def _randomize_body_pose(self, body_name: str, cam_cfg) -> None:
+        body_id = self._mujoco.mj_name2id(
+            self.model, self._mujoco.mjtObj.mjOBJ_BODY, body_name
+        )
+        if body_id == -1:
+            return
+        if cam_cfg.pos_offset is not None:
+            self.model.body_pos[body_id] = self.model.body_pos[body_id] + np.array(
+                cam_cfg.pos_offset
+            )
+        if cam_cfg.rot_offset_euler is not None:
+            cur_wxyz = self.model.body_quat[body_id]
+            cur_xyzw = [cur_wxyz[1], cur_wxyz[2], cur_wxyz[3], cur_wxyz[0]]
+            offset_rot = Rotation.from_euler("xyz", cam_cfg.rot_offset_euler)
+            new_xyzw = (Rotation.from_quat(cur_xyzw) * offset_rot).as_quat()
+            self.model.body_quat[body_id] = [
+                new_xyzw[3],
+                new_xyzw[0],
+                new_xyzw[1],
+                new_xyzw[2],
+            ]
 
     def _calculate_camera_config_from_transform(
         self, translation, quatertion, z_offset=0.0, distance_multiplier=1.0
@@ -553,6 +594,10 @@ class Ar4Mk3Env(BaseEnv):
                 self.model.vis.headlight.ambient = dr_config.headlight.ambient
             if dr_config.headlight.specular is not None:
                 self.model.vis.headlight.specular = dr_config.headlight.specular
+
+        # --- Apply Gripper Camera Pose ---
+        if dr_config.gripper_camera:
+            self._randomize_body_pose("gripper_camera_body", dr_config.gripper_camera)
 
         # --- Apply Dynamics Properties ---
         dynamics_map = {

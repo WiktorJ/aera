@@ -56,6 +56,7 @@ class DemoConfig:
     render: bool = False
     steps: int = 1000
     domain_rand: bool = False
+    randomize_cameras: bool = False
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
@@ -116,7 +117,9 @@ def main():
         if cfg.domain_rand:
             logger.info("Enabling domain randomization")
             domain_rand_config, object_color, target_color = (
-                generate_random_domain_rand_config()
+                generate_random_domain_rand_config(
+                    randomize_cameras=cfg.randomize_cameras
+                )
             )
             logger.info(f"Object color: {object_color}")
             logger.info(f"Target color: {target_color}")

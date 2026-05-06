@@ -1,10 +1,11 @@
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
 from aera.autonomous.envs.ar4_mk3_config import (
     AVAILABLE_TEXTURES,
+    CameraConfig,
     DomainRandConfig,
     DynamicsConfig,
     LightConfig,
@@ -24,7 +25,27 @@ NAMED_COLORS = {
 }
 
 
-def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
+def _generate_camera_configs(
+    randomize_cameras: bool,
+) -> Tuple[Optional[CameraConfig], Optional[CameraConfig]]:
+    if not randomize_cameras:
+        return None, None
+    # Subtle scene-camera perturbation: ~±2cm position, ~±2deg rotation.
+    default_camera = CameraConfig(
+        pos_offset=np.random.uniform(-0.02, 0.02, 3).tolist(),
+        rot_offset_euler=np.random.uniform(-0.035, 0.035, 3).tolist(),
+    )
+    # Minimal wrist-camera perturbation: ~±2mm position, ~±0.5deg rotation.
+    gripper_camera = CameraConfig(
+        pos_offset=np.random.uniform(-0.002, 0.002, 3).tolist(),
+        rot_offset_euler=np.random.uniform(-0.0087, 0.0087, 3).tolist(),
+    )
+    return default_camera, gripper_camera
+
+
+def generate_random_domain_rand_config(
+    randomize_cameras: bool = False,
+) -> Tuple[DomainRandConfig, str, str]:
     """
     Generates a randomized DomainRandConfig for the AR4 MK3 environment.
 
@@ -150,6 +171,9 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
     object_distractor1_dynamics = _create_random_dynamics_config()
     object_distractor2_dynamics = _create_random_dynamics_config()
 
+    # --- Camera Randomization (opt-in) ---
+    default_camera, gripper_camera = _generate_camera_configs(randomize_cameras)
+
     domain_rand_config = DomainRandConfig(
         object_material=object_material,
         target_material=target_material,
@@ -175,6 +199,8 @@ def generate_random_domain_rand_config() -> Tuple[DomainRandConfig, str, str]:
         object_dynamics=object_dynamics,
         object_distractor1_dynamics=object_distractor1_dynamics,
         object_distractor2_dynamics=object_distractor2_dynamics,
+        default_camera=default_camera,
+        gripper_camera=gripper_camera,
     )
 
     return domain_rand_config, object_color_name, target_color_name

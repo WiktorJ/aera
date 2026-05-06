@@ -75,6 +75,12 @@ class LightConfig:
 
 
 @dataclasses.dataclass
+class CameraConfig:
+    pos_offset: Optional[Sequence[float]] = None
+    rot_offset_euler: Optional[Sequence[float]] = None
+
+
+@dataclasses.dataclass
 class DynamicsConfig:
     damping: Optional[float] = None
     friction: Optional[Sequence[float]] = None
@@ -108,6 +114,8 @@ class DomainRandConfig:
     object_dynamics: Optional[DynamicsConfig] = None
     object_distractor1_dynamics: Optional[DynamicsConfig] = None
     object_distractor2_dynamics: Optional[DynamicsConfig] = None
+    default_camera: Optional["CameraConfig"] = None
+    gripper_camera: Optional["CameraConfig"] = None
 
 
 @dataclasses.dataclass

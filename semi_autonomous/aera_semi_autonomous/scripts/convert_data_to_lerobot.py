@@ -78,29 +78,32 @@ def main(
         print(f"No episode directories found in {data_dir}")
         return
 
-    # Single-pass: load all episodes, skipping malformed files
+    # First pass: scan episodes for metadata + fps stats, discarding payloads.
+    # Each JSON is loaded, summarized, and released so we never hold more than one in RAM.
     skipped: list[str] = []
-    loaded_episodes: list[tuple[Path, dict]] = []
-    for episode_dir in tqdm(episode_dirs, desc="Loading episodes", unit="ep"):
+    valid_episode_dirs: list[Path] = []
+    height: int | None = None
+    width: int | None = None
+    total_points = 0
+    total_duration = 0.0
+    for episode_dir in tqdm(episode_dirs, desc="Scanning episodes", unit="ep"):
         data = _load_episode(episode_dir)
         if data is None:
             skipped.append(episode_dir.name)
-        else:
-            loaded_episodes.append((episode_dir, data))
+            continue
+        if height is None:
+            metadata = data["metadata"]
+            height = metadata["image_height"]
+            width = metadata["image_width"]
+        total_points += len(data["trajectory_data"])
+        total_duration += data.get("duration", 0)
+        valid_episode_dirs.append(episode_dir)
+        del data
 
-    if not loaded_episodes:
+    if not valid_episode_dirs:
         print("No valid episodes found. Aborting.")
         return
 
-    # Use first valid episode for metadata
-    _, first_episode_data = loaded_episodes[0]
-    metadata = first_episode_data["metadata"]
-    height = metadata["image_height"]
-    width = metadata["image_width"]
-
-    # Calculate average FPS from loaded episodes
-    total_points = sum(len(ep["trajectory_data"]) for _, ep in loaded_episodes)
-    total_duration = sum(ep.get("duration", 0) for _, ep in loaded_episodes)
     fps = round(total_points / total_duration) if total_duration > 0 else 30
     print(f"Calculated average FPS: {fps}")
 
@@ -148,14 +151,22 @@ def main(
         image_writer_threads=10,
     )
 
-    # Loop over loaded episode data and write to the LeRobot dataset
+    # Second pass: stream episodes one at a time so memory stays bounded.
     processed_prompts = set()
-    episode_bar = tqdm(loaded_episodes, desc="Processing episodes", unit="ep")
-    for episode_dir, episode_data in episode_bar:
+    processed_count = 0
+    episode_bar = tqdm(valid_episode_dirs, desc="Processing episodes", unit="ep")
+    for episode_dir in episode_bar:
         episode_bar.set_postfix(episode=episode_dir.name)
+
+        episode_data = _load_episode(episode_dir)
+        if episode_data is None:
+            skipped.append(episode_dir.name)
+            continue
+        processed_count += 1
 
         trajectory = episode_data["trajectory_data"]
         if not trajectory:
+            del episode_data
             continue
 
         for i in tqdm(
@@ -211,6 +222,7 @@ def main(
                 }
             )
         dataset.save_episode()
+        del episode_data, trajectory
 
     if push_to_hub:
         dataset.finalize()
@@ -223,7 +235,7 @@ def main(
         )
 
     print(f"Finished converting dataset. Saved to {output_path}")
-    print(f"Processed {len(loaded_episodes)} episodes, skipped {len(skipped)} (malformed/unreadable).")
+    print(f"Processed {processed_count} episodes, skipped {len(skipped)} (malformed/unreadable).")
     if skipped:
         print("Skipped episodes:")
         for name in skipped:

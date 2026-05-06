@@ -18,6 +18,7 @@ import numpy as np
 import tyro
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.utils.constants import HF_LEROBOT_HOME
+from tqdm import tqdm
 
 
 def _process_rgb_image(image_hex: str) -> np.ndarray:
@@ -80,7 +81,7 @@ def main(
     # Single-pass: load all episodes, skipping malformed files
     skipped: list[str] = []
     loaded_episodes: list[tuple[Path, dict]] = []
-    for episode_dir in episode_dirs:
+    for episode_dir in tqdm(episode_dirs, desc="Loading episodes", unit="ep"):
         data = _load_episode(episode_dir)
         if data is None:
             skipped.append(episode_dir.name)
@@ -149,14 +150,20 @@ def main(
 
     # Loop over loaded episode data and write to the LeRobot dataset
     processed_prompts = set()
-    for episode_dir, episode_data in loaded_episodes:
-        print(f"Processing episode: {episode_dir.name}")
+    episode_bar = tqdm(loaded_episodes, desc="Processing episodes", unit="ep")
+    for episode_dir, episode_data in episode_bar:
+        episode_bar.set_postfix(episode=episode_dir.name)
 
         trajectory = episode_data["trajectory_data"]
         if not trajectory:
             continue
 
-        for i in range(0, len(trajectory), frame_skip):
+        for i in tqdm(
+            range(0, len(trajectory), frame_skip),
+            desc="  Frames",
+            unit="frame",
+            leave=False,
+        ):
             step = trajectory[i]
             # Decode RGB image
             default_image = _process_rgb_image(

@@ -36,6 +36,20 @@ def _process_depth_image(image_hex: str) -> np.ndarray:
     return np.expand_dims(depth_image, axis=-1)
 
 
+def _load_episode(episode_dir: Path) -> dict | None:
+    """Load episode JSON, returning None on parse failure."""
+    json_path = episode_dir / "episode_data.json"
+    try:
+        with open(json_path) as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"  Skipping {episode_dir.name}: malformed JSON — {e}")
+        return None
+    except OSError as e:
+        print(f"  Skipping {episode_dir.name}: cannot read file — {e}")
+        return None
+
+
 def main(
     data_dir: str,
     output_dir: str | Path | None = None,
@@ -63,22 +77,29 @@ def main(
         print(f"No episode directories found in {data_dir}")
         return
 
-    # Load metadata from the first episode to define dataset features
-    with open(episode_dirs[0] / "episode_data.json") as f:
-        first_episode_data = json.load(f)
+    # Single-pass: load all episodes, skipping malformed files
+    skipped: list[str] = []
+    loaded_episodes: list[tuple[Path, dict]] = []
+    for episode_dir in episode_dirs:
+        data = _load_episode(episode_dir)
+        if data is None:
+            skipped.append(episode_dir.name)
+        else:
+            loaded_episodes.append((episode_dir, data))
+
+    if not loaded_episodes:
+        print("No valid episodes found. Aborting.")
+        return
+
+    # Use first valid episode for metadata
+    _, first_episode_data = loaded_episodes[0]
     metadata = first_episode_data["metadata"]
     height = metadata["image_height"]
     width = metadata["image_width"]
 
-    # Calculate average FPS from all episodes
-    total_points = 0
-    total_duration = 0
-    for episode_dir in episode_dirs:
-        with open(episode_dir / "episode_data.json") as f:
-            episode_data = json.load(f)
-        total_points += len(episode_data["trajectory_data"])
-        total_duration += episode_data.get("duration", 0)
-
+    # Calculate average FPS from loaded episodes
+    total_points = sum(len(ep["trajectory_data"]) for _, ep in loaded_episodes)
+    total_duration = sum(ep.get("duration", 0) for _, ep in loaded_episodes)
     fps = round(total_points / total_duration) if total_duration > 0 else 30
     print(f"Calculated average FPS: {fps}")
 
@@ -126,12 +147,10 @@ def main(
         image_writer_threads=10,
     )
 
-    # Loop over raw episode data and write to the LeRobot dataset
+    # Loop over loaded episode data and write to the LeRobot dataset
     processed_prompts = set()
-    for episode_dir in episode_dirs:
+    for episode_dir, episode_data in loaded_episodes:
         print(f"Processing episode: {episode_dir.name}")
-        with open(episode_dir / "episode_data.json") as f:
-            episode_data = json.load(f)
 
         trajectory = episode_data["trajectory_data"]
         if not trajectory:
@@ -185,6 +204,7 @@ def main(
                 }
             )
         dataset.save_episode()
+
     if push_to_hub:
         dataset.finalize()
         dataset.push_to_hub(
@@ -194,8 +214,14 @@ def main(
             license="apache-2.0",
             upload_large_folder=True,
         )
+
     print(f"Finished converting dataset. Saved to {output_path}")
-    print(f"Processed {processed_prompts} prompts")
+    print(f"Processed {len(loaded_episodes)} episodes, skipped {len(skipped)} (malformed/unreadable).")
+    if skipped:
+        print("Skipped episodes:")
+        for name in skipped:
+            print(f"  - {name}")
+    print(f"Processed prompts: {processed_prompts}")
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@ import numpy as np
 import torch
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
+from aera.autonomous.openpi.dataset_transforms import compute_smoothed_arrays
+
 
 def init_logging():
     logging.basicConfig(
@@ -96,6 +98,36 @@ def parse_args() -> argparse.Namespace:
             "Frames matching any of these prompts are dropped entirely. "
             "E.g. --exclude-prompts 'go home,reset arm'"
         ),
+    )
+    parser.add_argument(
+        "--smooth-window",
+        type=int,
+        default=0,
+        help=(
+            "Savitzky-Golay window length (odd integer). 0 disables smoothing. "
+            "Applied per-episode on raw source actions before skipping/filtering."
+        ),
+    )
+    parser.add_argument(
+        "--smooth-polyorder",
+        type=int,
+        default=3,
+        help="Savitzky-Golay polynomial order (must be < smooth-window).",
+    )
+    parser.add_argument(
+        "--smooth-state",
+        action="store_true",
+        default=False,
+        help=(
+            "Also smooth the state arrays. Off by default to keep state[t] aligned "
+            "with image[t] from the source recording."
+        ),
+    )
+    parser.add_argument(
+        "--max-episodes",
+        type=int,
+        default=None,
+        help="If set, only process the first N episodes. Useful for quick testing.",
     )
     parser.add_argument(
         "--push-to-hub",
@@ -200,6 +232,10 @@ def transform_dataset(
     num_joint_dims: int,
     exclude_prompts: set[str] | None = None,
     min_action_delta: float | None = None,
+    smoothed_actions: np.ndarray | None = None,
+    smoothed_state: np.ndarray | None = None,
+    excluded_episodes: set[int] | None = None,
+    max_episodes: int | None = None,
 ) -> LeRobotDataset:
     """Transform the source dataset by pairing obs[t] with action[t+skip].
 
@@ -248,8 +284,11 @@ def transform_dataset(
     frames_skipped_boundary = 0
     frames_skipped_prompt = 0
     frames_skipped_static = 0
+    frames_skipped_short_episode = 0
     episodes_written = 0
     last_action_for_episode: np.ndarray | None = None
+    episodes_seen: set[int] = set()
+    excluded_episodes = excluded_episodes or set()
 
     offset = skip - 1
     for t in range(0, total_samples, skip):
@@ -283,6 +322,19 @@ def transform_dataset(
         episode_t = _get_episode_index(sample_t)
         episode_future = _get_episode_index(sample_future)
 
+        # Drop frames belonging to episodes shorter than the smoothing window.
+        if episode_t in excluded_episodes or episode_future in excluded_episodes:
+            frames_skipped_short_episode += 1
+            continue
+
+        # Stop once we've seen the requested number of episodes.
+        if max_episodes is not None and episode_t not in episodes_seen and len(episodes_seen) >= max_episodes:
+            logging.info(
+                f"Reached --max-episodes={max_episodes}; stopping at frame {t}."
+            )
+            break
+        episodes_seen.add(episode_t)
+
         # Skip pairs that cross episode boundaries
         if episode_t != episode_future:
             # If we were building an episode, save it before moving on
@@ -311,15 +363,23 @@ def transform_dataset(
             if key in sample_t:
                 frame[key] = _parse_image_from_sample(sample_t[key])
 
-        # Copy state from time t
-        if "state" in sample_t:
+        # Copy state from time t (use smoothed if provided)
+        state_t = None
+        if smoothed_state is not None:
+            state_t = smoothed_state[t].astype(np.float32)
+            frame["state"] = state_t
+        elif "state" in sample_t:
             state_t = _to_numpy(sample_t["state"]).astype(np.float32)
             frame["state"] = state_t
 
-        # Get actions from time t+skip
+        # Get actions from time t+skip (use smoothed if provided)
         action_future = None
-        if "actions" in sample_future:
+        if smoothed_actions is not None:
+            action_future = smoothed_actions[t_future].astype(np.float32)
+        elif "actions" in sample_future:
             action_future = _to_numpy(sample_future["actions"]).astype(np.float32)
+
+        if action_future is not None:
 
             # Drop frames where the action barely moved relative to the last
             # written frame in this episode (filters static/idle pauses).
@@ -376,7 +436,7 @@ def transform_dataset(
         f"  Skipped (boundary):     {frames_skipped_boundary}\n"
         f"  Skipped (prompt filter):{frames_skipped_prompt}\n"
         f"  Skipped (static):       {frames_skipped_static}\n"
-        f"  Skipped (tail):         {total_samples - frames_written - frames_skipped_boundary - frames_skipped_prompt - frames_skipped_static}\n"
+        f"  Skipped (short ep):     {frames_skipped_short_episode}\n"
         f"  Episodes written:       {episodes_written}\n"
         f"  Skip interval:          {skip}\n"
         f"  Delta actions:          {delta_actions}\n"
@@ -401,7 +461,9 @@ def main():
     logging.info(
         f"Config: repo_id={args.repo_id}, skip={args.skip}, "
         f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}, "
-        f"exclude_prompts={exclude_prompts}, min_action_delta={args.min_action_delta}"
+        f"exclude_prompts={exclude_prompts}, min_action_delta={args.min_action_delta}, "
+        f"smooth_window={args.smooth_window}, smooth_polyorder={args.smooth_polyorder}, "
+        f"smooth_state={args.smooth_state}, max_episodes={args.max_episodes}"
     )
 
     output_repo_id = _build_output_repo_id(
@@ -435,6 +497,18 @@ def main():
             else:
                 logging.info(f"  {key}: {type(val).__name__} = {val}")
 
+        # Pre-compute smoothed arrays per-episode if requested
+        smoothed_actions = None
+        smoothed_state = None
+        excluded_episodes: set[int] = set()
+        if args.smooth_window > 0:
+            smoothed_actions, smoothed_state, excluded_episodes = compute_smoothed_arrays(
+                source_dataset,
+                window=args.smooth_window,
+                polyorder=args.smooth_polyorder,
+                smooth_state=args.smooth_state,
+            )
+
         # Transform
         output_dataset = transform_dataset(
             source_dataset,
@@ -444,6 +518,10 @@ def main():
             num_joint_dims=args.num_joint_dims,
             exclude_prompts=exclude_prompts,
             min_action_delta=args.min_action_delta,
+            smoothed_actions=smoothed_actions,
+            smoothed_state=smoothed_state,
+            excluded_episodes=excluded_episodes,
+            max_episodes=args.max_episodes,
         )
         output_dataset.finalize()
 

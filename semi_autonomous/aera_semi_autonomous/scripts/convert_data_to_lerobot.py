@@ -21,19 +21,25 @@ from lerobot.utils.constants import HF_LEROBOT_HOME
 from tqdm import tqdm
 
 
-def _process_rgb_image(image_hex: str) -> np.ndarray:
-    """Process RGB image bytes and return as a NumPy array."""
-    image_bytes = bytes.fromhex(image_hex)
+def _process_rgb_image(rgb_ref: str, episode_dir: Path) -> np.ndarray:
+    """Decode an RGB image referenced by sidecar path (new format) or hex (legacy)."""
+    if rgb_ref.endswith(".jpg") or rgb_ref.endswith(".jpeg") or rgb_ref.endswith(".png"):
+        image_bytes = (episode_dir / rgb_ref).read_bytes()
+    else:
+        image_bytes = bytes.fromhex(rgb_ref)
     rgb_np = np.frombuffer(image_bytes, np.uint8)
     bgr_img = cv2.imdecode(rgb_np, cv2.IMREAD_COLOR)
     return cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
 
 
-def _process_depth_image(image_hex: str) -> np.ndarray:
-    """Process depth image bytes and return as a NumPy array."""
-    image_bytes = bytes.fromhex(image_hex)
-    depth_array = np.frombuffer(image_bytes, dtype=np.float32)
-    depth_image = depth_array.reshape((height, width))
+def _process_depth_image(depth_ref: str, episode_dir: Path, height: int, width: int) -> np.ndarray:
+    """Decode a depth image referenced by sidecar path (new format) or hex (legacy)."""
+    if depth_ref.endswith(".npz"):
+        depth_image = np.load(episode_dir / depth_ref)["depth"]
+    else:
+        image_bytes = bytes.fromhex(depth_ref)
+        depth_array = np.frombuffer(image_bytes, dtype=np.float32)
+        depth_image = depth_array.reshape((height, width))
     return np.expand_dims(depth_image, axis=-1)
 
 
@@ -178,10 +184,10 @@ def main(
             step = trajectory[i]
             # Decode RGB image
             default_image = _process_rgb_image(
-                step["observations"]["rgb_images"]["default"]
+                step["observations"]["rgb_images"]["default"], episode_dir
             )
             gripper_image = _process_rgb_image(
-                step["observations"]["rgb_images"]["gripper_camera"]
+                step["observations"]["rgb_images"]["gripper_camera"], episode_dir
             )
             # default_depth_image = _process_depth_image(
             #     step["observations"]["depth_images"]["default"]

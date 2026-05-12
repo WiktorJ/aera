@@ -3,6 +3,7 @@ import json
 import os
 
 import cv2
+import numpy as np
 from typing import List, Dict, Any, Optional
 from sensor_msgs.msg import Image, JointState
 from cv_bridge import CvBridge
@@ -57,6 +58,13 @@ class TrajectoryDataCollector:
         self.pose_buffer = SortedDict()
         self.sync_tolerance = sync_tolerance
 
+        # Files staged for write during save_episode_data; keyed by path
+        # relative to the episode directory. Deduped by ros-timestamp filename,
+        # so each captured frame is written at most once even if it's the
+        # closest match for several synchronized data points.
+        self._pending_rgb_files: Dict[str, bytes] = {}
+        self._pending_depth_files: Dict[str, np.ndarray] = {}
+
         # Synchronization statistics
         self.sync_stats = {
             "rgb_discrepancies": [],
@@ -106,6 +114,8 @@ class TrajectoryDataCollector:
         self.rgb_buffers.clear()
         self.depth_buffers.clear()
         self.pose_buffer.clear()
+        self._pending_rgb_files.clear()
+        self._pending_depth_files.clear()
 
         # Reset synchronization statistics
         self.sync_stats = {
@@ -246,7 +256,7 @@ class TrajectoryDataCollector:
             rgb_data_point = {
                 "timestamp": caller_timestamp,
                 "ros_timestamp": ros_timestamp,
-                "rgb_image_bytes": rgb_bytes.hex(),  # Convert to hex string for JSON serialization
+                "rgb_bytes": rgb_bytes,  # raw JPEG bytes; written as .jpg sidecar
                 "data_type": "rgb",
             }
 
@@ -277,9 +287,7 @@ class TrajectoryDataCollector:
                 depth_image.header.stamp.sec + depth_image.header.stamp.nanosec * 1e-9
             )
 
-            # Convert depth image to bytes
             depth_cv_image = self.cv_bridge.imgmsg_to_cv2(depth_image, "passthrough")
-            depth_bytes = depth_cv_image.tobytes()
 
             # Store metadata at episode level if not already set
             if self.current_episode_data["metadata"]["depth_encoding"] is None:
@@ -290,7 +298,7 @@ class TrajectoryDataCollector:
             depth_data_point = {
                 "timestamp": caller_timestamp,
                 "ros_timestamp": ros_timestamp,
-                "depth_image_bytes": depth_bytes.hex(),
+                "depth_array": depth_cv_image,  # ndarray; written as .npz sidecar
                 "data_type": "depth",
             }
 
@@ -364,6 +372,7 @@ class TrajectoryDataCollector:
         episode_file = os.path.join(self.episode_directory, "episode_data.json")
 
         try:
+            self._flush_sidecar_files()
             with open(episode_file, "w") as f:
                 json.dump(self.current_episode_data, f, indent=2, default=str)
 
@@ -372,6 +381,29 @@ class TrajectoryDataCollector:
         except Exception as e:
             self.logger.error(f"Failed to save episode data: {e}")
             return ""
+
+    def _register_rgb_file(self, camera: str, rgb_data: dict) -> str:
+        rel_path = f"rgb/{camera}/{int(rgb_data['ros_timestamp'] * 1e9)}.jpg"
+        self._pending_rgb_files[rel_path] = rgb_data["rgb_bytes"]
+        return rel_path
+
+    def _register_depth_file(self, camera: str, depth_data: dict) -> str:
+        rel_path = f"depth/{camera}/{int(depth_data['ros_timestamp'] * 1e9)}.npz"
+        self._pending_depth_files[rel_path] = depth_data["depth_array"]
+        return rel_path
+
+    def _flush_sidecar_files(self) -> None:
+        for rel_path, blob in self._pending_rgb_files.items():
+            full = os.path.join(self.episode_directory, rel_path)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "wb") as f:
+                f.write(blob)
+        for rel_path, arr in self._pending_depth_files.items():
+            full = os.path.join(self.episode_directory, rel_path)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            np.savez_compressed(full, depth=arr)
+        self._pending_rgb_files.clear()
+        self._pending_depth_files.clear()
 
     def _generate_episode_id(self) -> str:
         """Generate a unique episode ID based on timestamp."""
@@ -544,11 +576,11 @@ class TrajectoryDataCollector:
                         "orientation": current_pose_data["orientation"],
                     },
                     "rgb_images": {
-                        cam: data["rgb_image_bytes"]
+                        cam: self._register_rgb_file(cam, data)
                         for cam, data in rgb_images_data.items()
                     },
                     "depth_images": {
-                        cam: data["depth_image_bytes"]
+                        cam: self._register_depth_file(cam, data)
                         for cam, data in depth_images_data.items()
                     },
                     "timestamp": current_timestamp,

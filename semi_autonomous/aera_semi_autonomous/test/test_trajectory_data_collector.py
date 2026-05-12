@@ -413,7 +413,7 @@ class TestTrajectoryDataCollector(unittest.TestCase):
             rgb_data = {
                 "timestamp": time.time(),
                 "ros_timestamp": ts,
-                "rgb_image_bytes": f"rgb_data_{i}".encode().hex(),
+                "rgb_bytes": f"rgb_data_{i}".encode(),
                 "data_type": "rgb",
             }
             if "cam1" not in self.collector.rgb_buffers:
@@ -424,7 +424,7 @@ class TestTrajectoryDataCollector(unittest.TestCase):
             depth_data = {
                 "timestamp": time.time(),
                 "ros_timestamp": ts,
-                "depth_image_bytes": f"depth_data_{i}".encode().hex(),
+                "depth_array": np.zeros((4, 4), dtype=np.float32),
                 "data_type": "depth",
             }
             if "cam1" not in self.collector.depth_buffers:

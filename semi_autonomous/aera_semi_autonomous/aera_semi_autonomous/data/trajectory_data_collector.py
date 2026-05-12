@@ -9,6 +9,10 @@ from sensor_msgs.msg import Image, JointState
 from cv_bridge import CvBridge
 from sortedcontainers import SortedDict
 
+# Depth scale used when saving depth as 16-bit PNG. Depth in meters is multiplied
+# by this factor and clipped to uint16. 10000 = 0.1 mm precision, range 0-6.55 m.
+DEPTH_PNG_SCALE = 10000.0
+
 
 class TrajectoryDataCollector:
     """
@@ -388,7 +392,7 @@ class TrajectoryDataCollector:
         return rel_path
 
     def _register_depth_file(self, camera: str, depth_data: dict) -> str:
-        rel_path = f"depth/{camera}/{int(depth_data['ros_timestamp'] * 1e9)}.npz"
+        rel_path = f"depth/{camera}/{int(depth_data['ros_timestamp'] * 1e9)}.png"
         self._pending_depth_files[rel_path] = depth_data["depth_array"]
         return rel_path
 
@@ -401,7 +405,10 @@ class TrajectoryDataCollector:
         for rel_path, arr in self._pending_depth_files.items():
             full = os.path.join(self.episode_directory, rel_path)
             os.makedirs(os.path.dirname(full), exist_ok=True)
-            np.savez_compressed(full, depth=arr)
+            scaled = np.clip(arr * DEPTH_PNG_SCALE, 0, 65535).astype(np.uint16)
+            cv2.imwrite(full, scaled)
+        if self._pending_depth_files:
+            self.current_episode_data["metadata"]["depth_png_scale"] = DEPTH_PNG_SCALE
         self._pending_rgb_files.clear()
         self._pending_depth_files.clear()
 

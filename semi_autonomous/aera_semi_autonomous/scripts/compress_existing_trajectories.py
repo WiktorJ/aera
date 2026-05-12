@@ -27,9 +27,13 @@ import os
 import tempfile
 from pathlib import Path
 
+import cv2
 import numpy as np
 import tyro
 from tqdm import tqdm
+
+# Must match aera_semi_autonomous.data.trajectory_data_collector.DEPTH_PNG_SCALE
+DEPTH_PNG_SCALE = 10000.0
 
 
 def _looks_like_hex(value: str) -> bool:
@@ -61,6 +65,7 @@ def _migrate_episode(episode_dir: Path, dry_run: bool) -> tuple[bool, int, int]:
 
     rgb_files: dict[str, bytes] = {}
     depth_files: dict[str, np.ndarray] = {}
+    npz_to_remove: set[Path] = set()
     changed = False
 
     for step in trajectory:
@@ -77,22 +82,33 @@ def _migrate_episode(episode_dir: Path, dry_run: bool) -> tuple[bool, int, int]:
 
         depth_images = step.get("observations", {}).get("depth_images", {})
         for cam, ref in list(depth_images.items()):
-            if not isinstance(ref, str) or not _looks_like_hex(ref):
+            if not isinstance(ref, str):
                 continue
-            if height is None or width is None:
-                raise RuntimeError(
-                    f"{episode_dir.name}: metadata missing image_height/image_width; "
-                    "cannot reshape legacy depth bytes."
-                )
-            digest = hashlib.sha1(ref.encode("ascii")).hexdigest()[:16]
-            rel_path = f"depth/{cam}/{digest}.npz"
-            if rel_path not in depth_files:
-                arr = np.frombuffer(bytes.fromhex(ref), dtype=np.float32).reshape(
-                    (height, width)
-                )
-                depth_files[rel_path] = arr
-            depth_images[cam] = rel_path
-            changed = True
+            if ref.endswith(".png"):
+                continue  # already in target format
+            if ref.endswith(".npz"):
+                npz_path = episode_dir / ref
+                rel_path = ref[:-4] + ".png"
+                if rel_path not in depth_files and npz_path.exists():
+                    depth_files[rel_path] = np.load(npz_path)["depth"]
+                npz_to_remove.add(npz_path)
+                depth_images[cam] = rel_path
+                changed = True
+            elif _looks_like_hex(ref):
+                if height is None or width is None:
+                    raise RuntimeError(
+                        f"{episode_dir.name}: metadata missing image_height/image_width; "
+                        "cannot reshape legacy depth bytes."
+                    )
+                digest = hashlib.sha1(ref.encode("ascii")).hexdigest()[:16]
+                rel_path = f"depth/{cam}/{digest}.png"
+                if rel_path not in depth_files:
+                    arr = np.frombuffer(bytes.fromhex(ref), dtype=np.float32).reshape(
+                        (height, width)
+                    )
+                    depth_files[rel_path] = arr
+                depth_images[cam] = rel_path
+                changed = True
 
     if not changed:
         return False, old_size, old_size
@@ -107,7 +123,13 @@ def _migrate_episode(episode_dir: Path, dry_run: bool) -> tuple[bool, int, int]:
     for rel_path, arr in depth_files.items():
         full = episode_dir / rel_path
         full.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(full, depth=arr)
+        scaled = np.clip(arr * DEPTH_PNG_SCALE, 0, 65535).astype(np.uint16)
+        cv2.imwrite(str(full), scaled)
+    if depth_files:
+        data.setdefault("metadata", {})["depth_png_scale"] = DEPTH_PNG_SCALE
+    for npz_path in npz_to_remove:
+        if npz_path.exists():
+            npz_path.unlink()
 
     # Atomic JSON rewrite: write to temp in same dir, then rename.
     fd, tmp_path = tempfile.mkstemp(

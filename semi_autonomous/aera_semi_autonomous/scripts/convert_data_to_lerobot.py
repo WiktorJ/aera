@@ -32,9 +32,25 @@ def _process_rgb_image(rgb_ref: str, episode_dir: Path) -> np.ndarray:
     return cv2.cvtColor(bgr_img, cv2.COLOR_BGR2RGB)
 
 
-def _process_depth_image(depth_ref: str, episode_dir: Path, height: int, width: int) -> np.ndarray:
-    """Decode a depth image referenced by sidecar path (new format) or hex (legacy)."""
-    if depth_ref.endswith(".npz"):
+def _process_depth_image(
+    depth_ref: str,
+    episode_dir: Path,
+    height: int,
+    width: int,
+    depth_png_scale: float,
+) -> np.ndarray:
+    """Decode a depth image referenced by sidecar path or legacy hex.
+
+    Supported formats:
+      - .png   16-bit uint16, depth_m = pixel / depth_png_scale
+               (depth_png_scale comes from episode metadata["depth_png_scale"])
+      - .npz   raw float32 depth in meters (interim format)
+      - hex    legacy float32 bytes inline in JSON
+    """
+    if depth_ref.endswith(".png"):
+        depth_u16 = cv2.imread(str(episode_dir / depth_ref), cv2.IMREAD_UNCHANGED)
+        depth_image = depth_u16.astype(np.float32) / depth_png_scale
+    elif depth_ref.endswith(".npz"):
         depth_image = np.load(episode_dir / depth_ref)["depth"]
     else:
         image_bytes = bytes.fromhex(depth_ref)

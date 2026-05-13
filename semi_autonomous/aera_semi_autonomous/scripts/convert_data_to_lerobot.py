@@ -23,7 +23,11 @@ from tqdm import tqdm
 
 def _process_rgb_image(rgb_ref: str, episode_dir: Path) -> np.ndarray:
     """Decode an RGB image referenced by sidecar path (new format) or hex (legacy)."""
-    if rgb_ref.endswith(".jpg") or rgb_ref.endswith(".jpeg") or rgb_ref.endswith(".png"):
+    if (
+        rgb_ref.endswith(".jpg")
+        or rgb_ref.endswith(".jpeg")
+        or rgb_ref.endswith(".png")
+    ):
         image_bytes = (episode_dir / rgb_ref).read_bytes()
     else:
         image_bytes = bytes.fromhex(rgb_ref)
@@ -50,8 +54,6 @@ def _process_depth_image(
     if depth_ref.endswith(".png"):
         depth_u16 = cv2.imread(str(episode_dir / depth_ref), cv2.IMREAD_UNCHANGED)
         depth_image = depth_u16.astype(np.float32) / depth_png_scale
-    elif depth_ref.endswith(".npz"):
-        depth_image = np.load(episode_dir / depth_ref)["depth"]
     else:
         image_bytes = bytes.fromhex(depth_ref)
         depth_array = np.frombuffer(image_bytes, dtype=np.float32)
@@ -257,7 +259,9 @@ def main(
         )
 
     print(f"Finished converting dataset. Saved to {output_path}")
-    print(f"Processed {processed_count} episodes, skipped {len(skipped)} (malformed/unreadable).")
+    print(
+        f"Processed {processed_count} episodes, skipped {len(skipped)} (malformed/unreadable)."
+    )
     if skipped:
         print("Skipped episodes:")
         for name in skipped:

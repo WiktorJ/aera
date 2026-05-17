@@ -227,7 +227,7 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
-        num_train_steps=20_000,
+        num_train_steps=25_000,
         log_interval=400,
         save_interval=5_000,
         keep_period=5_000,

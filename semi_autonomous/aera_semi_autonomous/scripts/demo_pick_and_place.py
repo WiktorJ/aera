@@ -14,6 +14,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+import cv2
 import numpy as np
 import tyro
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -58,8 +59,33 @@ class DemoConfig:
     domain_rand: bool = False
     randomize_cameras: bool = False
     use_geometric_lookat: bool = True
+    show_gripper_view: bool = True
+    initial_window_size: int = 640
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
+
+
+GRIPPER_VIEW_WINDOW = "Gripper Camera"
+
+
+def _attach_gripper_view(env) -> None:
+    """Wrap env.render so that each human-mode render also displays the gripper camera."""
+    original_render = env.render
+    cv2.namedWindow(GRIPPER_VIEW_WINDOW, cv2.WINDOW_NORMAL)
+
+    def render_with_gripper(*args, **kwargs):
+        result = original_render(*args, **kwargs)
+        try:
+            frame = env.mujoco_renderer.render(
+                render_mode="rgb_array", camera_name="gripper_camera"
+            )
+            cv2.imshow(GRIPPER_VIEW_WINDOW, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            cv2.waitKey(1)
+        except Exception:
+            logging.getLogger(__name__).exception("Failed to render gripper view")
+        return result
+
+    env.render = render_with_gripper
 
 
 def setup_logging(debug: bool = False) -> logging.Logger:
@@ -135,11 +161,16 @@ def main():
             z_offset=0.3,
             use_geometric_lookat=cfg.use_geometric_lookat,
             domain_rand=domain_rand_config,
+            image_width=cfg.initial_window_size,
+            image_height=cfg.initial_window_size,
         )
         env = Ar4Mk3PickAndPlaceEnv(
             render_mode="human" if cfg.render else "rgb_array",
             config=env_config,
         )
+
+        if cfg.render and cfg.show_gripper_view:
+            _attach_gripper_view(env)
 
         # Reset environment to get initial state
         obs, info = env.reset()
@@ -229,6 +260,10 @@ def main():
         try:
             env.close()
         except:
+            pass
+        try:
+            cv2.destroyAllWindows()
+        except Exception:
             pass
 
 

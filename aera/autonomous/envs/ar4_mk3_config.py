@@ -21,6 +21,22 @@ Q = np.array(
     ]
 )
 
+# T/Q calibrated for use_geometric_lookat=True. Picked to reproduce the exact
+# same default rendered view (lookat, azim, elev, distance) as the legacy
+# (T, Q) above under the geometric ray origin, so flipping the flag without
+# overriding translation/quaterion leaves the baseline view unchanged.
+T_GEOMETRIC = np.array(
+    [-0.40970032586752225, 0.25031248388773203, 0.8542931529018112]
+)
+Q_GEOMETRIC = np.array(
+    [
+        -0.4537194255805848,
+        -0.8725520599992705,
+        0.08176549604975476,
+        -0.16157347894252677,
+    ]
+)
+
 AVAILABLE_TEXTURES = [
     "blue-wood",
     "brass-ambra",
@@ -146,8 +162,24 @@ class Ar4Mk3EnvConfig:
     quaterion: Optional[np.ndarray] = field(default_factory=lambda: Q)
     z_offset: float = 0.3
     distance_multiplier: float = 1.2
+    # When True, the lookat ground-plane ray is cast from the camera's true
+    # world position (-R.T @ T) instead of the raw extrinsic translation T.
+    # The legacy (False) behavior makes the (T, Q) -> (lookat, az, el, dist)
+    # map non-surjective and is preserved as default for backward compatibility
+    # with existing datasets/policies.
+    use_geometric_lookat: bool = False
     include_images_in_obs: bool = False
     domain_rand: Optional[DomainRandConfig] = None
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
     image_width: int = 224
     image_height: int = 224
+
+    def __post_init__(self):
+        # When the geometric lookat is enabled and the user hasn't explicitly
+        # overridden translation/quaterion, swap in the geometric-mode
+        # calibration so the default rendered view stays identical to legacy.
+        if self.use_geometric_lookat:
+            if self.translation is T or np.array_equal(self.translation, T):
+                self.translation = T_GEOMETRIC
+            if self.quaterion is Q or np.array_equal(self.quaterion, Q):
+                self.quaterion = Q_GEOMETRIC

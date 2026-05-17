@@ -151,6 +151,10 @@ class SweepConfig:
     Each fraction is applied uniformly to all IK parameters via IKNoisePerturbation.default_fraction."""
     debug: bool = False
     """Enable debug logging."""
+    use_geometric_lookat: bool = True
+    """Use the geometrically correct lookat ray origin (-R.T @ T) so the
+    (T, Q) -> rendered view map is surjective. Set False to fall back to the
+    legacy non-surjective behavior."""
 
 
 @dataclass
@@ -232,6 +236,7 @@ def run_trial(
     render: bool,
     logger: logging.Logger,
     perturbation_config: Optional[PerturbationConfig] = None,
+    use_geometric_lookat: bool = True,
 ) -> TrialResult:
     """Run one pick-and-place episode and return action-level success flags."""
     env = None
@@ -248,6 +253,7 @@ def run_trial(
             quaterion=Q,
             distance_multiplier=1.2,
             z_offset=0.3,
+            use_geometric_lookat=use_geometric_lookat,
             domain_rand=domain_rand_config,
         )
         env = Ar4Mk3PickAndPlaceEnv(
@@ -350,7 +356,14 @@ def run_sweep(
                     if cfg.background_ik_noise_fraction > 0
                     else ik_config
                 )
-                result = run_trial(model_path, trial_ik, cfg.render, logger, perturbation_config)
+                result = run_trial(
+                    model_path,
+                    trial_ik,
+                    cfg.render,
+                    logger,
+                    perturbation_config,
+                    use_geometric_lookat=cfg.use_geometric_lookat,
+                )
                 result.param_name = param_name
                 result.param_value = value
                 result.trial_idx = trial_idx
@@ -620,7 +633,13 @@ def run_grid_search(
             combo_results = []
             for trial_idx in range(cfg.trials_per_config):
                 np.random.seed(cfg.seed + trial_idx)
-                result = run_trial(model_path, ik_config, cfg.render, logger)
+                result = run_trial(
+                    model_path,
+                    ik_config,
+                    cfg.render,
+                    logger,
+                    use_geometric_lookat=cfg.use_geometric_lookat,
+                )
                 result.param_name = label
                 result.param_value = combo_idx
                 result.trial_idx = trial_idx

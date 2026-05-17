@@ -212,6 +212,7 @@ class Ar4Mk3Env(BaseEnv):
                 quaterion,
                 config.z_offset,
                 config.distance_multiplier,
+                config.use_geometric_lookat,
             )
         super().__init__(
             config=config, default_camera_config=default_camera_config, **kwargs
@@ -287,7 +288,12 @@ class Ar4Mk3Env(BaseEnv):
             ]
 
     def _calculate_camera_config_from_transform(
-        self, translation, quatertion, z_offset=0.0, distance_multiplier=1.0
+        self,
+        translation,
+        quatertion,
+        z_offset=0.0,
+        distance_multiplier=1.0,
+        use_geometric_lookat=False,
     ):
         R_cam_to_base = Rotation.from_quat(quatertion).as_matrix()
 
@@ -302,14 +308,16 @@ class Ar4Mk3Env(BaseEnv):
         look_dir_in_base = R_cam_to_base @ local_cam_view_dir
 
         # Intersect this viewing ray with a horizontal plane (e.g., the tabletop at z=0).
-        # Ray: P(t) = cam_pos_in_base + t * look_dir_in_base
-        # Plane: P.z = intersection_plane_z
-
-        # P_origin.z + t * LookDir.z = plane_z  =>  t = (plane_z - P_origin.z) / LookDir.z
-        lookat_x = translation[0] + (z_offset - translation[2]) * (
+        # Ray: P(t) = ray_origin + t * look_dir_in_base
+        # With use_geometric_lookat=True the ray starts from the camera's true
+        # world position (geometrically correct). Legacy behavior uses the raw
+        # extrinsic translation as the ray origin (preserved for backward
+        # compatibility with existing datasets/policies).
+        ray_origin = cam_pos_in_base if use_geometric_lookat else translation
+        lookat_x = ray_origin[0] + (z_offset - ray_origin[2]) * (
             look_dir_in_base[0] / look_dir_in_base[2]
         )
-        lookat_y = translation[1] + (z_offset - translation[2]) * (
+        lookat_y = ray_origin[1] + (z_offset - ray_origin[2]) * (
             look_dir_in_base[1] / look_dir_in_base[2]
         )
         lookat = np.array([lookat_x, lookat_y, z_offset])

@@ -57,6 +57,7 @@ class DemoConfig:
     steps: int = 1000
     domain_rand: bool = False
     randomize_cameras: bool = False
+    use_geometric_lookat: bool = True
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
@@ -132,6 +133,7 @@ def main():
             quaterion=Q,
             distance_multiplier=1.2,
             z_offset=0.3,
+            use_geometric_lookat=cfg.use_geometric_lookat,
             domain_rand=domain_rand_config,
         )
         env = Ar4Mk3PickAndPlaceEnv(

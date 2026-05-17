@@ -2,6 +2,7 @@ import logging
 from typing import Optional, Tuple
 
 import numpy as np
+from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import (
     AVAILABLE_TEXTURES,
@@ -11,6 +12,56 @@ from aera.autonomous.envs.ar4_mk3_config import (
     LightConfig,
     MaterialConfig,
 )
+
+# Scene-camera anchor poses captured with
+# aera/autonomous/simulation/examples/camera_pose_probe.py at the extreme
+# acceptable viewpoints. New samples are drawn from the convex hull of these
+# anchors (Dirichlet weights) so every sampled view is a blend of validated
+# poses — avoids the corner-of-bounding-box failure mode of per-axis uniform
+# sampling.
+_SCENE_CAMERA_ANCHORS_POS = np.array(
+    [
+        [-0.8757, 0.3022, -0.3331],
+        [-0.7761, 0.3093, -0.1889],
+        [-0.0191, 0.0995, 0.1635],
+        [-0.0066, 0.0303, 0.1957],
+        [-0.4911, 0.7102, -0.4701],
+        [0.5281, 1.0338, -0.0993],
+        [0.3697, -0.2488, 0.2982],
+        [0.4279, 0.1996, 0.1583],
+    ]
+)
+_SCENE_CAMERA_ANCHORS_EULER = np.array(
+    [
+        [-0.2365, -0.2919, -0.0304],
+        [0.0546, -0.3750, -0.0030],
+        [0.0838, -0.0109, 0.2789],
+        [-0.0566, 0.1260, 0.2819],
+        [-0.8656, 0.1769, 0.4676],
+        [-0.4151, -0.5173, 2.4690],
+        [0.0944, -0.3660, 2.8664],
+        [0.0313, 0.1657, 2.9724],
+    ]
+)
+# Pre-convert to quaternions so we can do proper rotation averaging across
+# the z-euler wraparound (anchors 1-5 have rz≈0, anchors 6-8 have rz≈2.5-3.0).
+_SCENE_CAMERA_ANCHOR_ROTS = Rotation.from_euler(
+    "xyz", _SCENE_CAMERA_ANCHORS_EULER
+)
+
+
+def _sample_scene_camera_pose() -> Tuple[list, list]:
+    """Sample a (pos_offset, rot_offset_euler) inside the convex hull of the
+    validated anchor poses.
+
+    Position is a Dirichlet-weighted blend of anchor positions; rotation is
+    the corresponding weighted quaternion mean (handles wraparound correctly).
+    """
+    n = len(_SCENE_CAMERA_ANCHORS_POS)
+    weights = np.random.dirichlet(np.ones(n))
+    pos = (weights[:, None] * _SCENE_CAMERA_ANCHORS_POS).sum(axis=0)
+    rot = _SCENE_CAMERA_ANCHOR_ROTS.mean(weights=weights)
+    return pos.tolist(), rot.as_euler("xyz").tolist()
 
 NAMED_COLORS = {
     "red": (1, 0, 0, 1),
@@ -30,15 +81,15 @@ def _generate_camera_configs(
 ) -> Tuple[Optional[CameraConfig], Optional[CameraConfig]]:
     if not randomize_cameras:
         return None, None
-    # Subtle scene-camera perturbation: ~±2cm position, ~±2deg rotation.
+    pos_offset, rot_offset_euler = _sample_scene_camera_pose()
     default_camera = CameraConfig(
-        pos_offset=np.random.uniform(-0.02, 0.02, 3).tolist(),
-        rot_offset_euler=np.random.uniform(-0.035, 0.035, 3).tolist(),
+        pos_offset=pos_offset,
+        rot_offset_euler=rot_offset_euler,
     )
     # Minimal wrist-camera perturbation: ~±2mm position, ~±0.5deg rotation.
     gripper_camera = CameraConfig(
-        pos_offset=np.random.uniform(-0.002, 0.002, 3).tolist(),
-        rot_offset_euler=np.random.uniform(-0.0087, 0.0087, 3).tolist(),
+        pos_offset=np.random.uniform(-0.005, 0.005, 3).tolist(),
+        rot_offset_euler=np.random.uniform(-0.01, 0.01, 3).tolist(),
     )
     return default_camera, gripper_camera
 

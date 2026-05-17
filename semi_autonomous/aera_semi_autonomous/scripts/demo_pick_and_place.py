@@ -68,15 +68,31 @@ class DemoConfig:
 GRIPPER_VIEW_WINDOW = "Gripper Camera"
 
 
-def _attach_gripper_view(env) -> None:
-    """Wrap env.render so that each human-mode render also displays the gripper camera."""
+def _hide_window_overlay(viewer) -> None:
+    """Hide the interactive WindowViewer's overlay menu (keybindings/FPS/etc)."""
+    if viewer is None:
+        return
+    if hasattr(viewer, "_hide_menu"):
+        viewer._hide_menu = True
+
+
+def _attach_gripper_view(env, window_size: int) -> None:
+    """Wrap env.render so each human-mode render also shows the gripper camera."""
     original_render = env.render
     cv2.namedWindow(GRIPPER_VIEW_WINDOW, cv2.WINDOW_NORMAL)
+    cv2.resizeWindow(GRIPPER_VIEW_WINDOW, window_size, window_size)
+    state = {"menu_hidden": False}
 
     def render_with_gripper(*args, **kwargs):
         result = original_render(*args, **kwargs)
+        renderer = env.mujoco_renderer
+        if not state["menu_hidden"]:
+            _hide_window_overlay(getattr(renderer, "viewer", None))
+            for v in getattr(renderer, "_viewers", {}).values():
+                _hide_window_overlay(v)
+            state["menu_hidden"] = True
         try:
-            frame = env.mujoco_renderer.render(
+            frame = renderer.render(
                 render_mode="rgb_array", camera_name="gripper_camera"
             )
             cv2.imshow(GRIPPER_VIEW_WINDOW, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
@@ -170,7 +186,7 @@ def main():
         )
 
         if cfg.render and cfg.show_gripper_view:
-            _attach_gripper_view(env)
+            _attach_gripper_view(env, cfg.initial_window_size)
 
         # Reset environment to get initial state
         obs, info = env.reset()

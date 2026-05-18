@@ -7,6 +7,15 @@ import numpy as np
 from geometry_msgs.msg import Point, Pose, Quaternion
 from scipy.spatial.transform import Rotation
 
+# Gripper jaw kinematics (see ar4_mk3.xml: gripper_jaw{1,2}_joint range="-0.014 0").
+# Each jaw is a symmetric slide joint: qpos=0 -> fully closed, qpos=-0.014 -> fully open.
+# Pinch gap between pads ≈ 2 * |qpos|, so to land on an object of half-width h
+# the symmetric jaw qpos target is -h. A small positive preload pushes slightly
+# past the surface so contact force is bounded and non-zero rather than zero.
+GRIPPER_JAW_QPOS_MIN = -0.014
+GRIPPER_JAW_QPOS_MAX = 0.0
+DEFAULT_GRASP_PRELOAD = 0.0  # Weld provides the hold; squeeze is purely cosmetic.
+
 
 def get_object_pose(env, logger: Optional[logging.Logger] = None) -> Optional[Pose]:
     """Get the current pose of object0 from the environment.
@@ -79,3 +88,44 @@ def get_object_pose(env, logger: Optional[logging.Logger] = None) -> Optional[Po
     except Exception as e:
         _log.error(f"Failed to get object pose: {e}")
         return None
+
+
+def get_object_grasp_gripper_pos(
+    env,
+    preload: float = DEFAULT_GRASP_PRELOAD,
+    logger: Optional[logging.Logger] = None,
+) -> float:
+    """Compute a gripper_pos target that lands the jaws on the object surface.
+
+    Reads object0's box half-extents and picks the pinch dimension (the shorter
+    of the two horizontal half-widths) — this matches the yaw-alignment logic
+    in `get_object_pose`, which rotates the gripper so the jaws close across
+    the narrower side.
+
+    Falls back to a safe partially-closed target if the object can't be located.
+    """
+    _log = logger or logging.getLogger(__name__)
+    try:
+        object_body_id = env.model.body("object0").id
+        geom_id = -1
+        for i in range(env.model.ngeom):
+            if env.model.geom_bodyid[i] == object_body_id:
+                geom_id = i
+                break
+        if geom_id == -1:
+            _log.warning("object0 geom not found; using fully-open grasp target.")
+            return GRIPPER_JAW_QPOS_MIN
+
+        geom_size = env.model.geom_size[geom_id]
+        pinch_half_width = float(min(geom_size[0], geom_size[1]))
+        target = -(pinch_half_width - preload)
+        clamped = float(np.clip(target, GRIPPER_JAW_QPOS_MIN, GRIPPER_JAW_QPOS_MAX))
+        if clamped != target:
+            _log.warning(
+                f"Object pinch half-width {pinch_half_width:.4f} is outside the "
+                f"gripper's usable range; clamping gripper_pos to {clamped:.4f}."
+            )
+        return clamped
+    except Exception as e:
+        _log.error(f"Failed to compute grasp gripper_pos: {e}")
+        return GRIPPER_JAW_QPOS_MIN

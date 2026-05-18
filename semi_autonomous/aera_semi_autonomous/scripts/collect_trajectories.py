@@ -21,7 +21,10 @@ from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInte
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
-from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
+from aera_semi_autonomous.data.pick_and_place_helpers import (
+    get_object_grasp_gripper_pos,
+    get_object_pose,
+)
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
@@ -96,7 +99,8 @@ def run_pick_and_place_and_collect(
     if perturbation_config.perturb_pick:
         for wp in generate_waypoints(object_pose, perturbation_config):
             robot.move_to(wp)
-    if not robot.grasp_at(object_pose, gripper_pos=0.0):
+    grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
+    if not robot.grasp_at(object_pose, gripper_pos=grasp_gripper_pos):
         logger.error("Failed to pick up object")
         return False
 

@@ -99,19 +99,19 @@
         <body name="object0" pos="-0.15 -0.3 0.2">
           <joint name="object0:joint" type="free" damping="0.01"></joint>
           <geom size="0.012 0.012 0.012" type="box" condim="3" name="object0" material="object_mat" mass="0.1"
-            friction="2.0 0.01 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"/>
+            friction="2.0 0.5 0.1" contype="1" conaffinity="1" solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"/>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>
         <body name="object_distractor1" pos="-0.15 -0.3 0.2">
           <joint name="object_distractor1:joint" type="free" damping="0.01"></joint>
           <geom size="0.012 0.012 0.012" type="box" condim="3" name="object_distractor1" material="object_distractor1_mat" mass="0.1"
-            friction="2.0 0.01 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"/>
+            friction="2.0 0.5 0.1" contype="1" conaffinity="1" solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"/>
           <site name="object_distractor1" pos="0 0 0" size="0.002 0.002 0.002" rgba="0 1 0 1" type="sphere"></site>
         </body>
         <body name="object_distractor2" pos="-0.15 -0.3 0.2">
           <joint name="object_distractor2:joint" type="free" damping="0.01"></joint>
           <geom size="0.012 0.012 0.012" type="box" condim="3" name="object_distractor2" material="object_distractor2_mat" mass="0.1"
-            friction="2.0 0.01 0.01" contype="1" conaffinity="1" solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"/>
+            friction="2.0 0.5 0.1" contype="1" conaffinity="1" solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"/>
           <site name="object_distractor2" pos="0 0 0" size="0.002 0.002 0.002" rgba="0 0 1 1" type="sphere"></site>
         </body>
         <body name="base_link" childclass="ar4_mk3">
@@ -169,12 +169,12 @@
                                                       quat="0.909592 0.206495 -0.239067 0.269904" mass="0.05"
                                                       diaginertia="1.2974e-06 1.23198e-06 8.70621e-07"/>
                                             <joint name="gripper_jaw1_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                        range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
+                        range="-0.014 0" armature="0.001" damping="50" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="2" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw1_link" material="gripper_jaw1_mat" contype="0" conaffinity="0" group="2"/>
-                                            <geom name="gripper_jaw1_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126" 
-                                                  type="box" contype="1" conaffinity="1" condim="4" 
-                                                  solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
-                                                  friction="2.0 0.01 0.01" material="transparent"/>
+                                            <geom name="gripper_jaw1_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126"
+                                                  type="box" contype="1" conaffinity="1" condim="4"
+                                                  solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"
+                                                  friction="2.0 0.5 0.1" material="transparent"/>
                                         </body>
                                         <body name="gripper_jaw2_link" pos="0 0.0097 0.052"
                                               quat="0 0 -0.707105 0.707108">
@@ -183,13 +183,12 @@
                                                       quat="0.922918 0.214097 -0.253072 0.195807" mass="0.05"
                                                       diaginertia="1.25734e-06 1.16888e-06 8.63781e-07"/>
                                             <joint name="gripper_jaw2_joint" pos="0 0 0" axis="1 0 0" type="slide"
-                        range="-0.014 0" armature="0.1" damping="10" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="0" stiffness="0"/>
+                        range="-0.014 0" armature="0.001" damping="50" limited="true" solimplimit="0.99 0.999 0.01" solreflimit="0.01 1" frictionloss="2" stiffness="0"/>
                                             <geom type="mesh" mesh="gripper_jaw2_link" material="gripper_jaw2_mat" contype="0" conaffinity="0" group="2"/>
-                                            <geom name="gripper_jaw2_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126" 
-                                                  type="box" contype="1" conaffinity="1" condim="4" 
-                                                  solref="0.002 1" solimp="0.99 0.99 0.001 0.5 2"
-                                                  friction="1.0 0.01 0.01" material="transparent"/>
-                                                  />
+                                            <geom name="gripper_jaw2_contact" size="0.001 0.0115 0.0088" pos="-0.0014 -0.0167 0.0126"
+                                                  type="box" contype="1" conaffinity="1" condim="4"
+                                                  solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"
+                                                  friction="2.0 0.5 0.1" material="transparent"/>
                                         </body>
                                         <site name="grip" pos="0 0 0.062" rgba="0 0 0 0" size="0.002" type="sphere"/>
                                     </body>
@@ -209,9 +208,25 @@
         <position class="position" name="act4" joint="joint_4" ctrlrange="-2.87979 2.87979"/>
         <position class="position3" name="act5" joint="joint_5" ctrlrange="-1.8326 1.8326"/>
         <position class="position3" name="act6" joint="joint_6" ctrlrange="-2.70526 2.70526"/>
-        <position name="act8" joint="gripper_jaw1_joint" kp="5000" ctrlrange="-0.014 0"/>
-        <position name="act9" joint="gripper_jaw2_joint" kp="5000" ctrlrange="-0.014 0"/>
+        <position name="act8" joint="gripper_jaw1_joint" kp="10000" ctrlrange="-0.014 0"/>
+        <position name="act9" joint="gripper_jaw2_joint" kp="10000" ctrlrange="-0.014 0"/>
+        <adhesion name="grip_adhesion_jaw1" body="gripper_jaw1_link" ctrlrange="0 1" gain="20"/>
+        <adhesion name="grip_adhesion_jaw2" body="gripper_jaw2_link" ctrlrange="0 1" gain="20"/>
     </actuator>
+
+    <equality>
+        <!-- Welds are inactive by default; the controller activates the one
+             matching the held object on grasp and deactivates on release.
+             solref/solimp are tightened well past the contact defaults so the
+             constraint behaves as a near-rigid kinematic lock rather than a
+             stiff spring (which produces visible object jiggle during transport). -->
+        <weld name="weld_object0" body1="gripper_base_link" body2="object0" active="false"
+              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
+        <weld name="weld_object_distractor1" body1="gripper_base_link" body2="object_distractor1" active="false"
+              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
+        <weld name="weld_object_distractor2" body1="gripper_base_link" body2="object_distractor2" active="false"
+              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
+    </equality>
 
 
 </mujoco>

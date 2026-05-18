@@ -34,7 +34,10 @@ from aera_semi_autonomous.control.ar4_mk3_robot_interface import Ar4Mk3RobotInte
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
-from aera_semi_autonomous.data.pick_and_place_helpers import get_object_pose
+from aera_semi_autonomous.data.pick_and_place_helpers import (
+    get_object_grasp_gripper_pos,
+    get_object_pose,
+)
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
     generate_waypoints,
@@ -60,6 +63,7 @@ class DemoConfig:
     randomize_cameras: bool = False
     use_geometric_lookat: bool = True
     show_gripper_view: bool = True
+    show_grip_overlay: bool = False
     initial_window_size: int = 640
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
@@ -179,6 +183,7 @@ def main():
             domain_rand=domain_rand_config,
             image_width=cfg.initial_window_size,
             image_height=cfg.initial_window_size,
+            show_grip_overlay=cfg.show_grip_overlay,
         )
         env = Ar4Mk3PickAndPlaceEnv(
             render_mode="human" if cfg.render else "rgb_array",
@@ -224,7 +229,8 @@ def main():
 
         # Step 3: Pick up the object
         logger.info("Attempting to pick up object...")
-        gripper_pos = 0.0  # Fully closed
+        gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
+        logger.info(f"Computed grasp gripper_pos: {gripper_pos:.4f}")
 
         if cfg.perturbation.perturb_pick:
             for wp in generate_waypoints(object_pose, cfg.perturbation):

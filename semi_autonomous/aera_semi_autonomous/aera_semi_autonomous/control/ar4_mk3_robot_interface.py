@@ -1,7 +1,7 @@
 import copy
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import mujoco
 import numpy as np
@@ -45,9 +45,149 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
         self.actuator_names = [f"act{i}" for i in range(1, 7)]
 
+        # Adhesion actuators pull the object into the jaws during close;
+        # the weld equality (engaged after close) rigidly pins it for transport.
+        self._adhesion_actuator_ids: list[int] = []
+        for name in ("grip_adhesion_jaw1", "grip_adhesion_jaw2"):
+            actuator_id = mujoco.mj_name2id(  # type: ignore
+                self.env.model, mujoco.mjtObj.mjOBJ_ACTUATOR, name  # type: ignore
+            )
+            if actuator_id != -1:
+                self._adhesion_actuator_ids.append(actuator_id)
+
+        # Weld equality constraints keyed by object body name. Activated on
+        # grasp for the object closest to the grip site, deactivated on release.
+        self._weld_eq_ids: Dict[str, int] = {}
+        for obj_name in ("object0", "object_distractor1", "object_distractor2"):
+            eq_id = mujoco.mj_name2id(  # type: ignore
+                self.env.model, mujoco.mjtObj.mjOBJ_EQUALITY, f"weld_{obj_name}"  # type: ignore
+            )
+            if eq_id != -1:
+                self._weld_eq_ids[obj_name] = eq_id
+
+        # Kinematic-lock state. When a grasp activates, we record the held
+        # object and its pose in the gripper frame, then every simulation step
+        # we write the object's qpos directly — bypassing the equality solver
+        # entirely, which eliminates the per-step residual error that the weld
+        # constraint alone cannot avoid.
+        self._held_object_name: Optional[str] = None
+        self._held_relpose: Optional[Tuple[np.ndarray, np.ndarray]] = None
+
     def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
         """Sets the data collector for recording trajectories."""
         self.data_collector = data_collector
+
+    def _set_adhesion(self, enabled: bool) -> None:
+        """Toggle the gripper adhesion actuators."""
+        for actuator_id in self._adhesion_actuator_ids:
+            self.env.data.ctrl[actuator_id] = 1.0 if enabled else 0.0
+
+    def _enforce_held_object_pose(self) -> None:
+        """If an object is currently held, snap its qpos/qvel to the gripper.
+
+        Writes the world-frame pose directly. Called after every mj_step so any
+        physics drift introduced during the integration is overwritten before
+        the next step or render.
+        """
+        if self._held_object_name is None or self._held_relpose is None:
+            return
+        rel_pos, rel_quat = self._held_relpose
+
+        body1_id = self.env.model.body("gripper_base_link").id
+        p1 = self.env.data.xpos[body1_id]
+        q1 = self.env.data.xquat[body1_id]
+
+        # World pose: p_obj = p1 + R(q1) * rel_pos, q_obj = q1 * rel_quat
+        rotated = np.empty(3)
+        mujoco.mju_rotVecQuat(rotated, rel_pos, q1)  # type: ignore
+        p_obj = p1 + rotated
+        q_obj = np.empty(4)
+        mujoco.mju_mulQuat(q_obj, q1, rel_quat)  # type: ignore
+
+        joint_id = mujoco.mj_name2id(  # type: ignore
+            self.env.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self._held_object_name}:joint"  # type: ignore
+        )
+        qpos_addr = self.env.model.jnt_qposadr[joint_id]
+        dof_addr = self.env.model.jnt_dofadr[joint_id]
+        self.env.data.qpos[qpos_addr : qpos_addr + 3] = p_obj
+        self.env.data.qpos[qpos_addr + 3 : qpos_addr + 7] = q_obj
+        self.env.data.qvel[dof_addr : dof_addr + 6] = 0.0
+        # Refresh derived quantities so render and downstream reads see the
+        # corrected pose this frame, not next step.
+        mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+
+    def _step_simulation(self) -> None:
+        """mj_step that also enforces any active kinematic grasp lock."""
+        mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+        self._enforce_held_object_pose()
+
+    def _activate_weld_for_closest_object(self, max_distance: float = 0.05) -> None:
+        """Engage the weld for whichever known object is closest to the grip site.
+
+        Snapshots the current relative pose between gripper and object into the
+        weld's eq_data, then activates the constraint. Without this snapshot the
+        weld defaults to identity-relpose and the solver tries to slam the
+        object into coincidence with gripper_base_link — producing a violent
+        impulse that ejects the object.
+        """
+        if not self._weld_eq_ids:
+            return
+        grip_site_id = mujoco.mj_name2id(  # type: ignore
+            self.env.model, mujoco.mjtObj.mjOBJ_SITE, "grip"  # type: ignore
+        )
+        grip_pos = self.env.data.site_xpos[grip_site_id]
+
+        best_name: Optional[str] = None
+        best_dist = float("inf")
+        for obj_name in self._weld_eq_ids:
+            body_id = self.env.model.body(obj_name).id
+            dist = float(np.linalg.norm(self.env.data.xpos[body_id] - grip_pos))
+            if dist < best_dist:
+                best_dist = dist
+                best_name = obj_name
+
+        if best_name is None or best_dist > max_distance:
+            self.logger.warning(
+                f"No graspable object within {max_distance:.3f} m of grip site "
+                f"(closest: {best_name} at {best_dist:.3f} m). Weld not engaged."
+            )
+            return
+
+        body1_id = self.env.model.body("gripper_base_link").id
+        body2_id = self.env.model.body(best_name).id
+        p1 = self.env.data.xpos[body1_id]
+        q1 = self.env.data.xquat[body1_id]
+        p2 = self.env.data.xpos[body2_id]
+        q2 = self.env.data.xquat[body2_id]
+
+        # Express body2's pose in body1's frame: rel_pos = R(q1)^T (p2 - p1),
+        # rel_quat = q1^-1 * q2.
+        q1_inv = np.empty(4)
+        mujoco.mju_negQuat(q1_inv, q1)  # type: ignore
+        rel_pos = np.empty(3)
+        mujoco.mju_rotVecQuat(rel_pos, p2 - p1, q1_inv)  # type: ignore
+        rel_quat = np.empty(4)
+        mujoco.mju_mulQuat(rel_quat, q1_inv, q2)  # type: ignore
+
+        eq_id = self._weld_eq_ids[best_name]
+        # eq_data layout for weld: [anchor(3), relpose_pos(3), relpose_quat(4), torquescale(1)]
+        self.env.model.eq_data[eq_id, 0:3] = 0.0  # anchor at body2 origin
+        self.env.model.eq_data[eq_id, 3:6] = rel_pos
+        self.env.model.eq_data[eq_id, 6:10] = rel_quat
+        self.env.model.eq_data[eq_id, 10] = 1.0  # torque scale
+
+        self.env.data.eq_active[eq_id] = 1
+        # Record held state so _step_simulation can kinematically enforce it.
+        self._held_object_name = best_name
+        self._held_relpose = (rel_pos.copy(), rel_quat.copy())
+        self.logger.info(f"Weld engaged: {best_name} (distance {best_dist:.3f} m)")
+
+    def _deactivate_all_welds(self) -> None:
+        """Release any active grasp weld and clear the kinematic-lock state."""
+        for eq_id in self._weld_eq_ids.values():
+            self.env.data.eq_active[eq_id] = 0
+        self._held_object_name = None
+        self._held_relpose = None
 
     def _create_joint_state_msg(self, now: float) -> JointState:
         """Creates a JointState message from the current simulation state."""
@@ -212,21 +352,27 @@ class Ar4Mk3RobotInterface(RobotInterface):
             max_steps = self.config.gripper_action_steps * 2
 
             for i in range(max_steps):
-                current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
-                if (
-                    np.linalg.norm(target_gripper_qpos - current_gripper_qpos)
-                    < self.config.gripper_pos_tolerance
-                ):
-                    break  # Converged
-
-                # Interpolate control setpoint for smooth motion over GRIPPER_ACTION_STEPS
+                # Interpolate control setpoint for smooth motion over GRIPPER_ACTION_STEPS.
+                # We only allow convergence-based early exit AFTER the ramp has
+                # delivered the full target setpoint — otherwise, if the jaws
+                # hit an object slightly closer than expected, the actual qpos
+                # may briefly match the partially-ramped ctrl, the tolerance
+                # check fires, and we exit with near-zero squeeze force.
                 alpha = min(1.0, i / self.config.gripper_action_steps)
                 interpolated_qpos = (
                     1 - alpha
                 ) * start_gripper_qpos + alpha * target_gripper_qpos
                 self.env.data.ctrl[gripper_ctrl_indices] = interpolated_qpos
 
-                mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+                if alpha >= 1.0:
+                    current_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
+                    if (
+                        np.linalg.norm(target_gripper_qpos - current_gripper_qpos)
+                        < self.config.gripper_pos_tolerance
+                    ):
+                        break  # Converged
+
+                self._step_simulation()
                 self._record_step()
                 if self.config.render_steps:
                     self.env.render()
@@ -360,6 +506,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # Refresh it so that the no-progress check and min_height check below
             # compare actual post-integration positions.
             mujoco.mj_forward(model, data)  # type: ignore
+            # Enforce kinematic grasp only when IK is running in-place on the
+            # real env data — the hypothetical (non-inplace) IK works on a
+            # deepcopy and must not be aliased to self.env.data state.
+            if data is self.env.data:
+                self._enforce_held_object_pose()
             self._record_step()
 
             new_site_xpos = data.site_xpos[site_id]
@@ -475,7 +626,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 alpha = min(1.0, i / num_steps)
                 interpolated_qpos = (1 - alpha) * start_qpos + alpha * target_qpos
                 self.env.data.ctrl[actuator_ids] = interpolated_qpos
-                mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+                self._step_simulation()
                 self._record_step()
                 if self.config.render_steps:
                     self.env.render()
@@ -533,6 +684,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Release the gripper by interpolating to an open state."""
         try:
             self.logger.info("Releasing gripper")
+            # Release the rigid weld and adhesion BEFORE the jaws start to open
+            # so the object detaches cleanly (and is subject to gravity again)
+            # while still surrounded by the pads, instead of being dragged
+            # outward as the jaws retract.
+            self._deactivate_all_welds()
+            self._set_adhesion(False)
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
             # Fully open gripper
             target_gripper_qpos = np.array([-0.014, -0.014])
@@ -591,6 +748,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
             if not self._interpolate_gripper(target_gripper_qpos):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False
+
+            # Engage adhesion + rigid weld AFTER the jaws have closed around the
+            # object. Adhesion centered the object during the close; the weld
+            # then snapshots the resulting relative pose and locks it
+            # kinematically. Once the weld is on it does all the work, so
+            # disable adhesion to avoid two systems fighting over the object.
+            self._set_adhesion(True)
+            self._activate_weld_for_closest_object()
+            self._set_adhesion(False)
 
             # 5. Lift the object
             if not self.move_to(above_pose):

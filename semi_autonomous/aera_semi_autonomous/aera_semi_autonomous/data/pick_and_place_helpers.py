@@ -14,7 +14,7 @@ from scipy.spatial.transform import Rotation
 # past the surface so contact force is bounded and non-zero rather than zero.
 GRIPPER_JAW_QPOS_MIN = -0.014
 GRIPPER_JAW_QPOS_MAX = 0.0
-DEFAULT_GRASP_PRELOAD = 0.0  # Weld provides the hold; squeeze is purely cosmetic.
+DEFAULT_GRASP_PRELOAD = 0.0005  # 0.5 mm — just enough to keep the jaws visually touching the object; the kinematic lock prevents this preload from causing any penetration.
 
 
 def get_object_pose(env, logger: Optional[logging.Logger] = None) -> Optional[Pose]:

@@ -69,9 +69,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # object and its pose in the gripper frame, then every simulation step
         # we write the object's qpos directly — bypassing the equality solver
         # entirely, which eliminates the per-step residual error that the weld
-        # constraint alone cannot avoid.
+        # constraint alone cannot avoid. We also snapshot the jaw qpos values
+        # at grasp time so the jaws don't drift along their slide axis under
+        # inertial loading during fast arm motion.
         self._held_object_name: Optional[str] = None
         self._held_relpose: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        self._held_jaw_qpos: Optional[np.ndarray] = None
+        self._held_jaw_qpos_indices: Optional[np.ndarray] = None
+        self._held_jaw_dof_indices: Optional[np.ndarray] = None
 
     def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
         """Sets the data collector for recording trajectories."""
@@ -112,6 +117,15 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.env.data.qpos[qpos_addr : qpos_addr + 3] = p_obj
         self.env.data.qpos[qpos_addr + 3 : qpos_addr + 7] = q_obj
         self.env.data.qvel[dof_addr : dof_addr + 6] = 0.0
+
+        # Also pin the jaw positions: without this, fast arm motion can
+        # transiently push a jaw past its frictionloss threshold and make it
+        # slide along its axis, which manifests as the jaws "jumping" relative
+        # to the kinematically-held object.
+        if self._held_jaw_qpos is not None:
+            self.env.data.qpos[self._held_jaw_qpos_indices] = self._held_jaw_qpos
+            self.env.data.qvel[self._held_jaw_dof_indices] = 0.0
+
         # Refresh derived quantities so render and downstream reads see the
         # corrected pose this frame, not next step.
         mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
@@ -176,11 +190,24 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.env.model.eq_data[eq_id, 6:10] = rel_quat
         self.env.model.eq_data[eq_id, 10] = 1.0  # torque scale
 
-        self.env.data.eq_active[eq_id] = 1
-        # Record held state so _step_simulation can kinematically enforce it.
+        # Note: we intentionally do NOT activate the weld constraint
+        # (self.env.data.eq_active[eq_id] = 1). The kinematic lock applied in
+        # _step_simulation is the sole source of truth for the held object's
+        # pose, so running the equality solver in parallel only adds numerical
+        # noise (sub-pixel residual drift) without contributing any hold force.
+        # The weld machinery remains in the XML as a fallback if the kinematic
+        # lock is ever disabled.
         self._held_object_name = best_name
         self._held_relpose = (rel_pos.copy(), rel_quat.copy())
-        self.logger.info(f"Weld engaged: {best_name} (distance {best_dist:.3f} m)")
+
+        # Snapshot jaw qpos at grasp time and pin it through transport.
+        gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
+        jaw_qpos_indices = self._get_qpos_indices(self.env.model, gripper_joint_names)
+        jaw_dof_indices = self._get_dof_indices(self.env.model, gripper_joint_names)
+        self._held_jaw_qpos_indices = jaw_qpos_indices
+        self._held_jaw_dof_indices = jaw_dof_indices
+        self._held_jaw_qpos = self.env.data.qpos[jaw_qpos_indices].copy()
+        self.logger.info(f"Grasp locked: {best_name} (distance {best_dist:.3f} m)")
 
     def _deactivate_all_welds(self) -> None:
         """Release any active grasp weld and clear the kinematic-lock state."""
@@ -188,6 +215,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
             self.env.data.eq_active[eq_id] = 0
         self._held_object_name = None
         self._held_relpose = None
+        self._held_jaw_qpos = None
+        self._held_jaw_qpos_indices = None
+        self._held_jaw_dof_indices = None
 
     def _create_joint_state_msg(self, now: float) -> JointState:
         """Creates a JointState message from the current simulation state."""

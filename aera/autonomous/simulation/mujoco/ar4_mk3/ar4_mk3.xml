@@ -210,23 +210,7 @@
         <position class="position3" name="act6" joint="joint_6" ctrlrange="-2.70526 2.70526"/>
         <position name="act8" joint="gripper_jaw1_joint" kp="10000" ctrlrange="-0.014 0"/>
         <position name="act9" joint="gripper_jaw2_joint" kp="10000" ctrlrange="-0.014 0"/>
-        <adhesion name="grip_adhesion_jaw1" body="gripper_jaw1_link" ctrlrange="0 1" gain="20"/>
-        <adhesion name="grip_adhesion_jaw2" body="gripper_jaw2_link" ctrlrange="0 1" gain="20"/>
     </actuator>
-
-    <equality>
-        <!-- Welds are inactive by default; the controller activates the one
-             matching the held object on grasp and deactivates on release.
-             solref/solimp are tightened well past the contact defaults so the
-             constraint behaves as a near-rigid kinematic lock rather than a
-             stiff spring (which produces visible object jiggle during transport). -->
-        <weld name="weld_object0" body1="gripper_base_link" body2="object0" active="false"
-              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
-        <weld name="weld_object_distractor1" body1="gripper_base_link" body2="object_distractor1" active="false"
-              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
-        <weld name="weld_object_distractor2" body1="gripper_base_link" body2="object_distractor2" active="false"
-              solref="0.001 1" solimp="0.999 0.9999 0.001 0.5 2"/>
-    </equality>
 
 
 </mujoco>

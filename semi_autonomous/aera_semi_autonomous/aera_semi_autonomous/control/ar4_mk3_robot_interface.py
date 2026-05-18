@@ -45,33 +45,12 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
         self.actuator_names = [f"act{i}" for i in range(1, 7)]
 
-        # Adhesion actuators pull the object into the jaws during close;
-        # the weld equality (engaged after close) rigidly pins it for transport.
-        self._adhesion_actuator_ids: list[int] = []
-        for name in ("grip_adhesion_jaw1", "grip_adhesion_jaw2"):
-            actuator_id = mujoco.mj_name2id(  # type: ignore
-                self.env.model, mujoco.mjtObj.mjOBJ_ACTUATOR, name  # type: ignore
-            )
-            if actuator_id != -1:
-                self._adhesion_actuator_ids.append(actuator_id)
-
-        # Weld equality constraints keyed by object body name. Activated on
-        # grasp for the object closest to the grip site, deactivated on release.
-        self._weld_eq_ids: Dict[str, int] = {}
-        for obj_name in ("object0", "object_distractor1", "object_distractor2"):
-            eq_id = mujoco.mj_name2id(  # type: ignore
-                self.env.model, mujoco.mjtObj.mjOBJ_EQUALITY, f"weld_{obj_name}"  # type: ignore
-            )
-            if eq_id != -1:
-                self._weld_eq_ids[obj_name] = eq_id
-
-        # Kinematic-lock state. When a grasp activates, we record the held
-        # object and its pose in the gripper frame, then every simulation step
-        # we write the object's qpos directly — bypassing the equality solver
-        # entirely, which eliminates the per-step residual error that the weld
-        # constraint alone cannot avoid. We also snapshot the jaw qpos values
-        # at grasp time so the jaws don't drift along their slide axis under
-        # inertial loading during fast arm motion.
+        # Kinematic-lock state. When a grasp activates we record the held
+        # object's pose in the gripper frame and the current jaw qpos, then
+        # every simulation step _enforce_held_object_pose writes both back —
+        # a hard kinematic assignment that produces zero relative motion
+        # between gripper and held object regardless of arm dynamics.
+        self._known_grasp_objects = ("object0", "object_distractor1", "object_distractor2")
         self._held_object_name: Optional[str] = None
         self._held_relpose: Optional[Tuple[np.ndarray, np.ndarray]] = None
         self._held_jaw_qpos: Optional[np.ndarray] = None
@@ -81,11 +60,6 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
         """Sets the data collector for recording trajectories."""
         self.data_collector = data_collector
-
-    def _set_adhesion(self, enabled: bool) -> None:
-        """Toggle the gripper adhesion actuators."""
-        for actuator_id in self._adhesion_actuator_ids:
-            self.env.data.ctrl[actuator_id] = 1.0 if enabled else 0.0
 
     def _enforce_held_object_pose(self) -> None:
         """If an object is currently held, snap its qpos/qvel to the gripper.
@@ -135,17 +109,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
         mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
         self._enforce_held_object_pose()
 
-    def _activate_weld_for_closest_object(self, max_distance: float = 0.05) -> None:
-        """Engage the weld for whichever known object is closest to the grip site.
+    def _engage_kinematic_grasp(self, max_distance: float = 0.05) -> None:
+        """Lock the closest known object and the current jaw qpos to the gripper.
 
-        Snapshots the current relative pose between gripper and object into the
-        weld's eq_data, then activates the constraint. Without this snapshot the
-        weld defaults to identity-relpose and the solver tries to slam the
-        object into coincidence with gripper_base_link — producing a violent
-        impulse that ejects the object.
+        Snapshots the object's pose in the gripper frame and the jaw qpos
+        values; these are then re-applied every simulation step by
+        _enforce_held_object_pose, producing zero relative motion between
+        gripper and held object regardless of arm dynamics.
         """
-        if not self._weld_eq_ids:
-            return
         grip_site_id = mujoco.mj_name2id(  # type: ignore
             self.env.model, mujoco.mjtObj.mjOBJ_SITE, "grip"  # type: ignore
         )
@@ -153,7 +124,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
         best_name: Optional[str] = None
         best_dist = float("inf")
-        for obj_name in self._weld_eq_ids:
+        for obj_name in self._known_grasp_objects:
             body_id = self.env.model.body(obj_name).id
             dist = float(np.linalg.norm(self.env.data.xpos[body_id] - grip_pos))
             if dist < best_dist:
@@ -163,7 +134,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         if best_name is None or best_dist > max_distance:
             self.logger.warning(
                 f"No graspable object within {max_distance:.3f} m of grip site "
-                f"(closest: {best_name} at {best_dist:.3f} m). Weld not engaged."
+                f"(closest: {best_name} at {best_dist:.3f} m). Grasp not locked."
             )
             return
 
@@ -183,36 +154,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
         rel_quat = np.empty(4)
         mujoco.mju_mulQuat(rel_quat, q1_inv, q2)  # type: ignore
 
-        eq_id = self._weld_eq_ids[best_name]
-        # eq_data layout for weld: [anchor(3), relpose_pos(3), relpose_quat(4), torquescale(1)]
-        self.env.model.eq_data[eq_id, 0:3] = 0.0  # anchor at body2 origin
-        self.env.model.eq_data[eq_id, 3:6] = rel_pos
-        self.env.model.eq_data[eq_id, 6:10] = rel_quat
-        self.env.model.eq_data[eq_id, 10] = 1.0  # torque scale
-
-        # Note: we intentionally do NOT activate the weld constraint
-        # (self.env.data.eq_active[eq_id] = 1). The kinematic lock applied in
-        # _step_simulation is the sole source of truth for the held object's
-        # pose, so running the equality solver in parallel only adds numerical
-        # noise (sub-pixel residual drift) without contributing any hold force.
-        # The weld machinery remains in the XML as a fallback if the kinematic
-        # lock is ever disabled.
         self._held_object_name = best_name
         self._held_relpose = (rel_pos.copy(), rel_quat.copy())
 
-        # Snapshot jaw qpos at grasp time and pin it through transport.
         gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
-        jaw_qpos_indices = self._get_qpos_indices(self.env.model, gripper_joint_names)
-        jaw_dof_indices = self._get_dof_indices(self.env.model, gripper_joint_names)
-        self._held_jaw_qpos_indices = jaw_qpos_indices
-        self._held_jaw_dof_indices = jaw_dof_indices
-        self._held_jaw_qpos = self.env.data.qpos[jaw_qpos_indices].copy()
+        self._held_jaw_qpos_indices = self._get_qpos_indices(
+            self.env.model, gripper_joint_names
+        )
+        self._held_jaw_dof_indices = self._get_dof_indices(
+            self.env.model, gripper_joint_names
+        )
+        self._held_jaw_qpos = self.env.data.qpos[self._held_jaw_qpos_indices].copy()
         self.logger.info(f"Grasp locked: {best_name} (distance {best_dist:.3f} m)")
 
-    def _deactivate_all_welds(self) -> None:
-        """Release any active grasp weld and clear the kinematic-lock state."""
-        for eq_id in self._weld_eq_ids.values():
-            self.env.data.eq_active[eq_id] = 0
+    def _release_kinematic_grasp(self) -> None:
+        """Clear the kinematic-lock state so the object is back under physics."""
         self._held_object_name = None
         self._held_relpose = None
         self._held_jaw_qpos = None
@@ -714,12 +670,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         """Release the gripper by interpolating to an open state."""
         try:
             self.logger.info("Releasing gripper")
-            # Release the rigid weld and adhesion BEFORE the jaws start to open
-            # so the object detaches cleanly (and is subject to gravity again)
-            # while still surrounded by the pads, instead of being dragged
-            # outward as the jaws retract.
-            self._deactivate_all_welds()
-            self._set_adhesion(False)
+            # Drop the kinematic grasp BEFORE the jaws start to open so the
+            # object detaches cleanly (and is subject to gravity again) while
+            # still surrounded by the pads.
+            self._release_kinematic_grasp()
             gripper_qpos_indices = np.arange(self.env.model.nq - 2, self.env.model.nq)
             # Fully open gripper
             target_gripper_qpos = np.array([-0.014, -0.014])
@@ -779,14 +733,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.logger.error("Grasp failed: could not close gripper.")
                 return False
 
-            # Engage adhesion + rigid weld AFTER the jaws have closed around the
-            # object. Adhesion centered the object during the close; the weld
-            # then snapshots the resulting relative pose and locks it
-            # kinematically. Once the weld is on it does all the work, so
-            # disable adhesion to avoid two systems fighting over the object.
-            self._set_adhesion(True)
-            self._activate_weld_for_closest_object()
-            self._set_adhesion(False)
+            # Snapshot the gripper-object and jaw qpos state once the jaws
+            # have closed; from this point until release, _step_simulation
+            # writes the held object's qpos and the jaw qpos directly every
+            # step — eliminating any relative motion during transport.
+            self._engage_kinematic_grasp()
 
             # 5. Lift the object
             if not self.move_to(above_pose):

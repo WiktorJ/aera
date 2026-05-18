@@ -476,7 +476,11 @@ class Ar4Mk3Env(BaseEnv):
         self._visualize_target()
 
         # Display grip position
-        if self.render_mode == "human" and self.mujoco_renderer.viewer:
+        if (
+            self.render_mode == "human"
+            and self.mujoco_renderer.viewer
+            and self.config.show_grip_overlay
+        ):
             grip_pos = self._utils.get_site_xpos(self.model, self.data, "grip")
             self.mujoco_renderer.viewer.add_overlay(
                 self._mujoco.mjtGridPos.mjGRID_TOPLEFT,

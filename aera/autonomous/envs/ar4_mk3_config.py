@@ -173,6 +173,7 @@ class Ar4Mk3EnvConfig:
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
     image_width: int = 224
     image_height: int = 224
+    show_grip_overlay: bool = True
 
     def __post_init__(self):
         # When the geometric lookat is enabled and the user hasn't explicitly

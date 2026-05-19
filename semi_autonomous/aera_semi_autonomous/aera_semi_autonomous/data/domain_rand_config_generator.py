@@ -63,6 +63,119 @@ def _sample_scene_camera_pose() -> Tuple[list, list]:
     rot = _SCENE_CAMERA_ANCHOR_ROTS.mean(weights=weights)
     return pos.tolist(), rot.as_euler("xyz").tolist()
 
+# Physically-motivated material classes for each texture in AVAILABLE_TEXTURES.
+# Sampling specular/shininess/reflectance per-class (instead of one global range)
+# avoids "varnished plaster" or "matte mirror" combinations that read as fake
+# even when the albedo is plausible.
+_TEXTURE_CLASSES = {
+    # Matte / semi-matte wood.
+    "blue-wood": "wood",
+    "dark-wood": "wood",
+    "green-wood": "wood",
+    "gray-woodgrain": "wood",
+    "light-wood": "wood",
+    "red-wood": "wood",
+    "wood-tiles": "wood",
+    # Varnished / lacquered wood — a touch glossier.
+    "wood-varnished-panels": "wood_varnished",
+    # Brushed / scratched metal — diffuse highlight, mild reflectance.
+    "steel-brushed": "metal_brushed",
+    "steel-scratched": "metal_brushed",
+    # Polished metal — sharper highlight, more reflectance.
+    "brass-ambra": "metal_polished",
+    "metal": "metal_polished",
+    # Painted / plastered walls — near-Lambertian.
+    "cream-plaster": "plaster",
+    "gray-plaster": "plaster",
+    "light-gray-plaster": "plaster",
+    "pink-plaster": "plaster",
+    "white-plaster": "plaster",
+    "yellow-plaster": "plaster",
+    # Glazed ceramic — bright highlight.
+    "ceramic": "ceramic",
+    # Glass — highest spec / reflectance of the set.
+    "glass": "glass",
+    # Soft / rough surfaces.
+    "gray-felt": "fabric",
+    "clay": "matte_rough",
+    "dirt": "matte_rough",
+    # Tile / brick — slight sheen on tile, none on brick.
+    "light-gray-floor-tile": "tile",
+    "white-bricks": "matte_rough",
+    # Printed packaging (food / drink labels) — semi-gloss print finish.
+    "bread": "printed",
+    "can": "printed",
+    "cereal": "printed",
+    "lemon": "printed",
+    "soda": "printed",
+}
+
+# (specular_range, shininess_range, reflectance_range) per class.
+_CLASS_MATERIAL_RANGES = {
+    "wood":            ((0.05, 0.20), (0.10, 0.35), (0.00, 0.00)),
+    "wood_varnished":  ((0.25, 0.45), (0.35, 0.60), (0.00, 0.05)),
+    "metal_brushed":   ((0.35, 0.60), (0.30, 0.55), (0.05, 0.15)),
+    "metal_polished":  ((0.50, 0.75), (0.50, 0.75), (0.10, 0.25)),
+    "plaster":         ((0.00, 0.10), (0.05, 0.15), (0.00, 0.00)),
+    "ceramic":         ((0.40, 0.65), (0.50, 0.75), (0.05, 0.12)),
+    "glass":           ((0.60, 0.85), (0.65, 0.85), (0.10, 0.25)),
+    "fabric":          ((0.00, 0.08), (0.05, 0.15), (0.00, 0.00)),
+    "matte_rough":     ((0.00, 0.10), (0.05, 0.15), (0.00, 0.00)),
+    "tile":            ((0.15, 0.35), (0.25, 0.45), (0.00, 0.05)),
+    "printed":         ((0.15, 0.40), (0.25, 0.50), (0.00, 0.00)),
+}
+
+# Per-class plausible tile density in repeats per world meter. Only meaningful
+# for materials whose geom uses texuniform=true (currently floor + walls), so
+# the generator only emits texrepeat for those surfaces. Each range encodes the
+# physical scale of the pattern: plaster/glass are near-uniform (low repeat),
+# bricks/tiles/fabric have small recognizable units (higher repeat).
+_CLASS_TEXREPEAT_PER_METER = {
+    "wood":            (0.5, 1.2),
+    "wood_varnished":  (0.4, 0.8),
+    "metal_brushed":   (1.0, 2.5),
+    "metal_polished":  (1.0, 2.5),
+    "plaster":         (0.3, 0.8),
+    "ceramic":         (1.5, 3.0),
+    "glass":           (0.3, 0.8),
+    "fabric":          (1.5, 3.0),
+    "matte_rough":     (1.5, 3.5),
+    "tile":            (1.5, 3.5),
+    "printed":         (0.8, 2.0),
+}
+
+assert set(_TEXTURE_CLASSES.keys()) == set(AVAILABLE_TEXTURES), (
+    "_TEXTURE_CLASSES is out of sync with AVAILABLE_TEXTURES: "
+    f"{set(AVAILABLE_TEXTURES) ^ set(_TEXTURE_CLASSES.keys())}"
+)
+
+
+def _sample_material_for_texture(
+    texture_name: str, randomize_texrepeat: bool = False
+) -> MaterialConfig:
+    """Sample specular/shininess/reflectance from the physical class the texture
+    belongs to, so e.g. plaster never gets a mirror highlight.
+
+    If randomize_texrepeat is True, also sample a class-appropriate texrepeat
+    (units: repeats per world meter). Only pass True for materials whose geom
+    uses texuniform=true — otherwise the value's meaning shifts to per-bbox
+    repeats and the sampled scale is wrong.
+    """
+    cls = _TEXTURE_CLASSES[texture_name]
+    spec_r, shin_r, refl_r = _CLASS_MATERIAL_RANGES[cls]
+    texrepeat = None
+    if randomize_texrepeat:
+        rate = float(np.random.uniform(*_CLASS_TEXREPEAT_PER_METER[cls]))
+        texrepeat = [rate, rate]
+    return MaterialConfig(
+        texture_name=texture_name,
+        specular=float(np.random.uniform(*spec_r)),
+        shininess=float(np.random.uniform(*shin_r)),
+        reflectance=float(np.random.uniform(*refl_r)),
+        texrepeat=texrepeat,
+    )
+
+
 NAMED_COLORS = {
     "red": (1, 0, 0, 1),
     "green": (0, 1, 0, 1),
@@ -159,19 +272,15 @@ def generate_random_domain_rand_config(
     object_distractor2_material = MaterialConfig(
         rgba=object_distractor2_rgba,
     )
-    floor_material = MaterialConfig(
-        texture_name=np.random.choice(AVAILABLE_TEXTURES),
-        specular=np.random.uniform(0.1, 0.8),
-        shininess=np.random.uniform(0.1, 0.7),
+    floor_material = _sample_material_for_texture(
+        np.random.choice(AVAILABLE_TEXTURES), randomize_texrepeat=True
     )
-    wall_material = MaterialConfig(texture_name=np.random.choice(AVAILABLE_TEXTURES))
+    wall_material = _sample_material_for_texture(
+        np.random.choice(AVAILABLE_TEXTURES), randomize_texrepeat=True
+    )
 
     def _create_random_robot_part_material():
-        return MaterialConfig(
-            texture_name=np.random.choice(AVAILABLE_TEXTURES),
-            specular=np.random.uniform(0.1, 0.8),
-            shininess=np.random.uniform(0.1, 0.7),
-        )
+        return _sample_material_for_texture(np.random.choice(AVAILABLE_TEXTURES))
 
     base_link_material = _create_random_robot_part_material()
     link_1_material = _create_random_robot_part_material()

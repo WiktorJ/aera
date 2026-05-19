@@ -11,16 +11,20 @@
         <material name="black" rgba="0 0 0 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
         <material name="transparent" rgba="0 0 0 0"/>
-        <material name="base_link_mat" rgba="1 1 1 1"/>
-        <material name="link_1_mat" rgba="1 1 1 1"/>
-        <material name="link_2_mat" rgba="1 1 1 1"/>
-        <material name="link_3_mat" rgba="1 1 1 1"/>
-        <material name="link_4_mat" rgba="1 1 1 1"/>
-        <material name="link_5_mat" rgba="1 1 1 1"/>
-        <material name="link_6_mat" rgba="1 1 1 1"/>
-        <material name="gripper_base_link_mat" rgba="1 1 1 1"/>
-        <material name="gripper_jaw1_mat" rgba="0.149 0.149 0.149 1"/>
-        <material name="gripper_jaw2_mat" rgba="0.149 0.149 0.149 1"/>
+        <!-- texrepeat tiles the texture across each link's bbox so 1K source
+             textures stay sharp on ~10-20 cm parts. texuniform stays false
+             (default) so the projection is bbox-relative and the texture
+             travels with the link instead of swimming past it during motion. -->
+        <material name="base_link_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_1_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_2_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_3_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_4_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_5_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="link_6_mat" texrepeat="3 3" rgba="1 1 1 1"/>
+        <material name="gripper_base_link_mat" texrepeat="2 2" rgba="1 1 1 1"/>
+        <material name="gripper_jaw1_mat" texrepeat="2 2" rgba="0.149 0.149 0.149 1"/>
+        <material name="gripper_jaw2_mat" texrepeat="2 2" rgba="0.149 0.149 0.149 1"/>
         <material name="block_mat" specular="0" shininess="0.5" reflectance="0" rgba="0.2 0.2 0.2 1"></material>
         <material name="target_mat" specular="0" shininess="0.5" reflectance="0" rgba="1 0 0 0.5"/>
         <material name="distractor1_mat" specular="0" shininess="0.5" reflectance="0" rgba="0 1 0 0.5"/>

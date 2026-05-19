@@ -573,6 +573,8 @@ class Ar4Mk3Env(BaseEnv):
                         self.model.mat_shininess[mat_id] = mat_config.shininess
                     if mat_config.reflectance is not None:
                         self.model.mat_reflectance[mat_id] = mat_config.reflectance
+                    if mat_config.texrepeat is not None:
+                        self.model.mat_texrepeat[mat_id] = mat_config.texrepeat
 
         # --- Apply Light Properties ---
         lights_map = {

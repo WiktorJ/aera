@@ -78,6 +78,7 @@ class MaterialConfig:
     specular: Optional[float] = None
     shininess: Optional[float] = None
     reflectance: Optional[float] = None
+    texrepeat: Optional[Sequence[float]] = None
 
 
 @dataclasses.dataclass

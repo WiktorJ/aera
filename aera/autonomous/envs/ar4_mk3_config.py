@@ -38,36 +38,33 @@ Q_GEOMETRIC = np.array(
 )
 
 AVAILABLE_TEXTURES = [
-    "blue-wood",
+    # Legacy hand-picked textures kept for exotic classes that the bulk
+    # ambientCG downloader doesn't cover (printed packaging, polished metal,
+    # glass, glazed ceramic). These are ~1K or smaller; replace when 2K+
+    # equivalents are sourced.
     "brass-ambra",
     "bread",
     "can",
     "ceramic",
     "cereal",
-    "clay",
-    "cream-plaster",
-    "dark-wood",
-    "dirt",
     "glass",
-    "gray-felt",
-    "gray-plaster",
-    "gray-woodgrain",
-    "green-wood",
     "lemon",
-    "light-gray-floor-tile",
-    "light-gray-plaster",
-    "light-wood",
     "metal",
-    "pink-plaster",
-    "red-wood",
     "soda",
-    "steel-brushed",
-    "steel-scratched",
-    "white-bricks",
-    "white-plaster",
-    "wood-tiles",
-    "wood-varnished-panels",
-    "yellow-plaster",
+    # ambientCG 2K CC0 textures (scripts/download_textures.py).
+    "wood049", "wood051", "wood058", "wood066", "wood067",
+    "wood092", "wood094", "wood095",
+    "woodfloor043", "woodfloor051", "woodfloor064", "woodfloor070",
+    "metal046b", "metal048a", "metal049a", "metal055a", "metal061b", "metal063",
+    "metalplates006", "metalplates013",
+    "plaster001", "plaster002", "plaster003", "plaster007",
+    "paintedplaster015", "paintedplaster016", "paintedplaster017",
+    "bricks075a", "bricks097", "bricks101", "bricks102", "bricks104",
+    "concrete034", "concrete046", "concrete047a", "concrete048",
+    "tiles040", "tiles078", "tiles107", "tiles132a", "tiles133a", "tiles138",
+    "fabric030", "fabric061", "fabric066", "fabric081c", "fabric083",
+    "marble012", "marble016", "marble021",
+    "plastic006", "plastic010", "plastic012a", "plastic013a", "plastic015a",
 ]
 
 

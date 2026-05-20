@@ -1,3 +1,4 @@
+import colorsys
 import logging
 from typing import Optional, Tuple
 
@@ -68,46 +69,54 @@ def _sample_scene_camera_pose() -> Tuple[list, list]:
 # avoids "varnished plaster" or "matte mirror" combinations that read as fake
 # even when the albedo is plausible.
 _TEXTURE_CLASSES = {
-    # Matte / semi-matte wood.
-    "blue-wood": "wood",
-    "dark-wood": "wood",
-    "green-wood": "wood",
-    "gray-woodgrain": "wood",
-    "light-wood": "wood",
-    "red-wood": "wood",
-    "wood-tiles": "wood",
-    # Varnished / lacquered wood — a touch glossier.
-    "wood-varnished-panels": "wood_varnished",
-    # Brushed / scratched metal — diffuse highlight, mild reflectance.
-    "steel-brushed": "metal_brushed",
-    "steel-scratched": "metal_brushed",
     # Polished metal — sharper highlight, more reflectance.
     "brass-ambra": "metal_polished",
     "metal": "metal_polished",
-    # Painted / plastered walls — near-Lambertian.
-    "cream-plaster": "plaster",
-    "gray-plaster": "plaster",
-    "light-gray-plaster": "plaster",
-    "pink-plaster": "plaster",
-    "white-plaster": "plaster",
-    "yellow-plaster": "plaster",
     # Glazed ceramic — bright highlight.
     "ceramic": "ceramic",
     # Glass — highest spec / reflectance of the set.
     "glass": "glass",
-    # Soft / rough surfaces.
-    "gray-felt": "fabric",
-    "clay": "matte_rough",
-    "dirt": "matte_rough",
-    # Tile / brick — slight sheen on tile, none on brick.
-    "light-gray-floor-tile": "tile",
-    "white-bricks": "matte_rough",
     # Printed packaging (food / drink labels) — semi-gloss print finish.
     "bread": "printed",
     "can": "printed",
     "cereal": "printed",
     "lemon": "printed",
     "soda": "printed",
+    # ambientCG matte / semi-matte wood.
+    "wood049": "wood", "wood051": "wood", "wood058": "wood",
+    "wood066": "wood", "wood067": "wood", "wood092": "wood",
+    "wood094": "wood", "wood095": "wood",
+    # ambientCG varnished / lacquered wood floor.
+    "woodfloor043": "wood_varnished", "woodfloor051": "wood_varnished",
+    "woodfloor064": "wood_varnished", "woodfloor070": "wood_varnished",
+    # ambientCG brushed / scratched metal.
+    "metal046b": "metal_brushed", "metal048a": "metal_brushed",
+    "metal049a": "metal_brushed", "metal055a": "metal_brushed",
+    "metal061b": "metal_brushed", "metal063": "metal_brushed",
+    "metalplates006": "metal_brushed", "metalplates013": "metal_brushed",
+    # ambientCG painted / plastered walls.
+    "plaster001": "plaster", "plaster002": "plaster",
+    "plaster003": "plaster", "plaster007": "plaster",
+    "paintedplaster015": "plaster", "paintedplaster016": "plaster",
+    "paintedplaster017": "plaster",
+    # ambientCG brick + concrete — rough matte.
+    "bricks075a": "matte_rough", "bricks097": "matte_rough",
+    "bricks101": "matte_rough", "bricks102": "matte_rough",
+    "bricks104": "matte_rough",
+    "concrete034": "matte_rough", "concrete046": "matte_rough",
+    "concrete047a": "matte_rough", "concrete048": "matte_rough",
+    # ambientCG tile — slight sheen.
+    "tiles040": "tile", "tiles078": "tile", "tiles107": "tile",
+    "tiles132a": "tile", "tiles133a": "tile", "tiles138": "tile",
+    # ambientCG fabric.
+    "fabric030": "fabric", "fabric061": "fabric", "fabric066": "fabric",
+    "fabric081c": "fabric", "fabric083": "fabric",
+    # ambientCG marble — glazed-ceramic-like.
+    "marble012": "ceramic", "marble016": "ceramic", "marble021": "ceramic",
+    # ambientCG plastic.
+    "plastic006": "plastic", "plastic010": "plastic",
+    "plastic012a": "plastic", "plastic013a": "plastic",
+    "plastic015a": "plastic",
 }
 
 # (specular_range, shininess_range, reflectance_range) per class.
@@ -155,12 +164,58 @@ assert set(_TEXTURE_CLASSES.keys()) == set(AVAILABLE_TEXTURES), (
     f"{set(AVAILABLE_TEXTURES) ^ set(_TEXTURE_CLASSES.keys())}"
 )
 
+# Per-class tint policy: (P(apply tint), saturation range, value range) in HSV.
+# Hue is always uniform [0, 1). The tint is multiplied against the texture by
+# MuJoCo, so the photographic grain/structure is preserved while the dominant
+# color shifts — this is what recovers the old hand-picked "red-wood/blue-wood"
+# variety from the realistic ambientCG photo set. None disables tinting (the
+# texture's own color is the look — bread label, brass, glass, marble).
+# Saturation is capped <1 and value is bounded above 0.5 so we don't end up
+# with cartoon-bright or near-black materials.
+_CLASS_TINT_POLICY = {
+    "wood":            (0.6, (0.2, 0.7), (0.5, 1.0)),
+    "wood_varnished":  (0.6, (0.2, 0.7), (0.5, 1.0)),
+    "plaster":         (0.7, (0.0, 0.8), (0.6, 1.0)),
+    "fabric":          (0.7, (0.1, 0.9), (0.5, 1.0)),
+    "tile":            (0.5, (0.1, 0.6), (0.6, 1.0)),
+    "matte_rough":     (0.4, (0.1, 0.5), (0.5, 1.0)),
+    "plastic":         (0.7, (0.2, 0.9), (0.6, 1.0)),
+    "metal_brushed":   None,
+    "metal_polished":  None,
+    "ceramic":         None,
+    "glass":           None,
+    "printed":         None,
+}
+
+assert set(_CLASS_TINT_POLICY.keys()) == set(_CLASS_MATERIAL_RANGES.keys()), (
+    "_CLASS_TINT_POLICY out of sync with _CLASS_MATERIAL_RANGES: "
+    f"{set(_CLASS_MATERIAL_RANGES.keys()) ^ set(_CLASS_TINT_POLICY.keys())}"
+)
+
+
+def _sample_tint_rgba(cls: str) -> Optional[Tuple[float, float, float, float]]:
+    policy = _CLASS_TINT_POLICY.get(cls)
+    if policy is None:
+        return None
+    p_tint, s_range, v_range = policy
+    if np.random.random() > p_tint:
+        return None
+    h = float(np.random.uniform(0.0, 1.0))
+    s = float(np.random.uniform(*s_range))
+    v = float(np.random.uniform(*v_range))
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return (float(r), float(g), float(b), 1.0)
+
 
 def _sample_material_for_texture(
     texture_name: str, randomize_texrepeat: bool = False
 ) -> MaterialConfig:
     """Sample specular/shininess/reflectance from the physical class the texture
     belongs to, so e.g. plaster never gets a mirror highlight.
+
+    For tintable classes (wood, plaster, fabric, ...) also samples an rgba tint
+    that the runtime multiplies against the texture — this is how we recover
+    color variety on top of realistic photo textures.
 
     If randomize_texrepeat is True, also sample a class-appropriate texrepeat
     (units: repeats per world meter). Only pass True for materials whose geom
@@ -175,6 +230,7 @@ def _sample_material_for_texture(
         texrepeat = [rate, rate]
     return MaterialConfig(
         texture_name=texture_name,
+        rgba=_sample_tint_rgba(cls),
         specular=float(np.random.uniform(*spec_r)),
         shininess=float(np.random.uniform(*shin_r)),
         reflectance=float(np.random.uniform(*refl_r)),

@@ -12,37 +12,72 @@
 
   <asset>
     <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
-    <texture type="2d" name="groundplane" file="../../textures/light-wood.png"/>
-    <texture type="2d" name="blue-wood" file="../../textures/blue-wood.png"/>
+    <texture type="2d" name="groundplane" file="../../textures/wood049.png"/>
     <texture type="2d" name="brass-ambra" file="../../textures/brass-ambra.png"/>
     <texture type="2d" name="bread" file="../../textures/bread.png"/>
     <texture type="2d" name="can" file="../../textures/can.png"/>
     <texture type="2d" name="ceramic" file="../../textures/ceramic.png"/>
     <texture type="2d" name="cereal" file="../../textures/cereal.png"/>
-    <texture type="2d" name="clay" file="../../textures/clay.png"/>
-    <texture type="2d" name="cream-plaster" file="../../textures/cream-plaster.png"/>
-    <texture type="2d" name="dark-wood" file="../../textures/dark-wood.png"/>
-    <texture type="2d" name="dirt" file="../../textures/dirt.png"/>
     <texture type="2d" name="glass" file="../../textures/glass.png"/>
-    <texture type="2d" name="gray-felt" file="../../textures/gray-felt.png"/>
-    <texture type="2d" name="gray-plaster" file="../../textures/gray-plaster.png"/>
-    <texture type="2d" name="gray-woodgrain" file="../../textures/gray-woodgrain.png"/>
-    <texture type="2d" name="green-wood" file="../../textures/green-wood.png"/>
     <texture type="2d" name="lemon" file="../../textures/lemon.png"/>
-    <texture type="2d" name="light-gray-floor-tile" file="../../textures/light-gray-floor-tile.png"/>
-    <texture type="2d" name="light-gray-plaster" file="../../textures/light-gray-plaster.png"/>
-    <texture type="2d" name="light-wood" file="../../textures/light-wood.png"/>
     <texture type="2d" name="metal" file="../../textures/metal.png"/>
-    <texture type="2d" name="pink-plaster" file="../../textures/pink-plaster.png"/>
-    <texture type="2d" name="red-wood" file="../../textures/red-wood.png"/>
     <texture type="2d" name="soda" file="../../textures/soda.png"/>
-    <texture type="2d" name="steel-brushed" file="../../textures/steel-brushed.png"/>
-    <texture type="2d" name="steel-scratched" file="../../textures/steel-scratched.png"/>
-    <texture type="2d" name="white-bricks" file="../../textures/white-bricks.png"/>
-    <texture type="2d" name="white-plaster" file="../../textures/white-plaster.png"/>
-    <texture type="2d" name="wood-tiles" file="../../textures/wood-tiles.png"/>
-    <texture type="2d" name="wood-varnished-panels" file="../../textures/wood-varnished-panels.png"/>
-    <texture type="2d" name="yellow-plaster" file="../../textures/yellow-plaster.png"/>
+    <!-- ambientCG 2K CC0 textures, downloaded via scripts/download_textures.py. -->
+    <texture type="2d" name="wood049" file="../../textures/wood049.png"/>
+    <texture type="2d" name="wood051" file="../../textures/wood051.png"/>
+    <texture type="2d" name="wood058" file="../../textures/wood058.png"/>
+    <texture type="2d" name="wood066" file="../../textures/wood066.png"/>
+    <texture type="2d" name="wood067" file="../../textures/wood067.png"/>
+    <texture type="2d" name="wood092" file="../../textures/wood092.png"/>
+    <texture type="2d" name="wood094" file="../../textures/wood094.png"/>
+    <texture type="2d" name="wood095" file="../../textures/wood095.png"/>
+    <texture type="2d" name="woodfloor043" file="../../textures/woodfloor043.png"/>
+    <texture type="2d" name="woodfloor051" file="../../textures/woodfloor051.png"/>
+    <texture type="2d" name="woodfloor064" file="../../textures/woodfloor064.png"/>
+    <texture type="2d" name="woodfloor070" file="../../textures/woodfloor070.png"/>
+    <texture type="2d" name="metal046b" file="../../textures/metal046b.png"/>
+    <texture type="2d" name="metal048a" file="../../textures/metal048a.png"/>
+    <texture type="2d" name="metal049a" file="../../textures/metal049a.png"/>
+    <texture type="2d" name="metal055a" file="../../textures/metal055a.png"/>
+    <texture type="2d" name="metal061b" file="../../textures/metal061b.png"/>
+    <texture type="2d" name="metal063" file="../../textures/metal063.png"/>
+    <texture type="2d" name="metalplates006" file="../../textures/metalplates006.png"/>
+    <texture type="2d" name="metalplates013" file="../../textures/metalplates013.png"/>
+    <texture type="2d" name="plaster001" file="../../textures/plaster001.png"/>
+    <texture type="2d" name="plaster002" file="../../textures/plaster002.png"/>
+    <texture type="2d" name="plaster003" file="../../textures/plaster003.png"/>
+    <texture type="2d" name="plaster007" file="../../textures/plaster007.png"/>
+    <texture type="2d" name="paintedplaster015" file="../../textures/paintedplaster015.png"/>
+    <texture type="2d" name="paintedplaster016" file="../../textures/paintedplaster016.png"/>
+    <texture type="2d" name="paintedplaster017" file="../../textures/paintedplaster017.png"/>
+    <texture type="2d" name="bricks075a" file="../../textures/bricks075a.png"/>
+    <texture type="2d" name="bricks097" file="../../textures/bricks097.png"/>
+    <texture type="2d" name="bricks101" file="../../textures/bricks101.png"/>
+    <texture type="2d" name="bricks102" file="../../textures/bricks102.png"/>
+    <texture type="2d" name="bricks104" file="../../textures/bricks104.png"/>
+    <texture type="2d" name="concrete034" file="../../textures/concrete034.png"/>
+    <texture type="2d" name="concrete046" file="../../textures/concrete046.png"/>
+    <texture type="2d" name="concrete047a" file="../../textures/concrete047a.png"/>
+    <texture type="2d" name="concrete048" file="../../textures/concrete048.png"/>
+    <texture type="2d" name="tiles040" file="../../textures/tiles040.png"/>
+    <texture type="2d" name="tiles078" file="../../textures/tiles078.png"/>
+    <texture type="2d" name="tiles107" file="../../textures/tiles107.png"/>
+    <texture type="2d" name="tiles132a" file="../../textures/tiles132a.png"/>
+    <texture type="2d" name="tiles133a" file="../../textures/tiles133a.png"/>
+    <texture type="2d" name="tiles138" file="../../textures/tiles138.png"/>
+    <texture type="2d" name="fabric030" file="../../textures/fabric030.png"/>
+    <texture type="2d" name="fabric061" file="../../textures/fabric061.png"/>
+    <texture type="2d" name="fabric066" file="../../textures/fabric066.png"/>
+    <texture type="2d" name="fabric081c" file="../../textures/fabric081c.png"/>
+    <texture type="2d" name="fabric083" file="../../textures/fabric083.png"/>
+    <texture type="2d" name="marble012" file="../../textures/marble012.png"/>
+    <texture type="2d" name="marble016" file="../../textures/marble016.png"/>
+    <texture type="2d" name="marble021" file="../../textures/marble021.png"/>
+    <texture type="2d" name="plastic006" file="../../textures/plastic006.png"/>
+    <texture type="2d" name="plastic010" file="../../textures/plastic010.png"/>
+    <texture type="2d" name="plastic012a" file="../../textures/plastic012a.png"/>
+    <texture type="2d" name="plastic013a" file="../../textures/plastic013a.png"/>
+    <texture type="2d" name="plastic015a" file="../../textures/plastic015a.png"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0"/>
     <!-- texuniform=true so the same tile density (~1 repeat / meter) applies
          across all walls and the ceiling regardless of geom size. -->

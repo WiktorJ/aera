@@ -4,8 +4,10 @@ Usage:
     python scripts/download_textures.py            # download everything missing
     python scripts/download_textures.py --dry-run  # show what would be downloaded
     python scripts/download_textures.py --limit 5  # cap per-category for a quick smoke test
+    python scripts/download_textures.py --force    # re-download even if file already exists
+    python scripts/download_textures.py --resolution 4K  # 1K | 2K | 4K (default 2K)
 
-Pulls 1K PNG asset zips, extracts only the *_Color.png (MuJoCo's renderer ignores
+Pulls PNG asset zips, extracts only the *_Color.png (MuJoCo's renderer ignores
 normal/roughness/metalness maps), and drops them into the sim textures dir using
 the lowercased ambientCG asset ID as the filename (e.g. "Wood050" -> "wood050.png").
 
@@ -41,7 +43,11 @@ TEXTURES_DIR = (
 )
 
 # (ambientCG category, target class in _TEXTURE_CLASSES, n_assets).
-# n's chosen to total ~50 with broad coverage across the existing taxonomy.
+# Broad coverage of natural materials. Color variety is also injected at
+# runtime via per-class rgba tints in domain_rand_config_generator.py — that's
+# why we don't try to source "red wood" / "blue plaster" assets here (they
+# barely exist as CC0 photographs and the tint pass produces them on the fly).
+# Categories below are picked for surface-type and pattern diversity.
 CATEGORY_PLAN: list[tuple[str, str, int]] = [
     ("Wood",            "wood",           8),
     ("WoodFloor",       "wood_varnished", 4),
@@ -49,16 +55,24 @@ CATEGORY_PLAN: list[tuple[str, str, int]] = [
     ("MetalPlates",     "metal_brushed",  2),
     ("Plaster",         "plaster",        4),
     ("PaintedPlaster",  "plaster",        3),
+    ("Wallpaper",       "plaster",        4),  # patterned painted surfaces
     ("Bricks",          "matte_rough",    5),
     ("Concrete",        "matte_rough",    4),
+    ("Asphalt",         "matte_rough",    2),
+    ("Rock",            "matte_rough",    3),
+    ("Ground",          "matte_rough",    3),  # soil / grass / gravel
     ("Tiles",           "tile",           6),
     ("Fabric",          "fabric",         5),
+    ("Leather",         "fabric",         4),  # softer/glossier than Fabric
     ("Marble",          "ceramic",        3),
     ("Plastic",         "plastic",        5),
+    ("Rubber",          "plastic",        3),  # often brightly colored
+    ("Cardboard",       "printed",        3),  # warm-tone packaging look
 ]
 
 API_URL = "https://ambientcg.com/api/v2/full_json"
-ZIP_URL_TEMPLATE = "https://ambientcg.com/get?file={asset_id}_1K-PNG.zip"
+ZIP_URL_TEMPLATE = "https://ambientcg.com/get?file={asset_id}_{resolution}-PNG.zip"
+VALID_RESOLUTIONS = ("1K", "2K", "4K")
 USER_AGENT = "aera-texture-fetch/1.0 (+research; mujoco sim2real)"
 REQUEST_TIMEOUT = 60
 
@@ -105,8 +119,8 @@ def _extract_color_png(zip_bytes: bytes) -> bytes | None:
     return None
 
 
-def download_one(asset_id: str, dest: Path) -> bool:
-    url = ZIP_URL_TEMPLATE.format(asset_id=asset_id)
+def download_one(asset_id: str, dest: Path, resolution: str) -> bool:
+    url = ZIP_URL_TEMPLATE.format(asset_id=asset_id, resolution=resolution)
     try:
         zip_bytes = _http_get(url)
     except urllib.error.HTTPError as e:
@@ -138,7 +152,12 @@ def plan_downloads(per_category_limit: int | None) -> Iterable[tuple[str, str, s
             yield asset_id, asset_id.lower(), klass
 
 
-def run(dry_run: bool, per_category_limit: int | None) -> list[FetchedAsset]:
+def run(
+    dry_run: bool,
+    per_category_limit: int | None,
+    resolution: str,
+    force: bool,
+) -> list[FetchedAsset]:
     TEXTURES_DIR.mkdir(parents=True, exist_ok=True)
     fetched: list[FetchedAsset] = []
     seen_names: set[str] = set()
@@ -149,18 +168,19 @@ def run(dry_run: bool, per_category_limit: int | None) -> list[FetchedAsset]:
         seen_names.add(stem)
 
         dest = TEXTURES_DIR / f"{stem}.png"
-        if dest.exists():
+        if dest.exists() and not force:
             print(f"  = {asset_id} -> {dest.name} (exists, skipping)")
             fetched.append(FetchedAsset(asset_id, stem, klass))
             continue
 
         if dry_run:
-            print(f"  + {asset_id} -> {dest.name} [{klass}] (dry-run)")
+            tag = "re-download" if dest.exists() else "dry-run"
+            print(f"  + {asset_id} -> {dest.name} [{klass}] ({tag}, {resolution})")
             fetched.append(FetchedAsset(asset_id, stem, klass))
             continue
 
-        print(f"  + {asset_id} -> {dest.name} [{klass}]")
-        if download_one(asset_id, dest):
+        print(f"  + {asset_id} -> {dest.name} [{klass}] ({resolution})")
+        if download_one(asset_id, dest, resolution):
             fetched.append(FetchedAsset(asset_id, stem, klass))
             # Polite spacing — ambientCG is generous but no need to hammer.
             time.sleep(0.25)
@@ -215,10 +235,27 @@ def main() -> int:
         default=None,
         help="Cap assets per category (smoke test).",
     )
+    parser.add_argument(
+        "--resolution",
+        choices=VALID_RESOLUTIONS,
+        default="2K",
+        help="ambientCG texture resolution (default 2K — better for close-up wrist cam).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even if file exists (use after bumping --resolution).",
+    )
     args = parser.parse_args()
 
     print(f"Texture dir: {TEXTURES_DIR}")
-    fetched = run(dry_run=args.dry_run, per_category_limit=args.limit)
+    print(f"Resolution: {args.resolution}  Force: {args.force}")
+    fetched = run(
+        dry_run=args.dry_run,
+        per_category_limit=args.limit,
+        resolution=args.resolution,
+        force=args.force,
+    )
     print(f"\n{len(fetched)} assets ready ({'dry run' if args.dry_run else 'downloaded'}).")
     print_snippets(fetched)
     return 0

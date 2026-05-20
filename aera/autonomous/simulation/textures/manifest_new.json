@@ -107,6 +107,22 @@
     "asset_id": "PaintedPlaster015",
     "class": "plaster"
   },
+  "wallpaper001a": {
+    "asset_id": "Wallpaper001A",
+    "class": "plaster"
+  },
+  "wallpaper002a": {
+    "asset_id": "Wallpaper002A",
+    "class": "plaster"
+  },
+  "wallpaper001b": {
+    "asset_id": "Wallpaper001B",
+    "class": "plaster"
+  },
+  "wallpaper001c": {
+    "asset_id": "Wallpaper001C",
+    "class": "plaster"
+  },
   "bricks104": {
     "asset_id": "Bricks104",
     "class": "matte_rough"
@@ -141,6 +157,38 @@
   },
   "concrete046": {
     "asset_id": "Concrete046",
+    "class": "matte_rough"
+  },
+  "asphalt031": {
+    "asset_id": "Asphalt031",
+    "class": "matte_rough"
+  },
+  "asphalt025c": {
+    "asset_id": "Asphalt025C",
+    "class": "matte_rough"
+  },
+  "rock064": {
+    "asset_id": "Rock064",
+    "class": "matte_rough"
+  },
+  "rock063": {
+    "asset_id": "Rock063",
+    "class": "matte_rough"
+  },
+  "rock058": {
+    "asset_id": "Rock058",
+    "class": "matte_rough"
+  },
+  "ground103": {
+    "asset_id": "Ground103",
+    "class": "matte_rough"
+  },
+  "ground037": {
+    "asset_id": "Ground037",
+    "class": "matte_rough"
+  },
+  "ground054": {
+    "asset_id": "Ground054",
     "class": "matte_rough"
   },
   "tiles138": {
@@ -187,6 +235,22 @@
     "asset_id": "Fabric030",
     "class": "fabric"
   },
+  "leather037": {
+    "asset_id": "Leather037",
+    "class": "fabric"
+  },
+  "leather038": {
+    "asset_id": "Leather038",
+    "class": "fabric"
+  },
+  "leather030": {
+    "asset_id": "Leather030",
+    "class": "fabric"
+  },
+  "leather026": {
+    "asset_id": "Leather026",
+    "class": "fabric"
+  },
   "marble012": {
     "asset_id": "Marble012",
     "class": "ceramic"
@@ -218,5 +282,29 @@
   "plastic015a": {
     "asset_id": "Plastic015A",
     "class": "plastic"
+  },
+  "rubber004": {
+    "asset_id": "Rubber004",
+    "class": "plastic"
+  },
+  "rubber001": {
+    "asset_id": "Rubber001",
+    "class": "plastic"
+  },
+  "rubber002": {
+    "asset_id": "Rubber002",
+    "class": "plastic"
+  },
+  "cardboard002": {
+    "asset_id": "Cardboard002",
+    "class": "printed"
+  },
+  "cardboard004": {
+    "asset_id": "Cardboard004",
+    "class": "printed"
+  },
+  "cardboard001": {
+    "asset_id": "Cardboard001",
+    "class": "printed"
   }
 }

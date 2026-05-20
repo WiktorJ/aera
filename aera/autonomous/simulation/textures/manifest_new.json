@@ -1,0 +1,222 @@
+{
+  "wood095": {
+    "asset_id": "Wood095",
+    "class": "wood"
+  },
+  "wood094": {
+    "asset_id": "Wood094",
+    "class": "wood"
+  },
+  "wood092": {
+    "asset_id": "Wood092",
+    "class": "wood"
+  },
+  "wood051": {
+    "asset_id": "Wood051",
+    "class": "wood"
+  },
+  "wood066": {
+    "asset_id": "Wood066",
+    "class": "wood"
+  },
+  "wood049": {
+    "asset_id": "Wood049",
+    "class": "wood"
+  },
+  "wood058": {
+    "asset_id": "Wood058",
+    "class": "wood"
+  },
+  "wood067": {
+    "asset_id": "Wood067",
+    "class": "wood"
+  },
+  "woodfloor051": {
+    "asset_id": "WoodFloor051",
+    "class": "wood_varnished"
+  },
+  "woodfloor064": {
+    "asset_id": "WoodFloor064",
+    "class": "wood_varnished"
+  },
+  "woodfloor070": {
+    "asset_id": "WoodFloor070",
+    "class": "wood_varnished"
+  },
+  "woodfloor043": {
+    "asset_id": "WoodFloor043",
+    "class": "wood_varnished"
+  },
+  "metal063": {
+    "asset_id": "Metal063",
+    "class": "metal_brushed"
+  },
+  "metal049a": {
+    "asset_id": "Metal049A",
+    "class": "metal_brushed"
+  },
+  "metal055a": {
+    "asset_id": "Metal055A",
+    "class": "metal_brushed"
+  },
+  "metal046b": {
+    "asset_id": "Metal046B",
+    "class": "metal_brushed"
+  },
+  "metal048a": {
+    "asset_id": "Metal048A",
+    "class": "metal_brushed"
+  },
+  "metal061b": {
+    "asset_id": "Metal061B",
+    "class": "metal_brushed"
+  },
+  "metalplates006": {
+    "asset_id": "MetalPlates006",
+    "class": "metal_brushed"
+  },
+  "metalplates013": {
+    "asset_id": "MetalPlates013",
+    "class": "metal_brushed"
+  },
+  "plaster001": {
+    "asset_id": "Plaster001",
+    "class": "plaster"
+  },
+  "plaster007": {
+    "asset_id": "Plaster007",
+    "class": "plaster"
+  },
+  "plaster002": {
+    "asset_id": "Plaster002",
+    "class": "plaster"
+  },
+  "plaster003": {
+    "asset_id": "Plaster003",
+    "class": "plaster"
+  },
+  "paintedplaster017": {
+    "asset_id": "PaintedPlaster017",
+    "class": "plaster"
+  },
+  "paintedplaster016": {
+    "asset_id": "PaintedPlaster016",
+    "class": "plaster"
+  },
+  "paintedplaster015": {
+    "asset_id": "PaintedPlaster015",
+    "class": "plaster"
+  },
+  "bricks104": {
+    "asset_id": "Bricks104",
+    "class": "matte_rough"
+  },
+  "bricks097": {
+    "asset_id": "Bricks097",
+    "class": "matte_rough"
+  },
+  "bricks102": {
+    "asset_id": "Bricks102",
+    "class": "matte_rough"
+  },
+  "bricks101": {
+    "asset_id": "Bricks101",
+    "class": "matte_rough"
+  },
+  "bricks075a": {
+    "asset_id": "Bricks075A",
+    "class": "matte_rough"
+  },
+  "concrete048": {
+    "asset_id": "Concrete048",
+    "class": "matte_rough"
+  },
+  "concrete034": {
+    "asset_id": "Concrete034",
+    "class": "matte_rough"
+  },
+  "concrete047a": {
+    "asset_id": "Concrete047A",
+    "class": "matte_rough"
+  },
+  "concrete046": {
+    "asset_id": "Concrete046",
+    "class": "matte_rough"
+  },
+  "tiles138": {
+    "asset_id": "Tiles138",
+    "class": "tile"
+  },
+  "tiles107": {
+    "asset_id": "Tiles107",
+    "class": "tile"
+  },
+  "tiles133a": {
+    "asset_id": "Tiles133A",
+    "class": "tile"
+  },
+  "tiles040": {
+    "asset_id": "Tiles040",
+    "class": "tile"
+  },
+  "tiles132a": {
+    "asset_id": "Tiles132A",
+    "class": "tile"
+  },
+  "tiles078": {
+    "asset_id": "Tiles078",
+    "class": "tile"
+  },
+  "fabric081c": {
+    "asset_id": "Fabric081C",
+    "class": "fabric"
+  },
+  "fabric083": {
+    "asset_id": "Fabric083",
+    "class": "fabric"
+  },
+  "fabric061": {
+    "asset_id": "Fabric061",
+    "class": "fabric"
+  },
+  "fabric066": {
+    "asset_id": "Fabric066",
+    "class": "fabric"
+  },
+  "fabric030": {
+    "asset_id": "Fabric030",
+    "class": "fabric"
+  },
+  "marble012": {
+    "asset_id": "Marble012",
+    "class": "ceramic"
+  },
+  "marble016": {
+    "asset_id": "Marble016",
+    "class": "ceramic"
+  },
+  "marble021": {
+    "asset_id": "Marble021",
+    "class": "ceramic"
+  },
+  "plastic013a": {
+    "asset_id": "Plastic013A",
+    "class": "plastic"
+  },
+  "plastic010": {
+    "asset_id": "Plastic010",
+    "class": "plastic"
+  },
+  "plastic006": {
+    "asset_id": "Plastic006",
+    "class": "plastic"
+  },
+  "plastic012a": {
+    "asset_id": "Plastic012A",
+    "class": "plastic"
+  },
+  "plastic015a": {
+    "asset_id": "Plastic015A",
+    "class": "plastic"
+  }
+}

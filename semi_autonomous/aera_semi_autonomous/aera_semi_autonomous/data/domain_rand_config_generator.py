@@ -123,6 +123,10 @@ _CLASS_MATERIAL_RANGES = {
     "matte_rough":     ((0.00, 0.10), (0.05, 0.15), (0.00, 0.00)),
     "tile":            ((0.15, 0.35), (0.25, 0.45), (0.00, 0.05)),
     "printed":         ((0.15, 0.40), (0.25, 0.50), (0.00, 0.00)),
+    # Covers matte 3D-printed parts at the low end and smooth molded plastic
+    # at the high end. No reflectance — plastic is dielectric and the renderer
+    # already gets the highlight from specular+shininess.
+    "plastic":         ((0.10, 0.45), (0.20, 0.55), (0.00, 0.00)),
 }
 
 # Per-class plausible tile density in repeats per world meter. Only meaningful
@@ -142,6 +146,8 @@ _CLASS_TEXREPEAT_PER_METER = {
     "matte_rough":     (1.5, 3.5),
     "tile":            (1.5, 3.5),
     "printed":         (0.8, 2.0),
+    # Molded/printed plastic surfaces — features are large, low repeat.
+    "plastic":         (0.5, 1.5),
 }
 
 assert set(_TEXTURE_CLASSES.keys()) == set(AVAILABLE_TEXTURES), (

@@ -82,19 +82,36 @@
     <!-- texuniform=true so the same tile density (~1 repeat / meter) applies
          across all walls and the ceiling regardless of geom size. -->
     <material name="wallmaterial" texuniform="true" texrepeat="1 1" rgba="0.5 0.5 0.5 1"/>
+    <material name="tablemat" texuniform="true" texrepeat="2 2" rgba="0.6 0.4 0.25 1"/>
   </asset>
 
   <worldbody>
     <light name="scene_light" pos="0 0 1.5" dir="0 0 -1" directional="true" diffuse="0.2 0.2 0.2"/>
     <light name="top" pos="0 0 2" mode="trackcom" diffuse="0 0 0"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
-    <!-- Walls -->
-    <geom name="wall_y_pos" type="box" size="3 0.01 1.5" pos="0 1.5 1" material="wallmaterial" contype="0" conaffinity="0"/>
-    <geom name="wall_y_neg" type="box" size="3 0.01 1.5" pos="0 -1.5 1" material="wallmaterial" contype="0" conaffinity="0"/>
-    <geom name="wall_x_pos" type="box" size="0.01 3 1.5" pos="1.5 0 1" material="wallmaterial" contype="0" conaffinity="0"/>
-    <geom name="wall_x_neg" type="box" size="0.01 3 1.5" pos="-1.5 0 1" material="wallmaterial" contype="0" conaffinity="0"/>
+    <!-- Room floor: the actual ground, sits one table-height below the work
+         surface. Non-colliding — objects rest on `floor` (the table top). -->
+    <geom name="room_floor" size="0 0 0.05" type="plane" material="groundplane" pos="0 0 -0.75" contype="0" conaffinity="0"/>
+    <!-- Visual work-surface slab. Kept named `floor` so existing mj_name2id
+         lookups still resolve. Visual-only — collision is handled by
+         `table_collision` below, which extends much deeper to prevent objects
+         from tunneling through a thin top during high-impact contact events
+         (e.g. gripper releasing a held object). -->
+    <geom name="floor" type="box" size="0.6 0.4 0.01" pos="0 0 -0.01" material="tablemat" contype="0" conaffinity="0"/>
+    <!-- Invisible deep collision volume. Matches table-top xy footprint but
+         spans the full pedestal height so the contact MTV is always toward
+         the +z face regardless of how deep an object penetrates. Default
+         geometry is overwritten per-episode by domain randomization. -->
+    <geom name="table_collision" type="box" size="0.6 0.4 0.375" pos="0 0 -0.375" rgba="0 0 0 0" group="3"/>
+    <!-- Visual pedestal under the table top. Default geometry is overwritten
+         per-episode when domain randomization is active. -->
+    <geom name="table_pedestal" type="box" size="0.5 0.3 0.365" pos="0 0 -0.385" material="tablemat" contype="0" conaffinity="0"/>
+    <!-- Walls: span from room floor (z=-0.75) to ceiling (z=1.75). -->
+    <geom name="wall_y_pos" type="box" size="3 0.01 1.25" pos="0 1.5 0.5" material="wallmaterial" contype="0" conaffinity="0"/>
+    <geom name="wall_y_neg" type="box" size="3 0.01 1.25" pos="0 -1.5 0.5" material="wallmaterial" contype="0" conaffinity="0"/>
+    <geom name="wall_x_pos" type="box" size="0.01 3 1.25" pos="1.5 0 0.5" material="wallmaterial" contype="0" conaffinity="0"/>
+    <geom name="wall_x_neg" type="box" size="0.01 3 1.25" pos="-1.5 0 0.5" material="wallmaterial" contype="0" conaffinity="0"/>
     <!-- Ceiling -->
-    <geom name="ceiling" type="box" size="3 3 0.01" pos="0 0 3" material="wallmaterial" contype="0" conaffinity="0"/>
+    <geom name="ceiling" type="box" size="3 3 0.01" pos="0 0 1.75" material="wallmaterial" contype="0" conaffinity="0"/>
 <!--    <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>-->
   </worldbody>
 </mujoco>

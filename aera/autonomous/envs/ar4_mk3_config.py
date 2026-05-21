@@ -103,6 +103,14 @@ class DynamicsConfig:
 
 
 @dataclasses.dataclass
+class TableConfig:
+    top_half_size: Optional[Sequence[float]] = None
+    top_pos: Optional[Sequence[float]] = None
+    pedestal_half_size: Optional[Sequence[float]] = None
+    pedestal_pos: Optional[Sequence[float]] = None
+
+
+@dataclasses.dataclass
 class DomainRandConfig:
     object_material: Optional[MaterialConfig] = None
     target_material: Optional[MaterialConfig] = None
@@ -112,6 +120,8 @@ class DomainRandConfig:
     object_distractor2_material: Optional[MaterialConfig] = None
     floor_material: Optional[MaterialConfig] = None
     wall_material: Optional[MaterialConfig] = None
+    table_material: Optional[MaterialConfig] = None
+    table: Optional[TableConfig] = None
     base_link_material: Optional[MaterialConfig] = None
     link_1_material: Optional[MaterialConfig] = None
     link_2_material: Optional[MaterialConfig] = None

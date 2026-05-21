@@ -12,7 +12,13 @@ from aera.autonomous.envs.ar4_mk3_config import (
     DynamicsConfig,
     LightConfig,
     MaterialConfig,
+    TableConfig,
 )
+
+# Fixed table height matches scene.xml: room floor at z=-0.75, work surface
+# (top of `floor` geom) at z=0. Randomizing the height would require moving
+# the arm base, so kept constant in v1.
+_TABLE_HEIGHT = 0.75
 
 # Scene-camera anchor poses captured with
 # aera/autonomous/simulation/examples/camera_pose_probe.py at the extreme
@@ -340,6 +346,34 @@ def generate_random_domain_rand_config(
     wall_material = _sample_material_for_texture(
         np.random.choice(AVAILABLE_TEXTURES), randomize_texrepeat=True
     )
+    table_material = _sample_material_for_texture(
+        np.random.choice(AVAILABLE_TEXTURES), randomize_texrepeat=True
+    )
+
+    # --- Table Geometry ---
+    # The arm's initial gripper site sits at ~(0, -0.37, 0.47) (measured via
+    # mj_forward on the default model), so objects/distractors/goal spawn in
+    # x ∈ [-0.14, 0.12], y ∈ [-0.54, -0.24]. The table is centered between
+    # the arm base (at the origin) and that workspace, with half-sizes chosen
+    # so even the smallest sample covers both the arm base and the full spawn
+    # region with margin.
+    center_x = float(np.random.uniform(-0.05, 0.05))
+    center_y = float(np.random.uniform(-0.30, -0.15))
+    top_hx = float(np.random.uniform(0.30, 0.55))
+    top_hy = float(np.random.uniform(0.50, 0.75))
+    # Visual-only thickness — collision is handled by the deep `table_collision`
+    # box, so the slab can stay slim without risking tunneling.
+    top_hz = float(np.random.uniform(0.01, 0.025))
+    ped_hx = float(np.random.uniform(0.15, top_hx - 0.10))
+    ped_hy = float(np.random.uniform(0.15, top_hy - 0.10))
+    ped_hz = (_TABLE_HEIGHT - 2 * top_hz) / 2
+    ped_z = -(2 * top_hz) - ped_hz
+    table = TableConfig(
+        top_half_size=[top_hx, top_hy, top_hz],
+        top_pos=[center_x, center_y, -top_hz],
+        pedestal_half_size=[ped_hx, ped_hy, ped_hz],
+        pedestal_pos=[center_x, center_y, ped_z],
+    )
 
     def _create_random_robot_part_material():
         return _sample_material_for_texture(np.random.choice(AVAILABLE_TEXTURES))
@@ -405,6 +439,8 @@ def generate_random_domain_rand_config(
         object_distractor2_material=object_distractor2_material,
         floor_material=floor_material,
         wall_material=wall_material,
+        table_material=table_material,
+        table=table,
         base_link_material=base_link_material,
         link_1_material=link_1_material,
         link_2_material=link_2_material,

@@ -519,6 +519,7 @@ class Ar4Mk3Env(BaseEnv):
             "object_distractor2_material": "object_distractor2_mat",
             "floor_material": "groundplane",
             "wall_material": "wallmaterial",
+            "table_material": "tablemat",
             "base_link_material": "base_link_mat",
             "link_1_material": "link_1_mat",
             "link_2_material": "link_2_mat",
@@ -608,6 +609,50 @@ class Ar4Mk3Env(BaseEnv):
                 self.model.vis.headlight.ambient = dr_config.headlight.ambient
             if dr_config.headlight.specular is not None:
                 self.model.vis.headlight.specular = dr_config.headlight.specular
+
+        # --- Apply Table Geometry ---
+        # Visual `floor` slab gets the sampled top size and centerline. The
+        # invisible `table_collision` box mirrors the xy footprint of the
+        # visual top so the table-edge silhouette matches what's rendered, but
+        # keeps its deep z-extent (set in XML) — objects can't tunnel into a
+        # thick box because the contact MTV always resolves toward the +z face.
+        if dr_config.table:
+            table_cfg = dr_config.table
+            if table_cfg.top_half_size is not None:
+                top_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "floor"
+                )
+                if top_id != -1:
+                    self.model.geom_size[top_id] = table_cfg.top_half_size
+                    if table_cfg.top_pos is not None:
+                        self.model.geom_pos[top_id] = table_cfg.top_pos
+                    else:
+                        self.model.geom_pos[top_id] = [
+                            0.0,
+                            0.0,
+                            -table_cfg.top_half_size[2],
+                        ]
+                col_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "table_collision"
+                )
+                if col_id != -1:
+                    col_size = self.model.geom_size[col_id].copy()
+                    col_size[0] = table_cfg.top_half_size[0]
+                    col_size[1] = table_cfg.top_half_size[1]
+                    self.model.geom_size[col_id] = col_size
+                    if table_cfg.top_pos is not None:
+                        col_pos = self.model.geom_pos[col_id].copy()
+                        col_pos[0] = table_cfg.top_pos[0]
+                        col_pos[1] = table_cfg.top_pos[1]
+                        self.model.geom_pos[col_id] = col_pos
+            if table_cfg.pedestal_half_size is not None:
+                ped_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "table_pedestal"
+                )
+                if ped_id != -1:
+                    self.model.geom_size[ped_id] = table_cfg.pedestal_half_size
+                    if table_cfg.pedestal_pos is not None:
+                        self.model.geom_pos[ped_id] = table_cfg.pedestal_pos
 
         # --- Apply Gripper Camera Pose ---
         if dr_config.gripper_camera:

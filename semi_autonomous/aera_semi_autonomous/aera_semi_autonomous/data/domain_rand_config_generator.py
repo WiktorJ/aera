@@ -244,6 +244,143 @@ def _sample_material_for_texture(
     )
 
 
+# Color-temperature buckets for light tinting. Mixing per-channel uniforms (the
+# old approach) collapses to near-achromatic; sampling one HSV tint and reusing
+# it across diffuse/ambient/specular keeps the warm/cool character coherent.
+# Saturation is kept low — real bulbs are off-white, not orange/blue.
+_LIGHT_TEMP_BUCKETS = (
+    (0.40, (0.05, 0.12), (0.05, 0.30)),  # warm (tungsten-ish)
+    (0.40, (0.55, 0.65), (0.05, 0.30)),  # cool (daylight-ish)
+    (0.20, (0.00, 0.00), (0.00, 0.00)),  # neutral
+)
+
+
+def _sample_light_tint() -> Tuple[float, float]:
+    """Pick a (hue, saturation) for one light. Value is set per-channel later."""
+    r = np.random.random()
+    cum = 0.0
+    for p, h_range, s_range in _LIGHT_TEMP_BUCKETS:
+        cum += p
+        if r < cum:
+            return (
+                float(np.random.uniform(*h_range)),
+                float(np.random.uniform(*s_range)),
+            )
+    return 0.0, 0.0
+
+
+def _tinted_rgb(h: float, s: float, v: float) -> list:
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return [float(r), float(g), float(b)]
+
+
+# Per-scene lighting "mood" — sampled once and applied coherently to all lights.
+# The dominant axis here is the diffuse-to-ambient ratio: high ambient washes
+# shadows out, low ambient + strong diffuse gives crisp directional shadows.
+# Fields are: (probability, diffuse_range, ambient_range, specular_range,
+#              intensity_scale_range, p_active_aux).
+# - diffuse can exceed 1.0 in MuJoCo; we let it go to 1.4 for overexposed looks.
+# - p_active_aux is applied to the two positional lights so some scenes are
+#   lit by just the headlight + one aux for stronger key-light shadows.
+_LIGHT_MOODS = (
+    # "studio": bright, even, soft shadows. Flat product-shot look.
+    (0.30, (0.9, 1.3), (0.20, 0.40), (0.30, 0.60), (1.0, 1.3), 0.95),
+    # "key": single strong directional, very low ambient — dramatic shadows.
+    (0.35, (1.0, 1.5), (0.02, 0.10), (0.50, 1.00), (1.0, 1.4), 0.65),
+    # "overcast": diffuse but not bright, moderate ambient, weak spec.
+    (0.15, (0.6, 0.9), (0.15, 0.30), (0.10, 0.30), (0.8, 1.1), 0.90),
+    # "dim": challenging low-light. Forces the policy to handle bad exposure.
+    (0.05, (0.3, 0.6), (0.02, 0.12), (0.10, 0.40), (0.6, 1.0), 0.80),
+    # "harsh": very bright key + very low fill — sharp shadows, blown highlights.
+    (0.15, (1.2, 1.5), (0.01, 0.06), (0.60, 1.00), (1.1, 1.5), 0.50),
+)
+
+
+def _sample_lighting_mood():
+    """Returns (diffuse_range, ambient_range, specular_range, scale_range,
+    p_active_aux) for the whole scene. Single sample shared by all lights."""
+    r = np.random.random()
+    cum = 0.0
+    for p, *cfg in _LIGHT_MOODS:
+        cum += p
+        if r < cum:
+            return cfg
+    return list(_LIGHT_MOODS[0][1:])
+
+
+def _sample_headlight(mood) -> LightConfig:
+    """MuJoCo's headlight has no position — it's tied to the camera. Tint it
+    and pick an overall intensity from the scene mood. Headlight ambient is
+    deliberately scaled down vs the positional lights so it doesn't flood out
+    the directional shadows from scene_light."""
+    diff_r, amb_r, spec_r, scale_r, _ = mood
+    h, s = _sample_light_tint()
+    scale = float(np.random.uniform(*scale_r))
+    return LightConfig(
+        diffuse=_tinted_rgb(h, s, np.clip(np.random.uniform(*diff_r) * scale * 0.9, 0, 1.5)),
+        ambient=_tinted_rgb(h, s, np.clip(np.random.uniform(*amb_r) * scale * 0.6, 0, 1)),
+        specular=_tinted_rgb(h, s, np.clip(np.random.uniform(*spec_r) * scale * 0.7, 0, 1)),
+    )
+
+
+def _sample_positional_light(
+    mood,
+    table_center: Tuple[float, float],
+    distance_range: Tuple[float, float],
+    elevation_range_deg: Tuple[float, float],
+) -> LightConfig:
+    """Sample a scene/top light with full spherical positioning around the table.
+
+    Position is `table_center + distance * (cos(el)cos(az), cos(el)sin(az), sin(el))`
+    where elevation is sampled directly in degrees from the horizon. This lets
+    us actually produce low-angle lights that cast long shadows — the previous
+    z+radius scheme was z-dominated (z 2.5–3.5 over radius 0.6–1.6 ⇒ elevation
+    always ~65–80°), so shadows were always nearly vertical regardless of az.
+
+    Direction is computed to point at a jittered point near the table so the
+    directional light's shadow angle matches the sampled elevation/azimuth.
+
+    Ranges come from the shared lighting mood so all lights in the scene agree
+    on whether it's a bright studio or a moody key-lit shot.
+    """
+    diff_r, amb_r, spec_r, scale_r, p_active = mood
+    h, s = _sample_light_tint()
+    scale = float(np.random.uniform(*scale_r))
+    az = float(np.random.uniform(0.0, 2.0 * np.pi))
+    # Bias elevation low: sample a Beta(1.6, 3.0) and map onto the range. Mean
+    # sits ~1/3 of the way up, so most samples are low-angle (long arm shadows)
+    # while we still see the occasional overhead noon-style sample.
+    t = float(np.random.beta(1.6, 3.0))
+    el_lo, el_hi = elevation_range_deg
+    el = (el_lo + t * (el_hi - el_lo)) * np.pi / 180.0
+    distance = float(np.random.uniform(*distance_range))
+    pos = [
+        float(table_center[0] + distance * np.cos(el) * np.cos(az)),
+        float(table_center[1] + distance * np.cos(el) * np.sin(az)),
+        float(distance * np.sin(el)),
+    ]
+    # Aim at the arm's working volume (above the table, z≈0.3) so the directional
+    # shadow frustum covers the arm — not just the table surface where shadows
+    # would be hidden under the arm's silhouette.
+    target = np.array(
+        [
+            table_center[0] + np.random.uniform(-0.10, 0.10),
+            table_center[1] + np.random.uniform(-0.10, 0.10),
+            float(np.random.uniform(0.20, 0.40)),
+        ]
+    )
+    direction = target - np.array(pos)
+    direction = (direction / np.linalg.norm(direction)).tolist()
+    return LightConfig(
+        active=bool(np.random.random() < p_active),
+        pos=pos,
+        dir=direction,
+        diffuse=_tinted_rgb(h, s, np.clip(np.random.uniform(*diff_r) * scale, 0, 1.5)),
+        ambient=_tinted_rgb(h, s, np.clip(np.random.uniform(*amb_r) * scale, 0, 1)),
+        specular=_tinted_rgb(h, s, np.clip(np.random.uniform(*spec_r) * scale, 0, 1)),
+    )
+
+
 NAMED_COLORS = {
     "red": (1, 0, 0, 1),
     "green": (0, 1, 0, 1),
@@ -390,26 +527,26 @@ def generate_random_domain_rand_config(
     gripper_jaw2_material = _create_random_robot_part_material()
 
     # --- Light Randomization ---
-    headlight = LightConfig(
-        diffuse=np.random.uniform(0.4, 0.6, 3).tolist(),
-        ambient=np.random.uniform(0.1, 0.2, 3).tolist(),
-        specular=np.random.uniform(0.2, 0.4, 3).tolist(),
+    table_center = (center_x, center_y)
+    lighting_mood = _sample_lighting_mood()
+    headlight = _sample_headlight(lighting_mood)
+    # scene_light is directional in scene.xml — the *only* light in the scene
+    # that casts shadows (top_light is a point light, headlight has no shadow
+    # casting). Elevation is biased low (see _sample_positional_light) so most
+    # samples produce long, prominent arm shadows that sweep when the arm moves.
+    # Distance kept moderate so the shadow map's per-meter resolution stays high.
+    scene_light = _sample_positional_light(
+        lighting_mood,
+        table_center,
+        distance_range=(1.5, 3.0),
+        elevation_range_deg=(15.0, 70.0),
     )
-    scene_light = LightConfig(
-        active=True,
-        pos=np.random.uniform([-1, -1, 2.5], [1, 1, 3.5]).tolist(),
-        dir=np.random.uniform([-0.5, -0.5, -1.0], [0.5, 0.5, -0.8]).tolist(),
-        diffuse=np.random.uniform(0.5, 0.7, 3).tolist(),
-        ambient=np.random.uniform(0.2, 0.4, 3).tolist(),
-        specular=np.random.uniform(0.5, 0.7, 3).tolist(),
-    )
-    top_light = LightConfig(
-        active=True,
-        pos=np.random.uniform([-1, -1, 1.5], [1, 1, 2.5]).tolist(),
-        dir=np.random.uniform([-0.5, -0.5, -1.0], [0.5, 0.5, -0.8]).tolist(),
-        diffuse=np.random.uniform(0.5, 0.7, 3).tolist(),
-        ambient=np.random.uniform(0.2, 0.4, 3).tolist(),
-        specular=np.random.uniform(0.5, 0.7, 3).tolist(),
+    # top_light stays mostly overhead — acts as the "ceiling fixture" fill.
+    top_light = _sample_positional_light(
+        lighting_mood,
+        table_center,
+        distance_range=(1.5, 2.5),
+        elevation_range_deg=(55.0, 88.0),
     )
 
     # --- Dynamics Randomization ---

@@ -103,6 +103,18 @@ class DynamicsConfig:
 
 
 @dataclasses.dataclass
+class PropConfig:
+    """One prop slot in the scene. `asset_id` resolves to a manifest entry
+    declared in props.xml; the runtime points the slot geom at that asset's
+    mesh + material and places the body at (pos, quat). Inactive slots are
+    hidden (rgba alpha=0)."""
+    active: bool = False
+    asset_id: Optional[str] = None
+    pos: Optional[Sequence[float]] = None
+    quat: Optional[Sequence[float]] = None  # MuJoCo (w, x, y, z)
+
+
+@dataclasses.dataclass
 class TableConfig:
     top_half_size: Optional[Sequence[float]] = None
     top_pos: Optional[Sequence[float]] = None
@@ -140,6 +152,9 @@ class DomainRandConfig:
     object_distractor2_dynamics: Optional[DynamicsConfig] = None
     default_camera: Optional["CameraConfig"] = None
     gripper_camera: Optional["CameraConfig"] = None
+    # Fixed-length list: one entry per prop slot declared in props.xml. Slots
+    # the sampler chose to skip carry active=False and are rendered transparent.
+    props: Optional[list[PropConfig]] = None
 
 
 @dataclasses.dataclass

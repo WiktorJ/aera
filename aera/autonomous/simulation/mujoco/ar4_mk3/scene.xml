@@ -1,5 +1,6 @@
 <mujoco model="ar4_mk3 scene">
   <include file="ar4_mk3.xml"/>
+  <include file="props.xml"/>
 
   <statistic center="0 0 0.5" extent="3"/>
 

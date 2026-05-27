@@ -1,3 +1,6 @@
+# Downloaded prop assets (fetched by scripts/fetch_props.py)
+aera/autonomous/simulation/props/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

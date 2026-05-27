@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Optional, Sequence
 
 from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
@@ -502,6 +504,26 @@ class Ar4Mk3Env(BaseEnv):
 
         self._mujoco.mj_forward(self.model, self.data)
 
+    _PROP_ASSET_IDS_CACHE: list[str] | None = None
+
+    @classmethod
+    def _load_prop_asset_ids(cls) -> list[str]:
+        """List of asset_ids that the current props.xml has bodies for. The
+        runtime iterates this to hide every body, then makes a subset visible.
+        Empty list (no sidecar / fresh clone) makes the prop pass a no-op."""
+        if cls._PROP_ASSET_IDS_CACHE is not None:
+            return cls._PROP_ASSET_IDS_CACHE
+        sidecar_path = (
+            Path(__file__).resolve().parents[2]
+            / "autonomous" / "simulation" / "props" / "_scene_assets.json"
+        )
+        if not sidecar_path.exists():
+            cls._PROP_ASSET_IDS_CACHE = []
+            return cls._PROP_ASSET_IDS_CACHE
+        raw = json.loads(sidecar_path.read_text())
+        cls._PROP_ASSET_IDS_CACHE = list(raw.get("asset_ids", []))
+        return cls._PROP_ASSET_IDS_CACHE
+
     def _apply_domain_randomization(self):
         """Applies domain randomization settings from the config to the Mujoco model."""
         if not self.config.domain_rand:
@@ -657,6 +679,38 @@ class Ar4Mk3Env(BaseEnv):
         # --- Apply Gripper Camera Pose ---
         if dr_config.gripper_camera:
             self._randomize_body_pose("gripper_camera_body", dr_config.gripper_camera)
+
+        # --- Apply Background Props ---
+        # props.xml declares one body+geom per asset (e.g. prop_body_ycb_025_mug
+        # paired with prop_geom_ycb_025_mug). Each geom is compile-time bound to
+        # its specific mesh, which is the only way MuJoCo's mesh-specific
+        # geom_pos/quat end up correct — runtime writes to those arrays are
+        # silently ignored for mesh geoms. So the runtime here only toggles
+        # body pose + geom alpha; it never swaps geom_dataid.
+        if dr_config.props:
+            # Index the per-scene config by asset for O(1) lookup. The same
+            # asset can't appear twice (one body per asset), so the sampler
+            # already deduplicates.
+            active_by_aid = {
+                p.asset_id: p for p in dr_config.props
+                if p.active and p.asset_id is not None
+            }
+            for aid in self._load_prop_asset_ids():
+                body_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_BODY, f"prop_body_{aid}"
+                )
+                geom_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, f"prop_geom_{aid}"
+                )
+                if body_id == -1 or geom_id == -1:
+                    continue
+                prop = active_by_aid.get(aid)
+                if prop is None:
+                    self.model.geom_rgba[geom_id, 3] = 0.0
+                    continue
+                self.model.body_pos[body_id] = prop.pos
+                self.model.body_quat[body_id] = prop.quat
+                self.model.geom_rgba[geom_id] = [1.0, 1.0, 1.0, 1.0]
 
         # --- Apply Dynamics Properties ---
         dynamics_map = {

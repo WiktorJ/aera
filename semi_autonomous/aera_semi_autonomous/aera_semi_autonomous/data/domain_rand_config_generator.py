@@ -408,13 +408,29 @@ NAMED_COLORS = {
 NUM_PROP_SLOTS = 20
 PROP_COUNT_RANGE = (10, 20)  # inclusive both ends — randint upper is +1
 PROP_THEMES = ("workshop", "office", "lab", "kitchen")
-# Probability of placing a prop on the table surface vs. on the room floor.
-# Floor dominates because table-edge clutter risks visually shadowing the
-# manipulation workspace; the table zone is mainly for low, small items.
-P_TABLE_ZONE = 0.30
+# Per-slot zone weights. Shelf dominates because the shelf unit is always in
+# the camera frame — floor clutter outside the camera frustum was the failure
+# mode this distribution replaces. Floor is reserved for items too large for
+# table/shelf (chairs, stools) so they still appear, just not piled in places
+# the camera can't see them.
+P_SHELF_ZONE = 0.55
+P_TABLE_ZONE = 0.20
+P_FLOOR_ZONE = 0.25
 # Largest object that's allowed on the table — anything taller would loom over
 # the workspace and bias the policy toward false-positive object detection.
 TABLE_MAX_DIM = 0.20
+# Same cap for shelf slots: shelves are small surfaces and big items would
+# either clip the next level up or visually dominate the frame.
+SHELF_MAX_DIM = 0.20
+# Floor is now reserved for genuinely large items so floor clutter reads as
+# furniture rather than scattered debris off-camera.
+FLOOR_MIN_DIM = 0.20
+# Background shelf geometry — these MUST match the geoms in scene.xml. The
+# shelf unit sits against the y=-2 wall; the slab tops are 0.015m above the
+# slab center positions in the XML.
+SHELF_X_RANGE = (-1.46, 1.46)  # 0.04m inset from the side panels
+SHELF_Y_RANGE = (-1.96, -1.74)  # within the 0.26m shelf depth
+SHELF_LEVEL_TOPS = (-0.385, 0.115, 0.615)  # top surface z of each level
 # Active manipulation workspace on the table — derived from the spawn ranges in
 # generate_random_domain_rand_config (x∈[-0.14,0.12], y∈[-0.54,-0.24]) with a
 # safety margin so the prop's bounding box never reaches across the boundary.
@@ -499,7 +515,7 @@ def _sample_prop_pose(
     zone: str,
     table_center: Tuple[float, float],
     table_half_size: Tuple[float, float],
-    occupied: list[Tuple[float, float, float]],
+    occupied: list[Tuple[float, float, float, float]],
 ) -> Optional[Tuple[float, float, float]]:
     """Reject-sample a (x, y, z) for `asset` inside `zone`.
 
@@ -508,25 +524,51 @@ def _sample_prop_pose(
     props on top of each other.
 
     z is computed so the asset's mesh bottom (aabb_min[2]) rests on the
-    surface — floor at z=-0.75, table top at z=0.
+    surface — floor at z=-0.75, table top at z=0, shelf at SHELF_LEVEL_TOPS.
+
+    Overlap is tracked in 3D: occupied entries are (x, y, z, radius) and a
+    candidate only collides with previous placements at the same height
+    (|dz| < _Z_OVERLAP). Without this, items on different shelf levels would
+    spuriously block each other.
     """
     _MAX_TRIES = 25
+    _Z_OVERLAP = 0.05
     # Approximate the asset by a circle in the XY plane for overlap checks —
     # cheap, conservative, and good enough for visual clutter (the alternative,
     # rotated-AABB intersection, would buy us 5% denser packing for 20x code).
     radius = max(asset["size"][0], asset["size"][1]) / 2 + 0.05
     aabb_min_z = asset["aabb_min"][2]
+    asset_hx = asset["size"][0] / 2
+    asset_hy = asset["size"][1] / 2
 
     for _ in range(_MAX_TRIES):
         if zone == "floor":
             x = float(np.random.uniform(-1.8, 1.8))
-            y = float(np.random.uniform(-1.8, 1.8))
+            y = float(np.random.uniform(-1.8, 1.6))
             # Carve out the table footprint + arm reach so floor clutter
             # doesn't intersect the work area or block the arm's view of
             # its own workspace.
             if -1.0 <= x <= 1.0 and -1.0 <= y <= 0.5:
                 continue
+            # Carve out the shelf footprint so chair-sized floor items don't
+            # clip into the shelf side panels.
+            if -1.55 <= x <= 1.55 and y <= -1.6:
+                continue
             z = -0.75 - aabb_min_z
+        elif zone == "shelf":
+            level_z = float(SHELF_LEVEL_TOPS[
+                np.random.randint(len(SHELF_LEVEL_TOPS))
+            ])
+            margin = 0.03
+            x = float(np.random.uniform(
+                SHELF_X_RANGE[0] + margin + asset_hx,
+                SHELF_X_RANGE[1] - margin - asset_hx,
+            ))
+            y = float(np.random.uniform(
+                SHELF_Y_RANGE[0] + margin + asset_hy,
+                SHELF_Y_RANGE[1] - margin - asset_hy,
+            ))
+            z = level_z - aabb_min_z
         else:  # table
             cx, cy = table_center
             hx, hy = table_half_size
@@ -537,8 +579,6 @@ def _sample_prop_pose(
             # half-size) overlaps the active-arm rect — not just the center —
             # plus a fixed safety margin. With center-only the corners of
             # large props could still poke into the grasp area.
-            asset_hx = asset["size"][0] / 2
-            asset_hy = asset["size"][1] / 2
             ex_x_lo = _WORKSPACE_X[0] - asset_hx - _WORKSPACE_MARGIN
             ex_x_hi = _WORKSPACE_X[1] + asset_hx + _WORKSPACE_MARGIN
             ex_y_lo = _WORKSPACE_Y[0] - asset_hy - _WORKSPACE_MARGIN
@@ -548,13 +588,15 @@ def _sample_prop_pose(
             z = 0.0 - aabb_min_z
 
         too_close = False
-        for ox, oy, orad in occupied:
+        for ox, oy, oz, orad in occupied:
+            if abs(z - oz) > _Z_OVERLAP:
+                continue
             if (x - ox) ** 2 + (y - oy) ** 2 < (radius + orad) ** 2:
                 too_close = True
                 break
         if too_close:
             continue
-        occupied.append((x, y, radius))
+        occupied.append((x, y, z, radius))
         return x, y, z
     return None
 
@@ -579,30 +621,42 @@ def _sample_props(
     if not pool:
         n_active = 0
 
-    occupied: list[Tuple[float, float, float]] = []
+    occupied: list[Tuple[float, float, float, float]] = []
     slots: list[PropConfig] = []
     # props.xml declares one body per asset_id, so an asset can appear at most
     # once per scene — we track and skip duplicates here rather than have the
     # runtime silently no-op the second occurrence (which would leave the slot
     # count below n_active).
     used_ids: set[str] = set()
+    # Pre-partition the theme pool by zone-suitability. Shelf/table accept
+    # small items only; floor accepts items large enough to read as furniture.
+    zone_pools = {
+        "shelf": [a for a in pool if max(a["size"]) <= SHELF_MAX_DIM],
+        "table": [a for a in pool if max(a["size"]) <= TABLE_MAX_DIM],
+        "floor": [a for a in pool if max(a["size"]) >= FLOOR_MIN_DIM],
+    }
+    zone_weights = {"shelf": P_SHELF_ZONE, "table": P_TABLE_ZONE, "floor": P_FLOOR_ZONE}
     for i in range(NUM_PROP_SLOTS):
         if i >= n_active:
             slots.append(PropConfig(active=False))
             continue
-        zone = "table" if np.random.random() < P_TABLE_ZONE else "floor"
-        # On the table we only allow small items so a chair-sized prop doesn't
-        # spawn balancing on the corner of the table.
-        candidates_all = (
-            [a for a in pool if max(a["size"]) <= TABLE_MAX_DIM]
-            if zone == "table"
-            else pool
-        )
+        r = np.random.random()
+        cum = 0.0
+        zone = "shelf"
+        for zname, w in zone_weights.items():
+            cum += w
+            if r < cum:
+                zone = zname
+                break
+        candidates_all = zone_pools[zone]
         if not candidates_all:
-            # Theme has no small items — drop back to floor to still place
-            # something useful.
-            zone = "floor"
-            candidates_all = pool
+            # Theme has nothing for the chosen zone — fall through the others
+            # in priority order so the slot still places something visible.
+            for fallback in ("shelf", "table", "floor"):
+                if fallback != zone and zone_pools[fallback]:
+                    zone = fallback
+                    candidates_all = zone_pools[fallback]
+                    break
         candidates = [a for a in candidates_all if a["id"] not in used_ids]
         if not candidates:
             # Theme exhausted — every remaining asset is already placed.

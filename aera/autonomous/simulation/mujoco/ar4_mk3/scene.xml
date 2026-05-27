@@ -85,6 +85,9 @@
          across all walls and the ceiling regardless of geom size. -->
     <material name="wallmaterial" texuniform="true" texrepeat="1 1" rgba="0.5 0.5 0.5 1"/>
     <material name="tablemat" texuniform="true" texrepeat="2 2" rgba="0.6 0.4 0.25 1"/>
+    <!-- Background shelf — fixed wood look so the unit reads as furniture and
+         doesn't drift visually with each episode's randomized table/wall mats. -->
+    <material name="shelfmat" texture="wood049" texuniform="true" texrepeat="2 2" reflectance="0"/>
   </asset>
 
   <worldbody>
@@ -114,6 +117,19 @@
     <geom name="wall_x_neg" type="box" size="0.01 3 1.25" pos="-2 0 0.5" material="wallmaterial" contype="0" conaffinity="0"/>
     <!-- Ceiling -->
     <geom name="ceiling" type="box" size="3 3 0.01" pos="0 0 1.75" material="wallmaterial" contype="0" conaffinity="0"/>
+    <!-- Background shelf unit along the y=-2 wall. Fixed geometry — always in
+         camera view to provide visual context plus a surface for small clutter.
+         Three horizontal shelves at z ∈ {-0.40, 0.10, 0.60} (top-of-slab z =
+         level_z + 0.015). The sampler in domain_rand_config_generator.py uses
+         SHELF_X_RANGE / SHELF_Y_RANGE / SHELF_LEVEL_TOPS to place props on
+         these surfaces; if you move/resize the unit here, update those
+         constants to match. Non-colliding — props pose on top without contact
+         physics. -->
+    <geom name="shelf_side_neg" type="box" size="0.02 0.13 0.775" pos="-1.5 -1.85 0.025" material="shelfmat" contype="0" conaffinity="0"/>
+    <geom name="shelf_side_pos" type="box" size="0.02 0.13 0.775" pos="1.5 -1.85 0.025" material="shelfmat" contype="0" conaffinity="0"/>
+    <geom name="shelf_level_0" type="box" size="1.5 0.13 0.015" pos="0 -1.85 -0.40" material="shelfmat" contype="0" conaffinity="0"/>
+    <geom name="shelf_level_1" type="box" size="1.5 0.13 0.015" pos="0 -1.85 0.10" material="shelfmat" contype="0" conaffinity="0"/>
+    <geom name="shelf_level_2" type="box" size="1.5 0.13 0.015" pos="0 -1.85 0.60" material="shelfmat" contype="0" conaffinity="0"/>
 <!--    <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>-->
   </worldbody>
 </mujoco>

@@ -422,15 +422,22 @@ TABLE_MAX_DIM = 0.20
 # Same cap for shelf slots: shelves are small surfaces and big items would
 # either clip the next level up or visually dominate the frame.
 SHELF_MAX_DIM = 0.20
-# Floor is now reserved for genuinely large items so floor clutter reads as
-# furniture rather than scattered debris off-camera.
-FLOOR_MIN_DIM = 0.20
+# Floor is now reserved for furniture-scale items (stools, baskets, dish
+# racks). Lower thresholds were leaking utensil-sized props onto the floor
+# where they read as scattered debris.
+FLOOR_MIN_DIM = 0.40
 # Background shelf geometry — these MUST match the geoms in scene.xml. The
-# shelf unit sits against the y=-2 wall; the slab tops are 0.015m above the
-# slab center positions in the XML.
-SHELF_X_RANGE = (-1.46, 1.46)  # 0.04m inset from the side panels
+# shelf unit sits against the y=-2 wall, shifted toward the -x corner where
+# the render camera's principal ray hits. Slab tops are 0.015m above the
+# slab centers in the XML.
+SHELF_X_RANGE = (-1.66, -0.74)  # 0.04m inset from the side panels
 SHELF_Y_RANGE = (-1.96, -1.74)  # within the 0.26m shelf depth
 SHELF_LEVEL_TOPS = (-0.385, 0.115, 0.615)  # top surface z of each level
+# Floor placement is restricted to the (-x, -y) quadrant — that's where the
+# render camera's view cone touches the ground. Sampling the full floor
+# scattered large items behind the camera where they're never seen.
+FLOOR_X_RANGE = (-1.80, -0.50)
+FLOOR_Y_RANGE = (-1.80, 0.00)
 # Active manipulation workspace on the table — derived from the spawn ranges in
 # generate_random_domain_rand_config (x∈[-0.14,0.12], y∈[-0.54,-0.24]) with a
 # safety margin so the prop's bounding box never reaches across the boundary.
@@ -543,16 +550,16 @@ def _sample_prop_pose(
 
     for _ in range(_MAX_TRIES):
         if zone == "floor":
-            x = float(np.random.uniform(-1.8, 1.8))
-            y = float(np.random.uniform(-1.8, 1.6))
+            x = float(np.random.uniform(*FLOOR_X_RANGE))
+            y = float(np.random.uniform(*FLOOR_Y_RANGE))
             # Carve out the table footprint + arm reach so floor clutter
             # doesn't intersect the work area or block the arm's view of
             # its own workspace.
             if -1.0 <= x <= 1.0 and -1.0 <= y <= 0.5:
                 continue
-            # Carve out the shelf footprint so chair-sized floor items don't
-            # clip into the shelf side panels.
-            if -1.55 <= x <= 1.55 and y <= -1.6:
+            # Carve out the shelf footprint (against the y=-2 wall, -x side)
+            # so floor furniture doesn't clip into the shelf side panels.
+            if -1.75 <= x <= -0.65 and y <= -1.55:
                 continue
             z = -0.75 - aabb_min_z
         elif zone == "shelf":

@@ -88,6 +88,35 @@
     <!-- Background shelf — fixed wood look so the unit reads as furniture and
          doesn't drift visually with each episode's randomized table/wall mats. -->
     <material name="shelfmat" texture="wood049" texuniform="true" texrepeat="2 2" reflectance="0"/>
+    <!-- Wall-art textures — CC0 paintings downloaded by
+         scripts/download_paintings.py. Runtime picks one of these per episode
+         and assigns it to wallartmat by writing mat_texid. Adding/removing a
+         file here requires re-listing it; the runtime only sees textures
+         declared in this XML. -->
+    <texture type="2d" name="painting_11" file="../../props/_paintings/painting_11.png"/>
+    <texture type="2d" name="painting_9" file="../../props/_paintings/painting_9.png"/>
+    <texture type="2d" name="painting_874" file="../../props/_paintings/painting_874.png"/>
+    <texture type="2d" name="painting_14655" file="../../props/_paintings/painting_14655.png"/>
+    <texture type="2d" name="painting_30368" file="../../props/_paintings/painting_30368.png"/>
+    <texture type="2d" name="painting_44065" file="../../props/_paintings/painting_44065.png"/>
+    <texture type="2d" name="painting_61158" file="../../props/_paintings/painting_61158.png"/>
+    <texture type="2d" name="painting_64754" file="../../props/_paintings/painting_64754.png"/>
+    <texture type="2d" name="painting_65821" file="../../props/_paintings/painting_65821.png"/>
+    <texture type="2d" name="painting_87088" file="../../props/_paintings/painting_87088.png"/>
+    <texture type="2d" name="painting_90048" file="../../props/_paintings/painting_90048.png"/>
+    <texture type="2d" name="painting_97933" file="../../props/_paintings/painting_97933.png"/>
+    <texture type="2d" name="painting_111377" file="../../props/_paintings/painting_111377.png"/>
+    <texture type="2d" name="painting_146701" file="../../props/_paintings/painting_146701.png"/>
+    <texture type="2d" name="painting_181777" file="../../props/_paintings/painting_181777.png"/>
+    <!-- Default material for the wall-art slab. Needs a default texture
+         binding (`texture="painting_9"`) — without it MuJoCo compiles the
+         material as untextured and runtime mat_texid writes have no visual
+         effect. The actual texture is swapped per-episode by the runtime.
+         rgba alpha=0 hides the slab when the sampler picks "inactive".
+         Boards live on a separate untextured material so we can switch the
+         geom between the two via geom_matid. -->
+    <material name="wallartmat" texture="painting_9" texuniform="false" texrepeat="1 1" rgba="1 1 1 0"/>
+    <material name="wallboardmat" texuniform="false" rgba="1 1 1 0"/>
   </asset>
 
   <worldbody>
@@ -133,6 +162,22 @@
     <geom name="shelf_level_0" type="box" size="0.50 0.13 0.015" pos="-1.20 -1.85 -0.40" material="shelfmat" contype="0" conaffinity="0"/>
     <geom name="shelf_level_1" type="box" size="0.50 0.13 0.015" pos="-1.20 -1.85 0.10" material="shelfmat" contype="0" conaffinity="0"/>
     <geom name="shelf_level_2" type="box" size="0.50 0.13 0.015" pos="-1.20 -1.85 0.60" material="shelfmat" contype="0" conaffinity="0"/>
+    <!-- Wall art / board slot on the otherwise-empty wall_x_neg side. Uses
+         type="plane" — not "box" — because a thin box's bbox-based UV mapping
+         collapses on the thinnest dimension and the texture renders as a
+         degenerate one-pixel-wide strip (i.e. a flat average color). Planes
+         get proper UV across their face. The quaternion (0.5 0.5 0.5 0.5)
+         is a cyclic rotation x→y→z→x, mapping local +X → world +Y,
+         local +Y → world +Z, local +Z (the plane's normal) → world +X.
+         Result: the painting's horizontal axis lies along world Y, vertical
+         along world Z, and the face points into the room. After this rotation
+         size[0] = world Y half-extent, size[1] = world Z half-extent,
+         size[2] is the infinite-plane grid spacing (ignored once a texture
+         is bound). The plane sits 5mm in front of the wall (wall inside face
+         is at x=-1.99) to avoid z-fighting. Runtime overrides geom_pos,
+         geom_size, geom_rgba, geom_matid (paintings vs boards), and
+         mat_texid on wallartmat. -->
+    <geom name="wall_art" type="plane" size="0.40 0.30 1" pos="-1.985 0 0.6" quat="0.5 0.5 0.5 0.5" material="wallartmat" contype="0" conaffinity="0"/>
 <!--    <geom type="cylinder" size=".06 .06" pos="0 0 .06" rgba="1 1 1 1"/>-->
   </worldbody>
 </mujoco>

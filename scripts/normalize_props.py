@@ -126,6 +126,15 @@ ROBOCASA_THEMES: dict[str, list[str]] = {
     "paper_towel_holder":      ["kitchen", "office"],
     "plant":                   ["kitchen", "office"],
     "stool":                   ["kitchen", "office", "workshop"],
+    # Floor-scale furniture additions.
+    "tiered_basket":           ["kitchen", "office"],
+    "tiered_shelf":            ["kitchen", "office", "workshop", "lab"],
+    "utensil_rack":            ["kitchen", "workshop"],
+    # Extra shelf/table variety.
+    "flower_vase":             ["kitchen", "office", "lab"],
+    "fruit_bowl":              ["kitchen"],
+    "jar":                     ["kitchen", "lab"],
+    "knife_block":             ["kitchen"],
 }
 
 YCB_COLLISION_FILES = ("nontextured.ply", "nontextured.stl", "kinbody.xml")

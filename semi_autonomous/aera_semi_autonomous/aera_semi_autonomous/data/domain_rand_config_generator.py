@@ -16,6 +16,7 @@ from aera.autonomous.envs.ar4_mk3_config import (
     MaterialConfig,
     PropConfig,
     TableConfig,
+    WallArtConfig,
 )
 
 # Fixed table height matches scene.xml: room floor at z=-0.75, work surface
@@ -405,27 +406,32 @@ NAMED_COLORS = {
 # the pool. The runtime mutates each slot's body_pos / body_quat / geom_dataid
 # / geom_matid / geom_rgba to realize a PropConfig.
 
-NUM_PROP_SLOTS = 20
-PROP_COUNT_RANGE = (10, 20)  # inclusive both ends — randint upper is +1
+NUM_PROP_SLOTS = 30
+PROP_COUNT_RANGE = (20, 30)  # inclusive both ends — randint upper is +1
 PROP_THEMES = ("workshop", "office", "lab", "kitchen")
 # Per-slot zone weights. Shelf dominates because the shelf unit is always in
-# the camera frame — floor clutter outside the camera frustum was the failure
-# mode this distribution replaces. Floor is reserved for items too large for
-# table/shelf (chairs, stools) so they still appear, just not piled in places
-# the camera can't see them.
-P_SHELF_ZONE = 0.55
+# the camera frame and reads as background context; floor is kept low because
+# even one floor stool fills a large chunk of the frame, and the (-x, -y)
+# quadrant saturates visually after 1-2 placements.
+P_SHELF_ZONE = 0.70
 P_TABLE_ZONE = 0.20
-P_FLOOR_ZONE = 0.25
+P_FLOOR_ZONE = 0.10
 # Largest object that's allowed on the table — anything taller would loom over
 # the workspace and bias the policy toward false-positive object detection.
 TABLE_MAX_DIM = 0.20
-# Same cap for shelf slots: shelves are small surfaces and big items would
-# either clip the next level up or visually dominate the frame.
-SHELF_MAX_DIM = 0.20
-# Floor is now reserved for furniture-scale items (stools, baskets, dish
-# racks). Lower thresholds were leaking utensil-sized props onto the floor
-# where they read as scattered debris.
-FLOOR_MIN_DIM = 0.40
+# Cap for shelf items. Set higher than TABLE_MAX_DIM because shelf clutter is
+# background dressing — a slightly tall bottle looks fine on a shelf level,
+# but anything bigger risks clipping into the next level. Bumping this from
+# 0.20 doubled the per-theme shelf pool, which the new higher slot count needs
+# to avoid running out of unique assets and leaving slots inactive.
+SHELF_MAX_DIM = 0.25
+# Floor is reserved for furniture-scale items (stools, tiered shelves, large
+# dish racks, big flower vases). The current pool packs around two size bands:
+# kitchenware tops out near 0.40 m (pots, baskets, mug trees, small trays,
+# utensil racks) and reads as scattered debris on the floor; furniture starts
+# at ~0.495 m (tiered shelves) and goes up to ~0.94 m (tall stools). 0.49 sits
+# in the gap and cleanly separates the two.
+FLOOR_MIN_DIM = 0.49
 # Background shelf geometry — these MUST match the geoms in scene.xml. The
 # shelf unit sits against the y=-2 wall, shifted toward the -x corner where
 # the render camera's principal ray hits. Slab tops are 0.015m above the
@@ -687,6 +693,109 @@ def _sample_props(
     return slots
 
 
+# --- Wall art (paintings / boards) ----------------------------------------
+#
+# Sits on wall_x_neg (x≈-2.0) — the wall that's empty from the default render
+# camera POV, opposite the side that holds the shelf. The wall_art geom is
+# declared in scene.xml with default alpha=0; this sampler decides each episode
+# whether to show a painting, a board, or nothing.
+
+# Texture names must match `<texture name="painting_*">` entries in scene.xml.
+# Re-run scripts/download_paintings.py and update both this list and scene.xml
+# if the painting pool changes.
+WALL_PAINTING_TEXTURES = (
+    "painting_9", "painting_11", "painting_874", "painting_14655",
+    "painting_30368", "painting_44065", "painting_61158", "painting_64754",
+    "painting_65821", "painting_87088", "painting_90048", "painting_97933",
+    "painting_111377", "painting_146701", "painting_181777",
+)
+# Solid-color boards. Each entry is the central rgba; the sampler perturbs
+# slightly so two whiteboards don't look identical. Whiteboard / corkboard /
+# chalkboard cover the three common "thing hanging on an office wall" looks.
+_BOARD_PRESETS = (
+    (0.95, 0.95, 0.92),  # whiteboard
+    (0.55, 0.40, 0.25),  # corkboard
+    (0.15, 0.30, 0.20),  # chalkboard
+)
+# Wall plane lives at x=-2.00 with 0.01m thickness, so the inside face is at
+# x=-1.99. The wall_art geom is a (rotated) plane with zero thickness sitting
+# 5mm in front of the wall — close enough to read as "on" the wall, far enough
+# to avoid z-fighting with the wall's inside face.
+_WALL_ART_X = -1.985
+_WALL_ART_HALF_THICKNESS = 0.0  # unused for plane geom, kept for schema
+# Restrict y to the camera-visible portion of wall_x_neg. The render camera
+# sits at ~(+x, +y, +z) and looks toward the (-x, -y) corner where the shelf
+# is, so its principal ray hits wall_x_neg roughly around y in [-1.6, -0.2];
+# anything outside this strip is off-frame and wastes a DR slot. (Originally
+# allowed y up to +1.5 — paintings sampled there were rendered correctly but
+# behind/beside the camera so the user couldn't see them.)
+# z is computed dynamically from the sampled half-height so the slab always
+# clears the floor (>0.1m gap) and the ceiling (<1.65m top), regardless of
+# whether it's a small painting or a tall whiteboard.
+_WALL_ART_Y_RANGE = (-1.6, -0.2)
+_WALL_ART_Z_FLOOR_CLEAR = 0.1
+_WALL_ART_Z_CEILING_TOP = 1.65
+# Painting size (half-extents in wall-plane). The wall is ~2.6m from the
+# render camera; at the lower bound (0.4 half-height ⇒ 0.8m tall) the painting
+# spans roughly 17° vertically, which is small-but-noticeable. Smaller than
+# this and the painting disappears against the randomized wall texture
+# (originally 0.25 lower-bound = 0.5m ⇒ 11° = invisible most of the time).
+# Aspect ratio is sampled separately and mapped onto (hy, hz).
+_PAINTING_HEIGHT_RANGE = (0.40, 0.70)  # half-extent ⇒ rendered 0.8-1.4m tall
+_PAINTING_ASPECT_RANGE = (0.7, 1.6)    # width / height
+# Boards run a touch larger on average — a whiteboard / pinboard reads as
+# bigger than a framed painting in a real office.
+_BOARD_HEIGHT_RANGE = (0.50, 0.80)
+_BOARD_ASPECT_RANGE = (1.0, 2.0)
+
+P_WALL_ART_PAINTING = 0.60
+P_WALL_ART_BOARD = 0.25
+# Remaining 0.15 is "blank wall" — the policy still needs to handle the empty
+# case, otherwise it learns to expect art every episode.
+
+
+def _sample_wall_art() -> WallArtConfig:
+    r = np.random.random()
+    if r < P_WALL_ART_PAINTING:
+        kind = "painting"
+    elif r < P_WALL_ART_PAINTING + P_WALL_ART_BOARD:
+        kind = "board"
+    else:
+        return WallArtConfig(active=False)
+
+    if kind == "painting":
+        height_h = float(np.random.uniform(*_PAINTING_HEIGHT_RANGE))
+        aspect = float(np.random.uniform(*_PAINTING_ASPECT_RANGE))
+        texture = str(np.random.choice(WALL_PAINTING_TEXTURES))
+        rgba = (1.0, 1.0, 1.0, 1.0)
+    else:
+        height_h = float(np.random.uniform(*_BOARD_HEIGHT_RANGE))
+        aspect = float(np.random.uniform(*_BOARD_ASPECT_RANGE))
+        texture = None
+        base = _BOARD_PRESETS[np.random.randint(len(_BOARD_PRESETS))]
+        # ±0.05 jitter per channel — keeps the three presets distinguishable
+        # while breaking exact-color repetition across episodes.
+        jitter = np.random.uniform(-0.05, 0.05, 3)
+        rgba = (
+            float(np.clip(base[0] + jitter[0], 0, 1)),
+            float(np.clip(base[1] + jitter[1], 0, 1)),
+            float(np.clip(base[2] + jitter[2], 0, 1)),
+            1.0,
+        )
+    width_h = height_h * aspect
+    y = float(np.random.uniform(*_WALL_ART_Y_RANGE))
+    z_lo = _WALL_ART_Z_FLOOR_CLEAR + height_h
+    z_hi = _WALL_ART_Z_CEILING_TOP - height_h
+    z = float(np.random.uniform(z_lo, z_hi))
+    return WallArtConfig(
+        active=True,
+        pos=[_WALL_ART_X, y, z],
+        half_size=[_WALL_ART_HALF_THICKNESS, width_h, height_h],
+        texture_name=texture,
+        rgba=list(rgba),
+    )
+
+
 def _generate_camera_configs(
     randomize_cameras: bool,
 ) -> Tuple[Optional[CameraConfig], Optional[CameraConfig]]:
@@ -865,6 +974,7 @@ def generate_random_domain_rand_config(
         table_center=table_center,
         table_half_size=(top_hx, top_hy),
     )
+    wall_art = _sample_wall_art()
 
     domain_rand_config = DomainRandConfig(
         object_material=object_material,
@@ -896,6 +1006,7 @@ def generate_random_domain_rand_config(
         default_camera=default_camera,
         gripper_camera=gripper_camera,
         props=props,
+        wall_art=wall_art,
     )
 
     return domain_rand_config, object_color_name, target_color_name

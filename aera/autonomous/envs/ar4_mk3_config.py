@@ -115,6 +115,26 @@ class PropConfig:
 
 
 @dataclasses.dataclass
+class WallArtConfig:
+    """Decoration slot on the wall_x_neg side of the room.
+
+    Three sampled variants:
+      - inactive: hidden (alpha=0). No texture, no rgba.
+      - painting: `texture_name` set to one of the painting_* textures; rgba is
+        white so the texture renders unmodified.
+      - board: no texture; rgba carries a whiteboard/corkboard/chalkboard tint.
+
+    Position/size are always set when active so an episode can move + resize
+    the slab without changing the scene XML.
+    """
+    active: bool = False
+    pos: Optional[Sequence[float]] = None        # (x≈-1.99, y, z)
+    half_size: Optional[Sequence[float]] = None  # (0.005, hy, hz)
+    texture_name: Optional[str] = None
+    rgba: Optional[Sequence[float]] = None
+
+
+@dataclasses.dataclass
 class TableConfig:
     top_half_size: Optional[Sequence[float]] = None
     top_pos: Optional[Sequence[float]] = None
@@ -155,6 +175,7 @@ class DomainRandConfig:
     # Fixed-length list: one entry per prop slot declared in props.xml. Slots
     # the sampler chose to skip carry active=False and are rendered transparent.
     props: Optional[list[PropConfig]] = None
+    wall_art: Optional[WallArtConfig] = None
 
 
 @dataclasses.dataclass

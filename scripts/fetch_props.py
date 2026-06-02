@@ -123,6 +123,17 @@ ROBOCASA_OBJECTS: list[str] = [
     "paper_towel_holder",
     "plant",
     "stool",
+    # Floor-scale furniture variety (added to diversify the floor zone beyond
+    # stools — see FLOOR_MIN_DIM in domain_rand_config_generator.py).
+    "tiered_basket",
+    "tiered_shelf",
+    "utensil_rack",
+    # Extra shelf/table diversity. Empty vases (not plants), distinctive
+    # vertical knife blocks, fruit bowls, generic jars.
+    "flower_vase",
+    "fruit_bowl",
+    "jar",
+    "knife_block",
 ]
 
 ROBOCASA_BASE_URL = (

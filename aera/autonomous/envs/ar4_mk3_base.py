@@ -712,6 +712,56 @@ class Ar4Mk3Env(BaseEnv):
                 self.model.body_quat[body_id] = prop.quat
                 self.model.geom_rgba[geom_id] = [1.0, 1.0, 1.0, 1.0]
 
+        # --- Apply Wall Art ---
+        # scene.xml declares two materials for the wall_art geom: wallartmat
+        # (texture-bound, used for paintings) and wallboardmat (untextured,
+        # used for solid-color boards). The runtime swaps geom_matid between
+        # them — this is cleaner than rebinding textures on a single material
+        # because a material compiled without `texture=` won't render
+        # textures even if mat_texid is written at runtime.
+        if dr_config.wall_art:
+            geom_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_GEOM, "wall_art"
+            )
+            art_mat_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_MATERIAL, "wallartmat"
+            )
+            board_mat_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_MATERIAL, "wallboardmat"
+            )
+            if geom_id != -1 and art_mat_id != -1 and board_mat_id != -1:
+                wa = dr_config.wall_art
+                if not wa.active:
+                    self.model.geom_rgba[geom_id, 3] = 0.0
+                else:
+                    if wa.pos is not None:
+                        self.model.geom_pos[geom_id] = wa.pos
+                    if wa.half_size is not None:
+                        # WallArtConfig.half_size carries (thickness, wy, wz)
+                        # in world frame. The plane's quat rotates local
+                        # (X, Y, Z) → world (Y, Z, X), so local x = world-y
+                        # half-extent and local y = world-z half-extent.
+                        # size[2] is the plane's infinite-grid spacing.
+                        self.model.geom_size[geom_id] = [
+                            wa.half_size[1], wa.half_size[2], 1.0
+                        ]
+                    if wa.texture_name is not None:
+                        tex_id = self._mujoco.mj_name2id(
+                            self.model,
+                            self._mujoco.mjtObj.mjOBJ_TEXTURE,
+                            wa.texture_name,
+                        )
+                        if tex_id != -1:
+                            self.model.mat_texid[art_mat_id] = tex_id
+                        self.model.geom_matid[geom_id] = art_mat_id
+                        self.model.mat_rgba[art_mat_id] = [1.0, 1.0, 1.0, 1.0]
+                        self.model.geom_rgba[geom_id] = [1.0, 1.0, 1.0, 1.0]
+                    else:
+                        self.model.geom_matid[geom_id] = board_mat_id
+                        if wa.rgba is not None:
+                            self.model.mat_rgba[board_mat_id] = wa.rgba
+                            self.model.geom_rgba[geom_id] = wa.rgba
+
         # --- Apply Dynamics Properties ---
         dynamics_map = {
             "object_dynamics": "object0",

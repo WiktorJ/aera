@@ -181,6 +181,10 @@ cython_debug/
 *.lo
 *.o
 *.obj
+# ...but the pickable-block meshes are essential scene assets (referenced by
+# ar4_mk3.xml, needed for every run), so track them like the robot STLs.
+# Regenerate with scripts/generate_pla_block_mesh.py.
+!aera/autonomous/simulation/mujoco/ar4_mk3/assets/pla_block_*.obj
 
 # Precompiled Headers
 *.gch

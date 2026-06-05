@@ -44,14 +44,17 @@ SIZE = 512  # px; plenty for ~2-5cm parts even on the close wrist cam.
 # shapes the bead profile (higher = crisper valley between layers); contrast is
 # the peak-to-valley brightness swing.
 VARIANTS = (
-    ("pla_lines_fine",   48, 3.0, 0.10),  # ~0.1mm layers — subtle
-    ("pla_lines_medium", 32, 2.2, 0.14),  # ~0.2mm layers — typical
-    ("pla_lines_coarse", 20, 1.6, 0.18),  # ~0.3mm layers — pronounced
+    ("pla_lines_fine",   48, 3.0, 0.13),  # ~0.1mm layers — subtle
+    ("pla_lines_medium", 32, 2.2, 0.18),  # ~0.2mm layers — typical
+    ("pla_lines_coarse", 20, 1.6, 0.24),  # ~0.3mm layers — pronounced
 )
 
 # Mean brightness kept high so the runtime rgba tint-multiply yields a vivid
-# filament color rather than a muddy dark one (texture * rgba in MuJoCo).
-BASE_LEVEL = 0.86
+# filament color rather than a muddy dark one (texture * rgba in MuJoCo). The
+# generator (_PLA_TEXTURE_MEAN in domain_rand_config_generator.py) divides the
+# tint by this so the final color matches the intended filament value; keep the
+# two in sync if you change it.
+BASE_LEVEL = 0.88
 
 
 def _layer_profile(v: np.ndarray, n_lines: int, sharpness: float) -> np.ndarray:

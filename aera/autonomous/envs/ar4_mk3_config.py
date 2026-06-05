@@ -67,6 +67,25 @@ AVAILABLE_TEXTURES = [
     "plastic006", "plastic010", "plastic012a", "plastic013a", "plastic015a",
 ]
 
+# Pickable-block visual presets: each is an (edge-shape, half-size) pair. A
+# preset realizes one `pla_block_p<i>` mesh (the edge OBJ from
+# scripts/generate_pla_block_mesh.py at that scale) and a `<base>_visual_p<i>`
+# geom per block body in ar4_mk3.xml. The domain randomizer picks one per block
+# per episode (the index into this tuple is the *_block_variant field on
+# DomainRandConfig); the runtime shows that geom, hides the rest, and scales the
+# collision BOX to the preset's half-size (box geoms scale at runtime; meshes do
+# not, which is why size variation is discrete). Edge shapes cycle over 6 values
+# and sizes over 5, so both are evenly covered. Keep in sync with the XML geoms.
+_PLA_BLOCK_EDGES = (
+    "chamfer_s", "chamfer_m", "chamfer_l", "fillet_s", "fillet_m", "fillet_l",
+)
+_PLA_BLOCK_SIZES = (0.0095, 0.0110, 0.0120, 0.0135, 0.0150)  # half-extent (m)
+PLA_BLOCK_PRESETS = tuple(
+    (_PLA_BLOCK_EDGES[i % len(_PLA_BLOCK_EDGES)],
+     _PLA_BLOCK_SIZES[i % len(_PLA_BLOCK_SIZES)])
+    for i in range(15)
+)
+
 
 @dataclasses.dataclass
 class MaterialConfig:
@@ -170,6 +189,12 @@ class DomainRandConfig:
     object_dynamics: Optional[DynamicsConfig] = None
     object_distractor1_dynamics: Optional[DynamicsConfig] = None
     object_distractor2_dynamics: Optional[DynamicsConfig] = None
+    # Index into PLA_BLOCK_PRESETS choosing the (edge-shape, size) visual preset
+    # for each pickable block. The runtime shows that mesh geom and scales the
+    # collision box to the preset's size. None leaves the XML default visible.
+    object_block_variant: Optional[int] = None
+    object_distractor1_block_variant: Optional[int] = None
+    object_distractor2_block_variant: Optional[int] = None
     default_camera: Optional["CameraConfig"] = None
     gripper_camera: Optional["CameraConfig"] = None
     # Fixed-length list: one entry per prop slot declared in props.xml. Slots

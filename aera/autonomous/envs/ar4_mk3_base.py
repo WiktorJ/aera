@@ -11,7 +11,7 @@ from gymnasium_robotics.envs.robot_env import MujocoRobotEnv
 from gymnasium_robotics.utils import rotations
 from scipy.spatial.transform import Rotation
 
-from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
+from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig, PLA_BLOCK_PRESETS
 
 
 def goal_distance(goal_a, goal_b):
@@ -72,6 +72,10 @@ class BaseEnv(MujocoRobotEnv):
             object_size (float or array-like with 3 elements): size of the object (box half-lengths).
         """
         self.config = config
+        # Per-block resting half-height, set by the block-preset DR pass so the
+        # spawn pose in _reset_sim places each (possibly differently sized) block
+        # on the table. Defaults to object_size when DR is off.
+        self._block_half_size: dict[str, float] = {}
         self.gripper_extra_height = config.gripper_extra_height
         self.block_gripper = config.block_gripper
         self.has_object = config.has_object
@@ -762,6 +766,51 @@ class Ar4Mk3Env(BaseEnv):
                             self.model.mat_rgba[board_mat_id] = wa.rgba
                             self.model.geom_rgba[geom_id] = wa.rgba
 
+        # --- Apply Block Visual Preset (edge shape + size) ---
+        # Each pickable block carries one visual mesh geom per PLA_BLOCK_PRESETS
+        # entry. Show the selected one, hide the rest, and scale the collision
+        # BOX to the preset's half-size (mesh geoms can't be scaled at runtime, so
+        # the visual size is the discrete preset and the box is matched to it).
+        # Showing a geom = reset geom_rgba to the default sentinel
+        # [0.5,0.5,0.5,1] so the block's material (DR color + texture) takes
+        # precedence; hiding = alpha 0. Any other geom_rgba value would override
+        # the material color, so the sentinel is load-bearing here. The resting
+        # half-height is recorded for the spawn pose in _reset_sim.
+        block_variant_map = {
+            "object0": dr_config.object_block_variant,
+            "object_distractor1": dr_config.object_distractor1_block_variant,
+            "object_distractor2": dr_config.object_distractor2_block_variant,
+        }
+        for base, selected in block_variant_map.items():
+            if selected is None:
+                continue
+            for vi in range(len(PLA_BLOCK_PRESETS)):
+                geom_id = self._mujoco.mj_name2id(
+                    self.model,
+                    self._mujoco.mjtObj.mjOBJ_GEOM,
+                    f"{base}_visual_p{vi}",
+                )
+                if geom_id == -1:
+                    continue
+                self.model.geom_rgba[geom_id] = (
+                    [0.5, 0.5, 0.5, 1.0] if vi == selected
+                    else [0.5, 0.5, 0.5, 0.0]
+                )
+            half = float(PLA_BLOCK_PRESETS[selected][1])
+            box_id = self._mujoco.mj_name2id(
+                self.model, self._mujoco.mjtObj.mjOBJ_GEOM, base
+            )
+            if box_id != -1:
+                self.model.geom_size[box_id] = [half, half, half]
+                # geom_size alone is not enough: the broadphase uses the
+                # compile-time geom_aabb / geom_rbound, which don't track a
+                # runtime size change. In the full scene (AABB-tree broadphase)
+                # a stale-small AABB clips the box so it collides at the OLD
+                # size (the block sinks into the table). Refresh both to match.
+                self.model.geom_aabb[box_id] = [0.0, 0.0, 0.0, half, half, half]
+                self.model.geom_rbound[box_id] = half * np.sqrt(3.0)
+            self._block_half_size[base] = half
+
         # --- Apply Dynamics Properties ---
         dynamics_map = {
             "object_dynamics": "object0",
@@ -887,7 +936,9 @@ class Ar4Mk3Env(BaseEnv):
             )
             assert object_qpos.shape == (7,)
             object_qpos[:2] = object_xpos
-            object_qpos[2] = self.object_size[2]
+            object_qpos[2] = self._block_half_size.get(
+                "object0", self.object_size[2]
+            )
             self._utils.set_joint_qpos(
                 self.model, self.data, "object0:joint", object_qpos
             )
@@ -913,7 +964,9 @@ class Ar4Mk3Env(BaseEnv):
                             self.model, self.data, joint_name
                         )
                         distractor_qpos[:2] = distractor_pos_2d
-                        distractor_qpos[2] = self.object_size[2]
+                        distractor_qpos[2] = self._block_half_size.get(
+                            joint_name.split(":")[0], self.object_size[2]
+                        )
                         self._utils.set_joint_qpos(
                             self.model, self.data, joint_name, distractor_qpos
                         )

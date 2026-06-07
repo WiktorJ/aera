@@ -311,6 +311,13 @@ class Ar4Mk3EnvConfig:
     # with existing datasets/policies.
     use_geometric_lookat: bool = False
     include_images_in_obs: bool = False
+    # Apply the shared sensor-realism image augmentation to the rendered obs in
+    # the env.step path (eval), so sim-eval isn't pristine while the policy was
+    # trained on augmented images. Per-episode camera profile sampled on reset.
+    # Off by default; the collection path is unaffected. See
+    # aera.autonomous.obs_augmentation.
+    obs_image_aug: bool = False
+    obs_image_aug_strength: float = 1.0
     # Mirror the data-collection grasp lock into the env.step path (eval). When
     # True, a grasped object is kinematically attached to the gripper instead of
     # held by (unstable) contact friction, so eval reproduces the collected

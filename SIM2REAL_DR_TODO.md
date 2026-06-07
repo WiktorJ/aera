@@ -99,10 +99,36 @@ Deliberately skipped (see discussion):
 
 ---
 
-## Deferred
+## [x] #3 — Observation / sensor noise (images + proprioception)  ← DONE
 
-## [ ] #3 — Observation / sensor noise (images + proprioception)
+Key findings that shaped it:
+- The VLA consumes only {image, gripper_image, state(7-dim qpos), prompt}. The
+  25-dim goal-env observation (object pose) is NOT fed to the policy → object-
+  pose noise is N/A, skipped.
+- openpi already does train-only resampled RandomCrop/Rotate/ColorJitter; this
+  layer is the SENSOR gap (noise/blur/vignette/WB/jpeg/grayscale/frozen frame)
+  + proprioception, which openpi does not touch.
+- Lives in the offline dataset-prep stage (not collection, not the openpi
+  train transform): train-only, per-episode context, and decoupled from
+  expensive collection so magnitudes can be retuned by re-running the cheap
+  offline pass.
 
-Image aug (brightness/contrast/gamma, hue/WB, gauss+shot noise, motion blur,
-vignette, JPEG, dropped/frozen frame) + proprioception noise/bias + perception-
-grade noise/dropout on any object-pose obs. Revisit after #1, #2, #4, #5.
+Implementation:
+- Shared module `aera/autonomous/obs_augmentation.py`: per-episode
+  `CameraProfile` + `augment_image` (full sensor set); per-episode
+  `StateNoiseProfile` + `apply_state_noise` (bias + jitter on STATE input only,
+  never the action target — self-consistent with delta actions).
+- Offline: `transform_skip_dataset.py` flags `--image-aug` / `--state-aug` /
+  `--obs-aug-strength` / `--obs-aug-seed`; per-episode profiles applied in the
+  transform loop (incl. frozen-frame reuse). Guard: `--state-aug` rejects
+  `--smooth-state` (would low-pass the jitter).
+- Eval (behind flag): `Ar4Mk3EnvConfig.obs_image_aug` augments env-render obs
+  with the same module (per-episode profile on reset); exposed as
+  `--obs-image-aug` on run_policy_on_env.
+- Verification: `aera/autonomous/openpi/scripts/preview_obs_augmentation.py`
+  renders an original|aug|aug… grid (from --from-sim, --image, or synthetic).
+
+Caveats / not done:
+- Offline transform not run end-to-end here (needs a real LeRobot dataset);
+  shared funcs + eval path are tested, integration is wiring on top.
+- Object-pose noise: N/A (not consumed by the VLA).

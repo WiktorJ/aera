@@ -29,6 +29,12 @@ import numpy as np
 import torch
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
+from aera.autonomous.obs_augmentation import (
+    apply_state_noise,
+    augment_image,
+    sample_camera_profile,
+    sample_state_noise_profile,
+)
 from aera.autonomous.openpi.dataset_transforms import compute_smoothed_arrays
 
 
@@ -128,6 +134,40 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help="If set, only process the first N episodes. Useful for quick testing.",
+    )
+    parser.add_argument(
+        "--image-aug",
+        action="store_true",
+        default=False,
+        help=(
+            "Bake per-episode camera sensor-realism into the images (noise, "
+            "blur, motion blur, vignette, white-balance, gamma, jpeg, grayscale, "
+            "frozen frames). Train-only by construction; complements openpi's "
+            "resampled crop/rotate/color-jitter. See aera.autonomous.obs_augmentation."
+        ),
+    )
+    parser.add_argument(
+        "--state-aug",
+        action="store_true",
+        default=False,
+        help=(
+            "Add per-episode bias + per-frame Gaussian jitter to the STATE input "
+            "only (never the action target). With --delta-actions the same noised "
+            "state is used as the delta reference, so the noise cancels at "
+            "inference and the policy learns to treat state as a noisy reference."
+        ),
+    )
+    parser.add_argument(
+        "--obs-aug-strength",
+        type=float,
+        default=1.0,
+        help="Scale [0,1] for how far obs augmentation is pushed from neutral.",
+    )
+    parser.add_argument(
+        "--obs-aug-seed",
+        type=int,
+        default=0,
+        help="Seed for the obs-augmentation RNG (reproducible augmented datasets).",
     )
     parser.add_argument(
         "--push-to-hub",
@@ -236,6 +276,10 @@ def transform_dataset(
     smoothed_state: np.ndarray | None = None,
     excluded_episodes: set[int] | None = None,
     max_episodes: int | None = None,
+    image_aug: bool = False,
+    state_aug: bool = False,
+    aug_strength: float = 1.0,
+    aug_seed: int = 0,
 ) -> LeRobotDataset:
     """Transform the source dataset by pairing obs[t] with action[t+skip].
 
@@ -289,6 +333,15 @@ def transform_dataset(
     last_action_for_episode: np.ndarray | None = None
     episodes_seen: set[int] = set()
     excluded_episodes = excluded_episodes or set()
+
+    # Observation augmentation (train-only sensor realism). Profiles are sampled
+    # once per episode so a clip is internally consistent; per-frame calls add
+    # the stochastic noise / motion blur / frozen frames.
+    aug_rng = np.random.default_rng(aug_seed)
+    aug_episode: int | None = None
+    cam_profile = None
+    state_profile = None
+    prev_aug_images: dict = {}
 
     offset = skip - 1
     for t in range(0, total_samples, skip):
@@ -355,6 +408,17 @@ def transform_dataset(
 
         current_episode = episode_t
 
+        # Resample per-episode augmentation profiles when entering a new episode.
+        if (image_aug or state_aug) and current_episode != aug_episode:
+            aug_episode = current_episode
+            cam_profile = (
+                sample_camera_profile(aug_rng, strength=aug_strength)
+                if image_aug
+                else None
+            )
+            state_profile = None  # sampled lazily once we know the state dim
+            prev_aug_images = {}
+
         # Build the output frame: obs from t, actions from t+skip
         frame = {}
 
@@ -363,6 +427,23 @@ def transform_dataset(
             if key in sample_t:
                 frame[key] = _parse_image_from_sample(sample_t[key])
 
+        # Image sensor-realism augmentation (per-episode profile + per-frame
+        # noise). A "frozen" frame reuses the previous augmented image (stale /
+        # duplicated frame), so it must apply to all image keys together.
+        if image_aug and cam_profile is not None:
+            frozen = (
+                bool(prev_aug_images)
+                and aug_rng.random() < cam_profile.frame_freeze_prob
+            )
+            for key in image_keys:
+                if key not in frame:
+                    continue
+                if frozen:
+                    frame[key] = prev_aug_images[key]
+                else:
+                    frame[key] = augment_image(frame[key], cam_profile, aug_rng)
+                prev_aug_images[key] = frame[key]
+
         # Copy state from time t (use smoothed if provided)
         state_t = None
         if smoothed_state is not None:
@@ -370,6 +451,19 @@ def transform_dataset(
             frame["state"] = state_t
         elif "state" in sample_t:
             state_t = _to_numpy(sample_t["state"]).astype(np.float32)
+            frame["state"] = state_t
+
+        # State (proprioception) noise on the INPUT only. Applied to state_t
+        # before it is both stored and used as the delta-action reference, so
+        # delta = action_future - noisy_state stays self-consistent.
+        if state_aug and state_t is not None:
+            if state_profile is None:
+                state_profile = sample_state_noise_profile(
+                    state_dim=int(state_t.shape[0]),
+                    rng=aug_rng,
+                    strength=aug_strength,
+                )
+            state_t = apply_state_noise(state_t, state_profile, aug_rng)
             frame["state"] = state_t
 
         # Get actions from time t+skip (use smoothed if provided)
@@ -454,6 +548,12 @@ def main():
     if args.skip < 1:
         raise ValueError(f"--skip must be >= 1, got {args.skip}")
 
+    if args.state_aug and args.smooth_state:
+        raise ValueError(
+            "--state-aug with --smooth-state would low-pass away the injected "
+            "state jitter; enable at most one."
+        )
+
     exclude_prompts = None
     if args.exclude_prompts:
         exclude_prompts = {p.strip() for p in args.exclude_prompts.split(",")}
@@ -463,7 +563,9 @@ def main():
         f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}, "
         f"exclude_prompts={exclude_prompts}, min_action_delta={args.min_action_delta}, "
         f"smooth_window={args.smooth_window}, smooth_polyorder={args.smooth_polyorder}, "
-        f"smooth_state={args.smooth_state}, max_episodes={args.max_episodes}"
+        f"smooth_state={args.smooth_state}, max_episodes={args.max_episodes}, "
+        f"image_aug={args.image_aug}, state_aug={args.state_aug}, "
+        f"obs_aug_strength={args.obs_aug_strength}, obs_aug_seed={args.obs_aug_seed}"
     )
 
     output_repo_id = _build_output_repo_id(
@@ -522,6 +624,10 @@ def main():
             smoothed_state=smoothed_state,
             excluded_episodes=excluded_episodes,
             max_episodes=args.max_episodes,
+            image_aug=args.image_aug,
+            state_aug=args.state_aug,
+            aug_strength=args.obs_aug_strength,
+            aug_seed=args.obs_aug_seed,
         )
         output_dataset.finalize()
 

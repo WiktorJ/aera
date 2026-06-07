@@ -75,6 +75,10 @@ class Args:
     # confounded by unstable MuJoCo contact-grasp physics (the demos are
     # collected with this lock). Disable to eval under raw friction grasping.
     kinematic_grasp: bool = True
+    # Apply the shared sensor-realism image augmentation to eval renders so
+    # sim-eval matches the augmented training distribution. Off by default.
+    obs_image_aug: bool = False
+    obs_image_aug_strength: float = 1.0
 
     # --- Two-phase prompting ---
     # When enabled, the prompt starts as "pick the {color} block" and switches
@@ -159,6 +163,8 @@ def _build_env(args: Args, model_path: str, domain_rand_config: Any) -> Ar4Mk3Pi
         absolute_state_actions=False,
         include_images_in_obs=True,
         kinematic_grasp=args.kinematic_grasp,
+        obs_image_aug=args.obs_image_aug,
+        obs_image_aug_strength=args.obs_image_aug_strength,
     )
     return Ar4Mk3PickAndPlaceEnv(render_mode="rgb_array", config=env_config)
 

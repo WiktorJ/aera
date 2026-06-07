@@ -13,6 +13,7 @@ from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig, PLA_BLOCK_PRESETS
 from aera.autonomous.envs.kinematic_grasp import KinematicGraspLock
+from aera.autonomous.obs_augmentation import augment_image, sample_camera_profile
 
 
 def goal_distance(goal_a, goal_b):
@@ -245,6 +246,10 @@ class Ar4Mk3Env(BaseEnv):
         # Set before super().__init__ so an early step/reset never sees it unset.
         self._grasp_lock = None
         self._gripper_act_ids = None
+        # Eval-time image sensor-realism: per-episode profile (resampled on
+        # reset) + a persistent rng for per-frame noise. None = disabled.
+        self._eval_cam_profile = None
+        self._obs_aug_rng = np.random.default_rng()
         default_camera_config = config.default_camera_config
         if config.translation is not None and config.quaterion is not None:
             cam_cfg = (
@@ -307,6 +312,11 @@ class Ar4Mk3Env(BaseEnv):
 
         if self._grasp_lock is not None:
             self._grasp_lock.release()
+
+        if self.config.obs_image_aug:
+            self._eval_cam_profile = sample_camera_profile(
+                self._obs_aug_rng, strength=self.config.obs_image_aug_strength
+            )
 
         did_reset_sim = False
         while not did_reset_sim:
@@ -536,6 +546,15 @@ class Ar4Mk3Env(BaseEnv):
             gripper_img = self.mujoco_renderer.render(
                 render_mode="rgb_array", camera_name="gripper_camera"
             )
+            # Eval sensor-realism: same shared augmentation the training data
+            # uses, so sim-eval images match the policy's training distribution.
+            if self._eval_cam_profile is not None:
+                default_img = augment_image(
+                    np.asarray(default_img), self._eval_cam_profile, self._obs_aug_rng
+                )
+                gripper_img = augment_image(
+                    np.asarray(gripper_img), self._eval_cam_profile, self._obs_aug_rng
+                )
         else:
             default_img, gripper_img = None, None
 

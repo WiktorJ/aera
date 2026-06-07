@@ -28,6 +28,8 @@ from aera_semi_autonomous.data.pick_and_place_helpers import (
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
+    apply_hover_height_perturbation,
+    apply_speed_perturbation,
     generate_waypoints,
     go_home_perturbed,
     perturb_ik_config,
@@ -211,6 +213,14 @@ def main():
                 interface_config = dataclasses.replace(
                     interface_config,
                     actuation=sample_actuation_config(cfg.perturbation.actuation),
+                )
+            if cfg.perturbation.perturb_speed:
+                interface_config = apply_speed_perturbation(
+                    interface_config, cfg.perturbation.speed
+                )
+            if cfg.perturbation.perturb_hover_height:
+                interface_config = apply_hover_height_perturbation(
+                    interface_config, cfg.perturbation.hover_height
                 )
             robot = Ar4Mk3RobotInterface(env, config=interface_config)
 

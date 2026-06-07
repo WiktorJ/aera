@@ -56,7 +56,7 @@ Usage:
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Dict, List, Literal
 
 import numpy as np
@@ -64,6 +64,7 @@ from geometry_msgs.msg import Pose
 
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     ActuationConfig,
+    Ar4Mk3InterfaceConfig,
     IKConfig,
 )
 
@@ -159,6 +160,33 @@ class ActuationPerturbation:
 
 
 @dataclass
+class SpeedPerturbation:
+    """Per-episode motion-tempo sampling. One factor scales the whole arm's
+    speed so the recorded action-deltas (and frame cadence) aren't locked to a
+    single tempo.
+
+    factor > 1 = faster/coarser moves; < 1 = slower/finer. The factor scales the
+    IK step size up and the interpolation step counts down; IK max_steps scales
+    inversely so slow episodes still have the budget to converge.
+
+    factor_range is kept moderate: too fast and the IK overshoots / fails to
+    converge, too slow and long moves exhaust the (scaled) step budget — either
+    way costing usable demos.
+    """
+
+    factor_range: tuple = (0.7, 1.4)
+
+
+@dataclass
+class HoverHeightPerturbation:
+    """Per-episode pre-grasp / pre-place hover height (the interface's
+    ``above_target_offset``). Diversifies the descend geometry and the
+    pre-grasp images instead of always hovering at the fixed 0.05 m."""
+
+    offset_range: tuple = (0.04, 0.10)
+
+
+@dataclass
 class PerturbationConfig:
     """Configuration for trajectory perturbation.
 
@@ -198,6 +226,17 @@ class PerturbationConfig:
     # interface config.
     perturb_actuation: bool = False
     actuation: ActuationPerturbation = field(default_factory=ActuationPerturbation)
+
+    # Motion dynamics (composable, orthogonal to `mode`). perturb_speed scales
+    # the per-episode arm tempo; perturb_hover_height varies the pre-grasp /
+    # pre-place hover height. The collection script samples each per episode and
+    # rewrites the interface config accordingly.
+    perturb_speed: bool = False
+    speed: SpeedPerturbation = field(default_factory=SpeedPerturbation)
+    perturb_hover_height: bool = False
+    hover_height: HoverHeightPerturbation = field(
+        default_factory=HoverHeightPerturbation
+    )
 
 
 def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> list:
@@ -387,6 +426,41 @@ def sample_actuation_config(noise: ActuationPerturbation) -> ActuationConfig:
         command_lag_alpha=command_lag_alpha,
         step_jitter_prob=step_jitter_prob,
     )
+
+
+def apply_speed_perturbation(
+    interface_config: Ar4Mk3InterfaceConfig, noise: SpeedPerturbation
+) -> Ar4Mk3InterfaceConfig:
+    """Return a copy of `interface_config` with a per-episode tempo factor baked
+    in: IK step size up, interpolation step counts down, IK budget up to keep
+    slow episodes converging. See SpeedPerturbation."""
+    s = float(np.random.uniform(*noise.factor_range))
+    ik = interface_config.ik
+    new_ik = replace(
+        ik,
+        integration_dt=ik.integration_dt * s,
+        max_update_norm=ik.max_update_norm * s,
+        max_steps=max(1, int(round(ik.max_steps / s))),
+    )
+    return replace(
+        interface_config,
+        ik=new_ik,
+        go_home_interpolation_steps=max(
+            1, int(round(interface_config.go_home_interpolation_steps / s))
+        ),
+        gripper_action_steps=max(
+            1, int(round(interface_config.gripper_action_steps / s))
+        ),
+    )
+
+
+def apply_hover_height_perturbation(
+    interface_config: Ar4Mk3InterfaceConfig, noise: HoverHeightPerturbation
+) -> Ar4Mk3InterfaceConfig:
+    """Return a copy of `interface_config` with a per-episode pre-grasp/place
+    hover height (``above_target_offset``)."""
+    offset = float(np.random.uniform(*noise.offset_range))
+    return replace(interface_config, above_target_offset=offset)
 
 
 def go_home_perturbed(robot: Ar4Mk3RobotInterface, config: PerturbationConfig) -> bool:

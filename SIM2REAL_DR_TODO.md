@@ -8,7 +8,7 @@ Tackle one at a time. Mark items done as we land them.
 
 ---
 
-## [ ] #1 — Robot actuator & joint physics DR  ← IN PROGRESS
+## [x] #1 — Robot actuator & joint physics DR  ← DONE
 
 The arm is currently a near-perfect position tracker (kp 20000/5000) with fixed
 joint damping and zero friction/armature variation. Randomize per episode:
@@ -75,16 +75,27 @@ Future (separate, optional): contact-tuning to make physical grasping stable
 enough to retire the lock — gives genuine grasp-robustness + slip-recovery in
 the data. Big effort, deferred.
 
-## [ ] #5 — Motion / trajectory dynamics (beyond pre-grasp waypoints)
+## [x] #5 — Motion / trajectory dynamics  ← DONE (core)
 
-Extends `trajectory_perturbation.py` (today: pre-grasp disk waypoints + IK-param
-noise + home offset).
+Two composable, opt-in perturbations on `PerturbationConfig` (orthogonal to
+`mode`), sampled per episode and baked into the interface config like
+`ik_noise` / `actuation`:
 
-- Speed / velocity-profile variation per episode/segment.
-- Overshoot & settle variation (partly emergent from #1).
-- Mid-trajectory pauses / jerk.
-- Approach-angle + grasp-height variation; release-height variation at place.
-- Give distal cable-harness arcs a little mass/inertia (currently visual-only).
+- `perturb_speed` — one per-episode tempo factor (U(0.7,1.4)) scales IK step
+  size (integration_dt, max_update_norm) up, interpolation step counts
+  (go_home, gripper) down, and IK max_steps up (slow-episode convergence
+  headroom). Varies recorded action-delta scale + frame cadence.
+- `perturb_hover_height` — per-episode `above_target_offset` (U(0.04,0.10))
+  varying the pre-grasp / pre-place hover geometry.
+- Enable via `--perturbation.perturb-speed` / `--perturbation.perturb-hover-height`
+  on collect_trajectories.py / demo_pick_and_place.py.
+
+Deliberately skipped (see discussion):
+- Overshoot/settle — already emerges from #1's soft-gain episodes.
+- Approach-angle / tilted grasp — covered by offset_approach's XY disk;
+  tilting the final grasp risks the jaws not seating squarely.
+- Mid-trajectory dwell — low value, injects near-no-op frames.
+- Cable-harness mass — not worth the effort; cables stay visual-only.
 
 ---
 

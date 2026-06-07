@@ -10,6 +10,9 @@ from scipy.spatial.transform import Rotation
 from aera.autonomous.envs.ar4_mk3_config import (
     AVAILABLE_TEXTURES,
     PLA_BLOCK_PRESETS,
+    ArmCableConfig,
+    CableArcConfig,
+    CableSegmentConfig,
     CameraConfig,
     DomainRandConfig,
     DynamicsConfig,
@@ -960,6 +963,141 @@ def _sample_wall_art() -> WallArtConfig:
     )
 
 
+# --- Arm cable / wiring harness (geometry DR) ------------------------------
+#
+# Every other DR axis is appearance (color/texture/material/light); the arm's
+# silhouette is otherwise frozen to the CAD meshes every episode. This is the
+# ONLY axis that perturbs the robot's *shape*. The real AR4 carries a wiring
+# harness — black tubing + colored wires — running mostly along the distal
+# links (3↔4↔5↔6, on top) and down the back between links 2↔3. It's modeled as
+# a pool of visual-only capsule "tube" segments parented to the link bodies in
+# ar4_mk3.xml; each episode toggles a random subset on and jitters their
+# thickness, routing and color.
+#
+# The goal is variety, NOT fidelity: faithfully copying the real routing would
+# just swap one fixed silhouette for another and buy no robustness. Making the
+# outline unstable across episodes pushes the policy to stop treating the exact
+# CAD silhouette as a landmark — it already gets joint state from the obs
+# vector, so the arm pixels should be ignorable. A fraction of episodes show no
+# harness at all so the policy is robust whether or not it's present.
+# Real harnesses don't hug the arm — they bow out and float around it. So the
+# two long runs (link 2↔3 back, link 4↔5 top) are modeled as ARCHED cables: a
+# chain of capsule sub-geoms the runtime bends into a bow whose height varies
+# per episode. Short bridges (elbow, wrist) stay straight. Geom names MUST match
+# the cable_* / arc_* geoms declared in ar4_mk3.xml.
+ARM_CABLE_GEOMS = (
+    "cable_l3_a",                # link 3↔4 (short straight bridge)
+    "cable_l5_a", "cable_l5_b",  # link 5↔6 wrist (short straight bridges)
+)
+# Arched cables: (base_name, n_segments, start, end, bow_dir, bow_range). The
+# sub-geoms are f"{base_name}_s{0..n-1}". bow_dir is the outward direction (in
+# the parent link frame) the arc apex floats toward; bow_range is the sampled
+# apex distance in meters. n_segments must match the count declared in the XML.
+_ARM_CABLE_ARCS = (
+    # link 1, shoulder harness bowing out behind the base of link 2.
+    ("arc_l1_back", 5, (0.0, 0.005, -0.020), (0.0, 0.058, -0.155),
+     (-1.0, 0.0, 0.0), (0.03, 0.06)),
+    # link 2↔3, three bundles running the length of the link 2 back, offset to
+    # ±z so they read as a thick multi-cable harness rather than one tube. The
+    # chord lies in the link's local xy-plane; bowing along the in-plane
+    # perpendicular (0.866, 0.5, 0) — i.e. 90° from the chord — pushes the bend
+    # out behind the arm where it's visible, rather than tucking it under/over.
+    ("arc_l2_back", 5, (0.010, -0.020, 0.0), (0.140, -0.245, 0.0),
+     (0.866, 0.5, 0.0), (0.03, 0.07)),
+    ("arc_l2_back2", 5, (0.020, -0.020, 0.015), (0.150, -0.245, 0.015),
+     (0.866, 0.5, 0.0), (0.04, 0.08)),
+    ("arc_l2_back3", 4, (0.005, -0.025, -0.015), (0.135, -0.250, -0.015),
+     (0.866, 0.5, 0.0), (0.02, 0.05)),
+    # link 4↔5, two bundles floating over the top of the forearm.
+    ("arc_l4a", 5, (0.0, 0.0, -0.020), (0.0, 0.0, -0.205),
+     (0.0, 1.0, 0.0), (0.025, 0.06)),
+    ("arc_l4b", 4, (0.0, 0.010, -0.030), (0.0, 0.010, -0.190),
+     (0.3, 0.95, 0.0), (0.02, 0.05)),
+    # Joint-spanning bridges: parented to the distal link (its origin sits at
+    # the joint to its parent) and arcing across the junction. bow_dir is a
+    # guess in the rotated link frame — verify/flip by render.
+    ("arc_l43", 5, (0.0, 0.005, -0.080), (0.0, 0.005, 0.015),
+     (0.0, 1.0, 0.0), (0.025, 0.05)),
+    # bow_dir here was derived empirically: it's the camera-outward direction
+    # expressed in link 3's (rotated) local frame, so the bend sits proud of the
+    # bulky elbow instead of tucking behind it.
+    ("arc_l32", 4, (0.030, -0.035, 0.0), (-0.030, 0.055, 0.0),
+     (-0.63, 0.25, -0.74), (0.035, 0.06)),
+)
+P_ARM_CABLES_PRESENT = 0.85    # else: bare arm (robustness to no harness)
+P_CABLE_SEGMENT_ACTIVE = 0.75  # per-cable, given the harness is present
+_CABLE_RADIUS_RANGE = (0.003, 0.007)
+_CABLE_POS_JITTER = 0.004      # ± per-axis, added to the compiled geom_pos
+_CABLE_ARC_SWAY = 0.01         # ± per-axis lateral wobble on the arc apex
+
+
+def _sample_cable_color() -> Tuple[float, float, float, float]:
+    """Black tubing most of the time, occasional colored wire / gray sleeve."""
+    r = np.random.random()
+    if r < 0.60:  # black tubing / heat-shrink
+        v = float(np.random.uniform(0.02, 0.09))
+        return (v, v, v, 1.0)
+    if r < 0.90:  # colored wire — reuse the filament palette's saturated hues
+        name = str(
+            np.random.choice(["red", "blue", "yellow", "green", "orange", "white"])
+        )
+        return _pla_filament_rgba(name)
+    g = float(np.random.uniform(0.45, 0.75))  # gray fabric sleeve
+    return (g, g, g, 1.0)
+
+
+def _sample_cable_arcs(present: bool) -> list:
+    arcs = []
+    for base, n, start, end, bow_dir, bow_range in _ARM_CABLE_ARCS:
+        if not (present and np.random.random() < P_CABLE_SEGMENT_ACTIVE):
+            arcs.append(
+                CableArcConfig(
+                    base_name=base, n_segments=n, start=list(start),
+                    end=list(end), apex_offset=[0.0, 0.0, 0.0], active=False,
+                )
+            )
+            continue
+        bd = np.array(bow_dir, dtype=float)
+        bd /= np.linalg.norm(bd)
+        bow = float(np.random.uniform(*bow_range))
+        # Lateral sway so the float isn't a perfectly planar arc.
+        sway = np.random.uniform(-_CABLE_ARC_SWAY, _CABLE_ARC_SWAY, 3)
+        arcs.append(
+            CableArcConfig(
+                base_name=base,
+                n_segments=n,
+                start=list(start),
+                end=list(end),
+                apex_offset=(bd * bow + sway).tolist(),
+                active=True,
+                rgba=list(_sample_cable_color()),
+                radius=float(np.random.uniform(*_CABLE_RADIUS_RANGE)),
+            )
+        )
+    return arcs
+
+
+def _sample_arm_cables() -> ArmCableConfig:
+    present = np.random.random() < P_ARM_CABLES_PRESENT
+    segments = []
+    for name in ARM_CABLE_GEOMS:
+        if not (present and np.random.random() < P_CABLE_SEGMENT_ACTIVE):
+            segments.append(CableSegmentConfig(geom_name=name, active=False))
+            continue
+        segments.append(
+            CableSegmentConfig(
+                geom_name=name,
+                active=True,
+                rgba=list(_sample_cable_color()),
+                radius=float(np.random.uniform(*_CABLE_RADIUS_RANGE)),
+                pos_offset=np.random.uniform(
+                    -_CABLE_POS_JITTER, _CABLE_POS_JITTER, 3
+                ).tolist(),
+            )
+        )
+    return ArmCableConfig(segments=segments, arcs=_sample_cable_arcs(present))
+
+
 def _generate_camera_configs(
     randomize_cameras: bool,
 ) -> Tuple[Optional[CameraConfig], Optional[CameraConfig]]:
@@ -1147,6 +1285,7 @@ def generate_random_domain_rand_config(
         table_half_size=(top_hx, top_hy),
     )
     wall_art = _sample_wall_art()
+    arm_cables = _sample_arm_cables()
 
     domain_rand_config = DomainRandConfig(
         object_material=object_material,
@@ -1182,6 +1321,7 @@ def generate_random_domain_rand_config(
         gripper_camera=gripper_camera,
         props=props,
         wall_art=wall_art,
+        arm_cables=arm_cables,
     )
 
     return domain_rand_config, object_color_name, target_color_name

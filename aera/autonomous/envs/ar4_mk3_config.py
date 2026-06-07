@@ -154,6 +154,47 @@ class WallArtConfig:
 
 
 @dataclasses.dataclass
+class CableSegmentConfig:
+    """One wiring-harness tube segment (a visual-only capsule declared in
+    ar4_mk3.xml, parented to a link body). `pos_offset` is ADDED to the geom's
+    compiled position to jitter routing — the runtime caches the base position
+    so this never accumulates across episodes."""
+    geom_name: str
+    active: bool = True
+    rgba: Optional[Sequence[float]] = None
+    radius: Optional[float] = None
+    pos_offset: Optional[Sequence[float]] = None
+
+
+@dataclasses.dataclass
+class CableArcConfig:
+    """One arched cable, rendered as a chain of capsule sub-segments
+    (`<base_name>_s0`.._sN, declared in ar4_mk3.xml and parented to a link).
+    The runtime bends the chain into a quadratic arc through start -> midpoint
+    + apex_offset -> end (all in the parent link frame), so the cable bows /
+    floats off the arm instead of hugging it. apex_offset is the sampled bow
+    vector (direction = outward, magnitude = how far it floats)."""
+    base_name: str
+    n_segments: int
+    start: Sequence[float]
+    end: Sequence[float]
+    apex_offset: Sequence[float]
+    active: bool = True
+    rgba: Optional[Sequence[float]] = None
+    radius: Optional[float] = None
+
+
+@dataclasses.dataclass
+class ArmCableConfig:
+    """The arm's wiring harness for one episode. This is the only DR axis that
+    perturbs the robot's *shape* (silhouette) rather than its surface
+    appearance — see _sample_arm_cables for the rationale. `segments` are short
+    straight tube bridges; `arcs` are the long runs that bow off the arm."""
+    segments: list[CableSegmentConfig] = field(default_factory=list)
+    arcs: list[CableArcConfig] = field(default_factory=list)
+
+
+@dataclasses.dataclass
 class TableConfig:
     top_half_size: Optional[Sequence[float]] = None
     top_pos: Optional[Sequence[float]] = None
@@ -201,6 +242,10 @@ class DomainRandConfig:
     # the sampler chose to skip carry active=False and are rendered transparent.
     props: Optional[list[PropConfig]] = None
     wall_art: Optional[WallArtConfig] = None
+    # Wiring-harness tubes on the arm — the only DR axis that varies the robot's
+    # geometry/silhouette instead of just its materials. None leaves the XML
+    # default (all tubes visible, black) untouched.
+    arm_cables: Optional[ArmCableConfig] = None
 
 
 @dataclasses.dataclass

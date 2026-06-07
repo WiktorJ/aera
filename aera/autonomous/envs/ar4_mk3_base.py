@@ -19,6 +19,28 @@ def goal_distance(goal_a, goal_b):
     return np.linalg.norm(goal_a - goal_b, axis=-1)
 
 
+def _quat_z_to(direction) -> np.ndarray:
+    """MuJoCo (w, x, y, z) quaternion rotating the capsule's local +Z axis onto
+    `direction`. Used to orient an arched cable's sub-capsules along each chord
+    segment."""
+    d = np.array(direction, dtype=float)
+    n = np.linalg.norm(d)
+    if n < 1e-12:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    d /= n
+    z = np.array([0.0, 0.0, 1.0])
+    c = float(np.dot(z, d))
+    if c > 1.0 - 1e-9:
+        return np.array([1.0, 0.0, 0.0, 0.0])
+    if c < -1.0 + 1e-9:
+        return np.array([0.0, 1.0, 0.0, 0.0])  # 180° about X
+    axis = np.cross(z, d)
+    axis /= np.linalg.norm(axis)
+    ang = np.arccos(c)
+    s = np.sin(ang / 2.0)
+    return np.array([np.cos(ang / 2.0), axis[0] * s, axis[1] * s, axis[2] * s])
+
+
 class BaseRender(MujocoRenderer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -76,6 +98,11 @@ class BaseEnv(MujocoRobotEnv):
         # spawn pose in _reset_sim places each (possibly differently sized) block
         # on the table. Defaults to object_size when DR is off.
         self._block_half_size: dict[str, float] = {}
+        # Compiled positions of the arm-cable tube geoms, cached on first DR
+        # pass. The cable pos jitter is additive and self.model persists across
+        # episodes, so we add the offset to this cached base rather than to the
+        # current (already-jittered) geom_pos — otherwise the routing drifts.
+        self._cable_base_pos: dict[int, np.ndarray] = {}
         self.gripper_extra_height = config.gripper_extra_height
         self.block_gripper = config.block_gripper
         self.has_object = config.has_object
@@ -810,6 +837,78 @@ class Ar4Mk3Env(BaseEnv):
                 self.model.geom_aabb[box_id] = [0.0, 0.0, 0.0, half, half, half]
                 self.model.geom_rbound[box_id] = half * np.sqrt(3.0)
             self._block_half_size[base] = half
+
+        # --- Apply Arm Cables (geometry / silhouette DR) ---
+        # Visual-only capsule "tubes" parented to the link bodies — the only DR
+        # axis that changes the arm's shape rather than its appearance. These
+        # geoms are non-colliding (contype/conaffinity=0), so unlike the block
+        # collision box we can rewrite geom_size/geom_pos freely without
+        # refreshing the broadphase AABB. Base positions are cached once because
+        # the pos offset is additive and the model persists across episodes.
+        if dr_config.arm_cables:
+            for seg in dr_config.arm_cables.segments:
+                geom_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_GEOM, seg.geom_name
+                )
+                if geom_id == -1:
+                    continue
+                if geom_id not in self._cable_base_pos:
+                    self._cable_base_pos[geom_id] = self.model.geom_pos[
+                        geom_id
+                    ].copy()
+                if not seg.active:
+                    self.model.geom_rgba[geom_id, 3] = 0.0
+                    continue
+                if seg.rgba is not None:
+                    self.model.geom_rgba[geom_id] = seg.rgba
+                if seg.radius is not None:
+                    # size[0] is the capsule radius; size[1] (fromto half-length)
+                    # is left as compiled so the tube still spans the same joints.
+                    self.model.geom_size[geom_id, 0] = seg.radius
+                base = self._cable_base_pos[geom_id]
+                if seg.pos_offset is not None:
+                    self.model.geom_pos[geom_id] = base + np.array(seg.pos_offset)
+                else:
+                    self.model.geom_pos[geom_id] = base
+
+            # Arched cables: bend each chain of sub-capsules into a quadratic
+            # arc through start -> (midpoint + apex_offset) -> end so the cable
+            # bows off the link. All sub-geom poses are written absolutely
+            # (recomputed from the config), so unlike the straight segments
+            # there's no accumulation across episodes and no base-pos cache.
+            for arc in dr_config.arm_cables.arcs:
+                start = np.array(arc.start, dtype=float)
+                end = np.array(arc.end, dtype=float)
+                ctrl = (start + end) / 2.0 + 2.0 * np.array(
+                    arc.apex_offset, dtype=float
+                )
+                ts = np.linspace(0.0, 1.0, arc.n_segments + 1)
+                pts = [
+                    (1 - t) ** 2 * start + 2 * (1 - t) * t * ctrl + t**2 * end
+                    for t in ts
+                ]
+                for i in range(arc.n_segments):
+                    geom_id = self._mujoco.mj_name2id(
+                        self.model,
+                        self._mujoco.mjtObj.mjOBJ_GEOM,
+                        f"{arc.base_name}_s{i}",
+                    )
+                    if geom_id == -1:
+                        continue
+                    if not arc.active:
+                        self.model.geom_rgba[geom_id, 3] = 0.0
+                        continue
+                    p0, p1 = pts[i], pts[i + 1]
+                    seg_vec = p1 - p0
+                    half_len = float(np.linalg.norm(seg_vec)) / 2.0
+                    self.model.geom_pos[geom_id] = (p0 + p1) / 2.0
+                    self.model.geom_quat[geom_id] = _quat_z_to(seg_vec)
+                    # size[1] is the capsule half-length; size[0] the radius.
+                    self.model.geom_size[geom_id, 1] = half_len
+                    if arc.radius is not None:
+                        self.model.geom_size[geom_id, 0] = arc.radius
+                    if arc.rgba is not None:
+                        self.model.geom_rgba[geom_id] = arc.rgba
 
         # --- Apply Dynamics Properties ---
         dynamics_map = {

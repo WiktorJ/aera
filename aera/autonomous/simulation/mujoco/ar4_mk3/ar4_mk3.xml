@@ -11,6 +11,11 @@
         <material name="black" rgba="0 0 0 1"/>
         <material name="gray" rgba="0.753 0.753 0.753 1"/>
         <material name="transparent" rgba="0 0 0 0"/>
+        <!-- Wiring-harness tubes. Slight sheen so black tubing/heat-shrink reads
+             as rubber/plastic rather than flat matte. geom_rgba (set per segment
+             at runtime) overrides the albedo; this material only supplies the
+             finish. -->
+        <material name="cable_mat" specular="0.4" shininess="0.3" reflectance="0.02" rgba="0.05 0.05 0.05 1"/>
         <!-- texrepeat tiles the texture across each link's bbox so 1K source
              textures stay sharp on ~10-20 cm parts. texuniform stays false
              (default) so the projection is bbox-relative and the texture
@@ -200,28 +205,96 @@
                           diaginertia="0.00475513 0.00393687 0.0015935"/>
                 <joint name="joint_1" pos="0 0 0" axis="0 0 1" range="-2.96706 2.96706" class="size5"/>
                 <geom type="mesh" mesh="link_1" material="link_1_mat"/>
+                <!-- arc_l1_back: shoulder harness running up link 1 and bowing
+                     out behind the base of link 2. Straight fromto default;
+                     runtime bows it out. -->
+                <geom name="arc_l1_back_s0" type="capsule" fromto="0 0.005 -0.020 0 0.0156 -0.047" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                <geom name="arc_l1_back_s1" type="capsule" fromto="0 0.0156 -0.047 0 0.0262 -0.074" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                <geom name="arc_l1_back_s2" type="capsule" fromto="0 0.0262 -0.074 0 0.0368 -0.101" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                <geom name="arc_l1_back_s3" type="capsule" fromto="0 0.0368 -0.101 0 0.0474 -0.128" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                <geom name="arc_l1_back_s4" type="capsule" fromto="0 0.0474 -0.128 0 0.058 -0.155" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
                 <body name="link_2" pos="0 0.064146 -0.16608" quat="0.353551 0.612373 -0.353555 -0.612373">
                     <inertial pos="0.064818 -0.11189 -0.038671" quat="0.637507 0.725997 0.196395 0.167158"
                               mass="0.57738"
                               diaginertia="0.00602866 0.00569905 0.000699994"/>
                     <joint name="joint_2" pos="0 0 0" axis="0 0 -1" range="-0.733038 1.5708" class="size4"/>
                     <geom type="mesh" mesh="link_2" material="link_2_mat"/>
+                    <!-- Wiring-harness tubes (visual only; geometry DR in
+                         _sample_arm_cables toggles/recolors/jitters these per
+                         episode). The DR goal is silhouette variety, not a
+                         faithful copy of the real harness, so placements are
+                         approximate and meant to be eyeballed. Arched cables
+                         (arc_*) are chains of capsule sub-segments that the
+                         runtime bends into a bow floating off the link; the
+                         fromto here is just a straight default for the DR-off
+                         case. arc_l2_back: link 2↔3 run bowing off the back. -->
+                    <geom name="arc_l2_back_s0" type="capsule" fromto="0.010 -0.020 0 0.036 -0.065 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back_s1" type="capsule" fromto="0.036 -0.065 0 0.062 -0.110 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back_s2" type="capsule" fromto="0.062 -0.110 0 0.088 -0.155 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back_s3" type="capsule" fromto="0.088 -0.155 0 0.114 -0.200 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back_s4" type="capsule" fromto="0.114 -0.200 0 0.140 -0.245 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <!-- arc_l2_back2 / arc_l2_back3: extra bundles running the
+                         length of link 2 between joints 2 and 3, offset to ±z
+                         so they read as a thick multi-cable harness. -->
+                    <geom name="arc_l2_back2_s0" type="capsule" fromto="0.020 -0.020 0.015 0.046 -0.065 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back2_s1" type="capsule" fromto="0.046 -0.065 0.015 0.072 -0.110 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back2_s2" type="capsule" fromto="0.072 -0.110 0.015 0.098 -0.155 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back2_s3" type="capsule" fromto="0.098 -0.155 0.015 0.124 -0.200 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back2_s4" type="capsule" fromto="0.124 -0.200 0.015 0.150 -0.245 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back3_s0" type="capsule" fromto="0.005 -0.025 -0.015 0.0375 -0.0813 -0.015" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back3_s1" type="capsule" fromto="0.0375 -0.0813 -0.015 0.070 -0.1375 -0.015" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back3_s2" type="capsule" fromto="0.070 -0.1375 -0.015 0.1025 -0.1938 -0.015" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                    <geom name="arc_l2_back3_s3" type="capsule" fromto="0.1025 -0.1938 -0.015 0.135 -0.250 -0.015" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
                     <body name="link_3" pos="0.1525 -0.26414 0" quat="0.258821 0 0 -0.965925">
                         <inertial pos="-0.00029765 -0.023661 -0.0019125" quat="0.624233 0.264737 -0.541021 0.497538"
                                   mass="0.1787" diaginertia="0.000217382 0.00018094 0.000106269"/>
                         <joint name="joint_3" pos="0 0 0" axis="0 0 -1" range="-1.55334 0.907571" class="size3"/>
                         <geom type="mesh" mesh="link_3" material="link_3_mat"/>
+                        <!-- link 3↔4 bridge near the joint cluster. -->
+                        <geom name="cable_l3_a" type="capsule" fromto="0 -0.025 -0.01 0 0.01 0.02" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                        <!-- arc_l32: bridges joint 3 — arcs across the joint
+                             from link 3 back toward link 2. Parented to link 3
+                             (its origin is the joint to link 2). -->
+                        <geom name="arc_l32_s0" type="capsule" fromto="0.030 -0.035 0 0.015 -0.0125 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                        <geom name="arc_l32_s1" type="capsule" fromto="0.015 -0.0125 0 0.000 0.010 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                        <geom name="arc_l32_s2" type="capsule" fromto="0.000 0.010 0 -0.015 0.0325 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                        <geom name="arc_l32_s3" type="capsule" fromto="-0.015 0.0325 0 -0.030 0.055 0" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
                         <body name="link_4" pos="0 0 0.00675" quat="0.698332 0.111048 -0.698333 -0.111048">
                             <inertial pos="-0.0016798 -0.00057319 -0.074404"
                                       quat="0.585577 0.00762899 0.0105954 0.810512"
                                       mass="0.34936" diaginertia="0.00310946 0.00304897 0.000220712"/>
                             <joint name="joint_4" pos="0 0 0" axis="0 0 -1" range="-2.87979 2.87979" class="size2"/>
                             <geom type="mesh" mesh="link_4" material="link_4_mat"/>
+                            <!-- link 4↔5 main forearm run (the bulk of the
+                                 harness): two arched bundles floating over the
+                                 top of the link toward the wrist. fromto is a
+                                 straight default; the runtime bows them out. -->
+                            <geom name="arc_l4a_s0" type="capsule" fromto="0 0 -0.020 0 0 -0.057" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4a_s1" type="capsule" fromto="0 0 -0.057 0 0 -0.094" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4a_s2" type="capsule" fromto="0 0 -0.094 0 0 -0.131" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4a_s3" type="capsule" fromto="0 0 -0.131 0 0 -0.168" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4a_s4" type="capsule" fromto="0 0 -0.168 0 0 -0.205" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4b_s0" type="capsule" fromto="0 0.01 -0.030 0 0.01 -0.070" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4b_s1" type="capsule" fromto="0 0.01 -0.070 0 0.01 -0.110" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4b_s2" type="capsule" fromto="0 0.01 -0.110 0 0.01 -0.150" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l4b_s3" type="capsule" fromto="0 0.01 -0.150 0 0.01 -0.190" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <!-- arc_l43: bridges joint 4 — runs up the forearm
+                                 and arcs back across the joint toward link 3.
+                                 Parented to link 4 (its origin is the joint to
+                                 link 3); end reaches just past the joint. -->
+                            <geom name="arc_l43_s0" type="capsule" fromto="0 0.005 -0.080 0 0.005 -0.061" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l43_s1" type="capsule" fromto="0 0.005 -0.061 0 0.005 -0.042" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l43_s2" type="capsule" fromto="0 0.005 -0.042 0 0.005 -0.023" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l43_s3" type="capsule" fromto="0 0.005 -0.023 0 0.005 -0.004" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                            <geom name="arc_l43_s4" type="capsule" fromto="0 0.005 -0.004 0 0.005 0.015" size="0.005" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
                             <body name="link_5" pos="0 0 -0.22225" quat="0 0.157044 -0.987592 0">
                                 <inertial pos="0.0015066 -1.3102e-05 -0.012585" quat="0.6792 0.196164 0.195898 0.679581"
                                           mass="0.11562" diaginertia="8.2921e-05 5.66869e-05 5.0866e-05"/>
                                 <joint name="joint_5" pos="0 0 0" axis="1 0 0" range="-1.8326 1.8326" class="size2"/>
                                 <geom type="mesh" mesh="link_5" material="link_5_mat"/>
+                                <!-- link 5↔6 wrist segment. -->
+                                <geom name="cable_l5_a" type="capsule" fromto="0.015 0.01 0.0 0.012 0.005 0.022" size="0.004" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
+                                <geom name="cable_l5_b" type="capsule" fromto="-0.013 0.012 -0.005 -0.01 0.006 0.02" size="0.0035" material="cable_mat" rgba="0.05 0.05 0.05 1" mass="0" contype="0" conaffinity="0" group="2"/>
                                 <body name="link_6" pos="-0.000294 0 0.02117" quat="-3.67321e-06 0 0 1">
                                     <inertial pos="-0.000627476 -0.00371003 0.0349431"
                                               quat="0.447528 0.54346 0.472296 0.530383" mass="0.093863"

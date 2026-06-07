@@ -11,6 +11,7 @@ from aera.autonomous.envs.ar4_mk3_config import (
     AVAILABLE_TEXTURES,
     PLA_BLOCK_PRESETS,
     ArmCableConfig,
+    ArmDynamicsConfig,
     CableArcConfig,
     CableSegmentConfig,
     CameraConfig,
@@ -1098,6 +1099,76 @@ def _sample_arm_cables() -> ArmCableConfig:
     return ArmCableConfig(segments=segments, arcs=_sample_cable_arcs(present))
 
 
+# --- Arm actuator / joint physics (movement DR) ----------------------------
+#
+# The arm is otherwise a near-perfect position tracker every episode. These
+# bases mirror the compiled values in ar4_mk3.xml (act1..act6 position
+# actuators + joint_1..joint_6 defaults) — KEEP IN SYNC WITH THAT FILE. The
+# sampler resolves each to an absolute per-joint value so the runtime is a pure
+# setter (no base caching, no accumulation across episodes).
+#
+# act1..act4 use class "position" (kp=20000, kv=250, forcerange ±1000);
+# act5..act6 use class "position3" (kp=5000, kv=60, forcerange ±200).
+_ARM_BASE_KP = (20000.0, 20000.0, 20000.0, 20000.0, 5000.0, 5000.0)
+_ARM_BASE_KV = (250.0, 250.0, 250.0, 250.0, 60.0, 60.0)
+_ARM_BASE_FORCE = (1000.0, 1000.0, 1000.0, 1000.0, 200.0, 200.0)
+# dof_damping from the size{5,4,3,2} joint classes; armature=0.1 for all arm
+# joints (class ar4_mk3); frictionloss defaults to 0.
+_ARM_BASE_DAMPING = (0.0, 20.0, 10.0, 4.0, 4.0, 4.0)
+_ARM_BASE_ARMATURE = (0.1, 0.1, 0.1, 0.1, 0.1, 0.1)
+# Per-joint ceiling for the (additive) Coulomb friction term, scaled with joint
+# size so the heavy proximal joints can carry more stiction than the wrist.
+_ARM_FRICTIONLOSS_MAX = (2.0, 2.0, 1.0, 0.4, 0.4, 0.4)
+# DR ranges. Gains are kept moderate so the scripted pick/place demo collector
+# (which relies on reaching the exact grasp pose) still converges — even at the
+# soft end, steady-state error under this light arm's gravity load is sub-mm.
+_ARM_KP_GLOBAL_SCALE = (0.75, 1.25)   # one shared "whole-arm stiffness" factor
+_ARM_KP_JOINT_SCALE = (0.85, 1.15)    # independent per-joint jitter on top
+_ARM_KV_SCALE = (0.8, 1.4)
+_ARM_DAMPING_SCALE = (0.7, 1.5)
+_ARM_DAMPING_ADD = (0.0, 1.5)         # additive so joint_1 (base 0) still varies
+_ARM_ARMATURE_SCALE = (0.6, 1.8)
+_ARM_FORCE_SCALE = (0.6, 1.0)         # reduce only — modelling weaker/hot motors
+
+
+def _sample_arm_dynamics() -> ArmDynamicsConfig:
+    """Sample per-joint actuator gains, joint friction and inertia for the arm.
+
+    Gains carry a shared global-stiffness factor (the whole arm is softer or
+    stiffer some episodes) plus independent per-joint jitter, so the policy sees
+    both uniform compliance mismatch and joint-to-joint variation."""
+    n = len(_ARM_BASE_KP)
+    global_kp = float(np.random.uniform(*_ARM_KP_GLOBAL_SCALE))
+    kp, kv, damping, armature, frictionloss, force_limit = [], [], [], [], [], []
+    for i in range(n):
+        kp.append(
+            _ARM_BASE_KP[i] * global_kp
+            * float(np.random.uniform(*_ARM_KP_JOINT_SCALE))
+        )
+        kv.append(_ARM_BASE_KV[i] * float(np.random.uniform(*_ARM_KV_SCALE)))
+        damping.append(
+            _ARM_BASE_DAMPING[i] * float(np.random.uniform(*_ARM_DAMPING_SCALE))
+            + float(np.random.uniform(*_ARM_DAMPING_ADD))
+        )
+        armature.append(
+            _ARM_BASE_ARMATURE[i] * float(np.random.uniform(*_ARM_ARMATURE_SCALE))
+        )
+        frictionloss.append(
+            float(np.random.uniform(0.0, _ARM_FRICTIONLOSS_MAX[i]))
+        )
+        force_limit.append(
+            _ARM_BASE_FORCE[i] * float(np.random.uniform(*_ARM_FORCE_SCALE))
+        )
+    return ArmDynamicsConfig(
+        kp=kp,
+        kv=kv,
+        damping=damping,
+        armature=armature,
+        frictionloss=frictionloss,
+        force_limit=force_limit,
+    )
+
+
 def _generate_camera_configs(
     randomize_cameras: bool,
 ) -> Tuple[Optional[CameraConfig], Optional[CameraConfig]]:
@@ -1118,6 +1189,7 @@ def _generate_camera_configs(
 
 def generate_random_domain_rand_config(
     randomize_cameras: bool = False,
+    randomize_arm_dynamics: bool = True,
 ) -> Tuple[DomainRandConfig, str, str]:
     """
     Generates a randomized DomainRandConfig for the AR4 MK3 environment.
@@ -1286,6 +1358,9 @@ def generate_random_domain_rand_config(
     )
     wall_art = _sample_wall_art()
     arm_cables = _sample_arm_cables()
+    # Opt-out so it can be A/B'd against the bare CAD dynamics — None makes the
+    # runtime skip the arm-physics pass entirely (compiled gains/friction stand).
+    arm_dynamics = _sample_arm_dynamics() if randomize_arm_dynamics else None
 
     domain_rand_config = DomainRandConfig(
         object_material=object_material,
@@ -1322,6 +1397,7 @@ def generate_random_domain_rand_config(
         props=props,
         wall_art=wall_art,
         arm_cables=arm_cables,
+        arm_dynamics=arm_dynamics,
     )
 
     return domain_rand_config, object_color_name, target_color_name

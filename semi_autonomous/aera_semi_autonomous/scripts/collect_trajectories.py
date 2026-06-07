@@ -52,6 +52,9 @@ class CollectConfig:
     save_dir: str = "rl_training_data"
     seed: int = -1
     use_geometric_lookat: bool = True
+    # Per-episode randomization of arm actuator gains / joint friction / inertia
+    # (the "movement" DR axis). Disable to collect against the bare CAD dynamics.
+    randomize_arm_dynamics: bool = True
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
@@ -176,7 +179,9 @@ def main():
                 domain_rand_config,
                 object_color,
                 target_color,
-            ) = generate_random_domain_rand_config()
+            ) = generate_random_domain_rand_config(
+                randomize_arm_dynamics=cfg.randomize_arm_dynamics,
+            )
 
             env_config = Ar4Mk3EnvConfig(
                 model_path=model_path,

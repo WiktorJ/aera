@@ -61,6 +61,9 @@ class DemoConfig:
     steps: int = 1000
     domain_rand: bool = False
     randomize_cameras: bool = False
+    # Only takes effect when domain_rand is on. Randomizes arm actuator gains /
+    # joint friction / inertia (the "movement" DR axis).
+    randomize_arm_dynamics: bool = True
     use_geometric_lookat: bool = True
     show_gripper_view: bool = True
     show_grip_overlay: bool = False
@@ -165,7 +168,8 @@ def main():
             logger.info("Enabling domain randomization")
             domain_rand_config, object_color, target_color = (
                 generate_random_domain_rand_config(
-                    randomize_cameras=cfg.randomize_cameras
+                    randomize_cameras=cfg.randomize_cameras,
+                    randomize_arm_dynamics=cfg.randomize_arm_dynamics,
                 )
             )
             logger.info(f"Object color: {object_color}")

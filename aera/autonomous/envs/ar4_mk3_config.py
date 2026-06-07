@@ -195,6 +195,30 @@ class ArmCableConfig:
 
 
 @dataclasses.dataclass
+class ArmDynamicsConfig:
+    """Per-episode physics/actuation overrides for the 6 arm joints — the only
+    DR axis that changes how the arm *moves* (tracking stiffness, friction,
+    inertia) rather than how it looks. Every field is a length-6 list indexed by
+    arm joint (joint_1..joint_6 / act1..act6); a None field leaves the compiled
+    value untouched. Values are absolute (already resolved by the sampler), so
+    the runtime is a pure setter and nothing accumulates across episodes.
+
+    - kp / kv: position-actuator gains. The runtime writes kp to
+      actuator_gainprm[:,0] and (-kp, -kv) to actuator_biasprm[:,1:3], since a
+      MuJoCo position actuator computes force = kp*(ctrl - qpos) - kv*qvel.
+    - damping / armature / frictionloss: written to dof_damping / dof_armature /
+      dof_frictionloss for each joint's DoF.
+    - force_limit: symmetric actuator_forcerange ([-f, f]) torque saturation.
+    """
+    kp: Optional[Sequence[float]] = None
+    kv: Optional[Sequence[float]] = None
+    damping: Optional[Sequence[float]] = None
+    armature: Optional[Sequence[float]] = None
+    frictionloss: Optional[Sequence[float]] = None
+    force_limit: Optional[Sequence[float]] = None
+
+
+@dataclasses.dataclass
 class TableConfig:
     top_half_size: Optional[Sequence[float]] = None
     top_pos: Optional[Sequence[float]] = None
@@ -246,6 +270,10 @@ class DomainRandConfig:
     # geometry/silhouette instead of just its materials. None leaves the XML
     # default (all tubes visible, black) untouched.
     arm_cables: Optional[ArmCableConfig] = None
+    # Per-joint actuator gains / joint friction / inertia for the arm — varies
+    # how the arm tracks commands (stiffness, lag, stiction). None leaves the
+    # compiled (CAD-tuned) dynamics untouched.
+    arm_dynamics: Optional[ArmDynamicsConfig] = None
 
 
 @dataclasses.dataclass

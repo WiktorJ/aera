@@ -910,6 +910,40 @@ class Ar4Mk3Env(BaseEnv):
                     if arc.rgba is not None:
                         self.model.geom_rgba[geom_id] = arc.rgba
 
+        # --- Apply Arm Actuator / Joint Physics (movement DR) ---
+        # The only DR axis that changes how the arm tracks commands rather than
+        # how it looks. Values are absolute per-joint (resolved by the sampler),
+        # so each field is written directly with no base caching. A MuJoCo
+        # position actuator computes force = kp*(ctrl - qpos) - kv*qvel, encoded
+        # as gainprm[0]=kp and biasprm=[0, -kp, -kv] — so kp must be written to
+        # BOTH gainprm and biasprm[1] to stay consistent.
+        if dr_config.arm_dynamics:
+            ad = dr_config.arm_dynamics
+            for i in range(6):
+                joint_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_JOINT, f"joint_{i + 1}"
+                )
+                if joint_id != -1:
+                    dof_adr = self.model.jnt_dofadr[joint_id]
+                    if ad.damping is not None:
+                        self.model.dof_damping[dof_adr] = ad.damping[i]
+                    if ad.armature is not None:
+                        self.model.dof_armature[dof_adr] = ad.armature[i]
+                    if ad.frictionloss is not None:
+                        self.model.dof_frictionloss[dof_adr] = ad.frictionloss[i]
+                act_id = self._mujoco.mj_name2id(
+                    self.model, self._mujoco.mjtObj.mjOBJ_ACTUATOR, f"act{i + 1}"
+                )
+                if act_id != -1:
+                    if ad.kp is not None:
+                        self.model.actuator_gainprm[act_id, 0] = ad.kp[i]
+                        self.model.actuator_biasprm[act_id, 1] = -ad.kp[i]
+                    if ad.kv is not None:
+                        self.model.actuator_biasprm[act_id, 2] = -ad.kv[i]
+                    if ad.force_limit is not None:
+                        f = ad.force_limit[i]
+                        self.model.actuator_forcerange[act_id] = [-f, f]
+
         # --- Apply Dynamics Properties ---
         dynamics_map = {
             "object_dynamics": "object0",

@@ -62,7 +62,10 @@ from typing import TYPE_CHECKING, Dict, List, Literal
 import numpy as np
 from geometry_msgs.msg import Pose
 
-from aera_semi_autonomous.control.ar4_mk3_interface_config import IKConfig
+from aera_semi_autonomous.control.ar4_mk3_interface_config import (
+    ActuationConfig,
+    IKConfig,
+)
 
 if TYPE_CHECKING:
     from aera_semi_autonomous.control.ar4_mk3_robot_interface import (
@@ -130,6 +133,32 @@ class HomeOffsetPerturbation:
 
 
 @dataclass
+class ActuationPerturbation:
+    """Per-episode sampling ranges for control-loop realism (see
+    ``ActuationConfig`` for what each resolved value does).
+
+    Ranges are deliberately conservative so the scripted IK + interpolation
+    loops still converge inside their step budgets — the goal is realistic
+    motion-profile *diversity*, not a faithful servo model. The arm's high
+    position gains plus the IK's 700-step budget absorb mild lag/delay; push
+    these much harder and grasp success starts to drop.
+
+    Attributes:
+        latency_steps_range: Inclusive (lo, hi) for the whole-step command
+            delay. At the 0.002 s sim timestep, 0-4 steps ≈ 0-8 ms.
+        command_lag_alpha_range: (lo, hi) for the first-order low-pass coeff.
+            Smaller = laggier; ~0.2 gives a ~10 ms time constant, ~0.8 is
+            nearly crisp, so the range spans clearly-laggy to almost-perfect.
+        step_jitter_prob_range: (lo, hi) for the per-advance extra-settle-step
+            probability.
+    """
+
+    latency_steps_range: tuple = (0, 4)
+    command_lag_alpha_range: tuple = (0.2, 0.8)
+    step_jitter_prob_range: tuple = (0.0, 0.1)
+
+
+@dataclass
 class PerturbationConfig:
     """Configuration for trajectory perturbation.
 
@@ -162,6 +191,13 @@ class PerturbationConfig:
     home_offset: HomeOffsetPerturbation = field(default_factory=HomeOffsetPerturbation)
 
     ik_noise: IKNoisePerturbation = field(default_factory=IKNoisePerturbation)
+
+    # Control-loop realism (latency / command lag / step jitter). Composable
+    # flag like perturb_home — orthogonal to `mode`. When True, the collection
+    # script samples an ActuationConfig per episode and passes it on the
+    # interface config.
+    perturb_actuation: bool = False
+    actuation: ActuationPerturbation = field(default_factory=ActuationPerturbation)
 
 
 def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> list:
@@ -333,6 +369,24 @@ def perturb_home_qpos(
         max_off = config.per_joint_max_offsets.get(i, config.default_max_offset)
         result[i] += np.random.uniform(-max_off, max_off)
     return result
+
+
+def sample_actuation_config(noise: ActuationPerturbation) -> ActuationConfig:
+    """Draw a per-episode ActuationConfig from the given ranges.
+
+    Each episode gets one fixed (latency, lag, jitter) triple so the arm has a
+    consistent "feel" within the trajectory; variety comes from resampling
+    across episodes.
+    """
+    lo, hi = noise.latency_steps_range
+    latency_steps = int(np.random.randint(lo, hi + 1))
+    command_lag_alpha = float(np.random.uniform(*noise.command_lag_alpha_range))
+    step_jitter_prob = float(np.random.uniform(*noise.step_jitter_prob_range))
+    return ActuationConfig(
+        latency_steps=latency_steps,
+        command_lag_alpha=command_lag_alpha,
+        step_jitter_prob=step_jitter_prob,
+    )
 
 
 def go_home_perturbed(robot: Ar4Mk3RobotInterface, config: PerturbationConfig) -> bool:

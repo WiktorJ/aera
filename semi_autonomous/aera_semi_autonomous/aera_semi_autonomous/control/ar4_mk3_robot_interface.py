@@ -1,6 +1,7 @@
 import copy
 import logging
 import time
+from collections import deque
 from typing import Any, Dict, Optional, Tuple
 
 import mujoco
@@ -44,6 +45,21 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
         self.actuator_names = [f"act{i}" for i in range(1, 7)]
+
+        # Control-loop realism (latency / command lag / step jitter) applied to
+        # the arm actuators before each sim step. State is per-interface, i.e.
+        # per-episode (the collection script builds a fresh interface each
+        # trajectory). _act_applied is the filtered command carried across
+        # steps; the ring buffer realizes the whole-step latency. Defaults make
+        # this a no-op. See ActuationConfig / sample_actuation_config.
+        self._act_cfg = config.actuation
+        self._arm_actuator_ids = np.array(
+            [self.env.model.actuator(name).id for name in self.actuator_names]
+        )
+        self._act_delay_buf: deque = deque(
+            maxlen=max(1, self._act_cfg.latency_steps + 1)
+        )
+        self._act_applied: Optional[np.ndarray] = None
 
         # Kinematic-lock state. When a grasp activates we record the held
         # object's pose in the gripper frame and the current jaw qpos, then
@@ -104,10 +120,59 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # corrected pose this frame, not next step.
         mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
 
+    def _reset_actuation(self) -> None:
+        """Clear the latency buffer and lag state.
+
+        Called after a teleport (e.g. the perturbed home reset) so the filtered
+        command doesn't carry a value from before the discontinuity into the
+        next move."""
+        self._act_delay_buf.clear()
+        self._act_applied = None
+
+    def _apply_actuation(self, data) -> None:
+        """Rewrite the arm ctrl in place with a delayed + low-passed version of
+        the commanded target, modelling finite control bandwidth.
+
+        The gripper actuators (act8/act9) are intentionally left untouched so
+        grasp timing stays crisp. No-op at the identity config."""
+        cfg = self._act_cfg
+        if cfg.latency_steps <= 0 and cfg.command_lag_alpha >= 1.0:
+            return
+        arm = self._arm_actuator_ids
+        desired = data.ctrl[arm].copy()
+        # Latency: the value applied this step is the one commanded
+        # `latency_steps` steps ago (buffer maxlen = latency_steps + 1, so the
+        # oldest entry is exactly that lagged command; warms up from `desired`).
+        self._act_delay_buf.append(desired)
+        commanded = self._act_delay_buf[0]
+        # Command lag: first-order low-pass toward the (delayed) command.
+        if self._act_applied is None:
+            self._act_applied = commanded.copy()
+        else:
+            alpha = cfg.command_lag_alpha
+            self._act_applied = self._act_applied + alpha * (
+                commanded - self._act_applied
+            )
+        data.ctrl[arm] = self._act_applied
+
+    def _maybe_jitter_step(self) -> None:
+        """With probability step_jitter_prob, advance one extra (unrecorded)
+        sim step so the arm coasts under the current applied ctrl before the
+        next command — an irregular control-loop tick that makes the recorded
+        sample cadence non-uniform."""
+        p = self._act_cfg.step_jitter_prob
+        if p <= 0.0 or np.random.random() >= p:
+            return
+        mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
+        mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+        self._enforce_held_object_pose()
+
     def _step_simulation(self) -> None:
         """mj_step that also enforces any active kinematic grasp lock."""
+        self._apply_actuation(self.env.data)
         mujoco.mj_step(self.env.model, self.env.data)  # type: ignore
         self._enforce_held_object_pose()
+        self._maybe_jitter_step()
 
     def _engage_kinematic_grasp(self, max_distance: float = 0.05) -> None:
         """Lock the closest known object and the current jaw qpos to the gripper.
@@ -486,6 +551,11 @@ class Ar4Mk3RobotInterface(RobotInterface):
             data.ctrl[actuator_ids] = q[qpos_indices]
 
             previous_site_xpos = site_xpos.copy()
+            # Apply control-loop realism only when solving in-place on the real
+            # env data — the hypothetical (non-inplace) IK plans on a deepcopy
+            # and must track its targets exactly so the plan is trustworthy.
+            if data is self.env.data:
+                self._apply_actuation(data)
             mujoco.mj_step(model, data)  # type: ignore
             # mj_step only calls mj_forward at the *beginning* of the step, not the end.
             # site_xpos is therefore stale (pre-integration) after mj_step.
@@ -497,6 +567,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
             # deepcopy and must not be aliased to self.env.data state.
             if data is self.env.data:
                 self._enforce_held_object_pose()
+                self._maybe_jitter_step()
             self._record_step()
 
             new_site_xpos = data.site_xpos[site_id]
@@ -573,6 +644,9 @@ class Ar4Mk3RobotInterface(RobotInterface):
         )
         self.env.data.qpos[qpos_indices] = target_qpos
         self.env.data.ctrl[actuator_ids] = target_qpos
+        # The teleport is a hard discontinuity; drop any carried lag/latency
+        # state so the next move's filtered command starts clean from here.
+        self._reset_actuation()
         mujoco.mj_forward(self.env.model, self.env.data)
         # One warm-up mj_step (no trailing mj_forward) puts the simulation in the
         # same regime as after go_home(), which also ends with mj_step.

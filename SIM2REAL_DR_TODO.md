@@ -25,15 +25,24 @@ sampler in `domain_rand_config_generator.py` → applied in
 `Ar4Mk3Env._apply_domain_randomization`. Ranges must stay conservative enough
 that the scripted pick/place demo collector still succeeds.
 
-## [ ] #2 — Control-loop realism (latency, lag, quantization)
+## [x] #2 — Control-loop realism (latency, lag, jitter)  ← DONE (collection path)
 
-Lives in the interface / `trajectory_data_collector`, not the MuJoCo model.
+Implemented in the demo-collection stepping path (the robot interface), since
+that's the only path that changes the trained VLA under pure offline imitation.
+Per-episode `ActuationConfig` (latency_steps / command_lag_alpha /
+step_jitter_prob) applied to the arm actuators (act1..act6; gripper left crisp)
+right before each `mj_step` in `_step_simulation` and the in-place IK loop.
 
-- Action latency: buffer `data.ctrl` by k control steps (sample k per episode).
-- Command low-pass / first-order lag on the target.
-- Control-rate jitter: vary effective dt / `n_substeps`; occasional dropped or
-  repeated frame.
-- Encoder quantization + small per-joint constant bias on observed qpos.
+- `ActuationConfig` on `Ar4Mk3InterfaceConfig` (identity defaults = no-op).
+- `ActuationPerturbation` ranges + `perturb_actuation` flag on
+  `PerturbationConfig`; `sample_actuation_config()` resolves per episode.
+- Enable via `--perturbation.perturb-actuation` on collect_trajectories.py /
+  demo_pick_and_place.py.
+
+Deferred from this item (overlaps #3 / needs the env path):
+- Encoder quantization + per-joint observed-qpos bias → folded into #3.
+- Env-path latency for honest eval / RL-in-the-loop (run_policy_on_env) → only
+  matters once we do in-sim rollouts that feed back into training.
 
 ## [ ] #4 — Contact & environment physics
 

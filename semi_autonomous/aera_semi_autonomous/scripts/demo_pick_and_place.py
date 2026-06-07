@@ -43,6 +43,7 @@ from aera_semi_autonomous.data.trajectory_perturbation import (
     generate_waypoints,
     go_home_perturbed,
     perturb_ik_config,
+    sample_actuation_config,
 )
 
 T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
@@ -208,6 +209,11 @@ def main():
             interface_config = dataclasses.replace(
                 cfg.interface,
                 ik=perturb_ik_config(cfg.interface.ik, cfg.perturbation.ik_noise),
+            )
+        if cfg.perturbation.perturb_actuation:
+            interface_config = dataclasses.replace(
+                interface_config,
+                actuation=sample_actuation_config(cfg.perturbation.actuation),
             )
         robot = Ar4Mk3RobotInterface(env, config=interface_config)
         logger.info("Robot interface initialized")

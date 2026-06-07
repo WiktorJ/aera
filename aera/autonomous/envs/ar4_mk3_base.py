@@ -12,6 +12,7 @@ from gymnasium_robotics.utils import rotations
 from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig, PLA_BLOCK_PRESETS
+from aera.autonomous.envs.kinematic_grasp import KinematicGraspLock
 
 
 def goal_distance(goal_a, goal_b):
@@ -227,11 +228,23 @@ class BaseEnv(MujocoRobotEnv):
 
 
 class Ar4Mk3Env(BaseEnv):
+    # Objects the eval grasp lock may attach (mirrors the interface's set).
+    _GRASP_OBJECT_NAMES = ("object0", "object_distractor1", "object_distractor2")
+    # Gripper-target thresholds (ctrl units, range [-0.014 open, 0 closed]) used
+    # to infer engage/release from the policy's gripper command. A block grasp
+    # commands the jaws to ~-0.0115 (the object surface), so "closing" is any
+    # target clearly inside full-open; a small hysteresis band avoids chatter.
+    _GRASP_ENGAGE_CTRL = -0.013
+    _GRASP_RELEASE_CTRL = -0.0135
+
     def __init__(
         self,
         config: Ar4Mk3EnvConfig,
         **kwargs,
     ):
+        # Set before super().__init__ so an early step/reset never sees it unset.
+        self._grasp_lock = None
+        self._gripper_act_ids = None
         default_camera_config = config.default_camera_config
         if config.translation is not None and config.quaterion is not None:
             cam_cfg = (
@@ -251,9 +264,49 @@ class Ar4Mk3Env(BaseEnv):
             config=config, default_camera_config=default_camera_config, **kwargs
         )
 
+        if config.kinematic_grasp:
+            self._grasp_lock = KinematicGraspLock(
+                self.model, self.data, self._GRASP_OBJECT_NAMES
+            )
+            self._gripper_act_ids = np.array(
+                [self.model.actuator("act8").id, self.model.actuator("act9").id]
+            )
+
+    def _mujoco_step(self, action):
+        """Step the sim, enforcing the kinematic grasp lock between substeps.
+
+        The default base implementation does a single mj_step(nstep=n_substeps);
+        with the lock active we instead step one substep at a time and re-pin the
+        held object after each, so it can't drift across the ~40 ms control
+        interval. No-op fallback to the base behavior when the lock is off."""
+        if self._grasp_lock is None:
+            super()._mujoco_step(action)
+            return
+        self._update_grasp_engagement()
+        for _ in range(self.n_substeps):
+            self._mujoco.mj_step(self.model, self.data, nstep=1)
+            self._grasp_lock.enforce()
+
+    def _update_grasp_engagement(self):
+        """Engage/release the lock from the policy's gripper command.
+
+        Engage the closest in-range object once the gripper is commanded to
+        close (mirrors the interface's 5 cm proximity rule, gated on the close
+        command so we don't glue an object during the open-gripper approach);
+        release when it's commanded back open."""
+        target = float(self.data.ctrl[self._gripper_act_ids].mean())
+        if self._grasp_lock.is_held:
+            if target <= self._GRASP_RELEASE_CTRL:
+                self._grasp_lock.release()
+        elif target >= self._GRASP_ENGAGE_CTRL:
+            self._grasp_lock.engage()
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         # gymnasium.Env.reset
         super(MujocoRobotEnv, self).reset(seed=seed)
+
+        if self._grasp_lock is not None:
+            self._grasp_lock.release()
 
         did_reset_sim = False
         while not did_reset_sim:

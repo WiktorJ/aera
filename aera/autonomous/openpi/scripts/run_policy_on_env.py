@@ -71,6 +71,10 @@ class Args:
     # --- Environment parameters ---
     domain_rand: bool = False
     headless: bool = False
+    # Mirror the data-collection kinematic grasp lock into eval so success isn't
+    # confounded by unstable MuJoCo contact-grasp physics (the demos are
+    # collected with this lock). Disable to eval under raw friction grasping.
+    kinematic_grasp: bool = True
 
     # --- Two-phase prompting ---
     # When enabled, the prompt starts as "pick the {color} block" and switches
@@ -154,6 +158,7 @@ def _build_env(args: Args, model_path: str, domain_rand_config: Any) -> Ar4Mk3Pi
         domain_rand=domain_rand_config,
         absolute_state_actions=False,
         include_images_in_obs=True,
+        kinematic_grasp=args.kinematic_grasp,
     )
     return Ar4Mk3PickAndPlaceEnv(render_mode="rgb_array", config=env_config)
 

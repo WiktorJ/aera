@@ -44,16 +44,36 @@ Deferred from this item (overlaps #3 / needs the env path):
 - Env-path latency for honest eval / RL-in-the-loop (run_policy_on_env) → only
   matters once we do in-sim rollouts that feed back into training.
 
-## [ ] #4 — Contact & environment physics
+## [~] #4 — Contact & environment physics  ← SKIPPED (low value here)
 
-- Surface friction: `geom_friction` on table top (`floor`), room floor, and
-  gripper pads (currently only the block's friction is randomized).
-- Contact softness / restitution: `geom_solref` / `geom_solimp` on object +
-  table.
-- COM / inertia offset on the block (not just mass) → in-hand rotation.
-- Gripper jaw dynamics: jaw damping/frictionloss/solimplimit, close force (kp on
-  act8/act9), close speed.
-- Base/table level: tilt `model.opt.gravity` 1-3 deg; tiny `opt.timestep` jitter.
+Decided not to pursue. Blocks sit stably in the workspace (no meaningful
+lift-friction issue), and post-release settling doesn't matter because the
+deterministic kinematic controller takes over once the policy releases. The one
+genuinely high-value contact axis — friction-based grasp slip — is removed by
+the kinematic grasp lock, and the rest (table friction, solref/solimp, COM
+offset, gravity tilt) is low-value given that. Revisit only if we ever do
+contact-tuning to retire the grasp lock.
+
+Instead, addressed the grasp lock's real downside (see below).
+
+## [x] Grasp lock mirrored into eval  ← DONE (came out of the #4 discussion)
+
+The kinematic grasp lock existed only in the data-collection interface; eval
+(`run_policy_on_env` → `env.step`) grasped by raw friction physics — the same
+unstable contacts that made physical-grasp collection unusable — so eval success
+was confounded and under-reported policy quality. Fix: share one lock
+implementation and apply it in eval too.
+
+- `KinematicGraspLock` extracted to `aera/autonomous/envs/kinematic_grasp.py`;
+  the collection interface now delegates to it (no behavior change).
+- `Ar4Mk3Env` uses it behind the `kinematic_grasp` config flag: engage on
+  gripper-close command + 5 cm proximity, enforce per-substep (n_substeps=20).
+- Enabled by default in `run_policy_on_env` (`--no-kinematic-grasp` to eval
+  under raw friction instead).
+
+Future (separate, optional): contact-tuning to make physical grasping stable
+enough to retire the lock — gives genuine grasp-robustness + slip-recovery in
+the data. Big effort, deferred.
 
 ## [ ] #5 — Motion / trajectory dynamics (beyond pre-grasp waypoints)
 

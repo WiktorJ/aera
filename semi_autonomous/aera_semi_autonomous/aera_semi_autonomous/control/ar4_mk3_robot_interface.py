@@ -2,7 +2,7 @@ import copy
 import logging
 import time
 from collections import deque
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import mujoco
 import numpy as np
@@ -14,6 +14,7 @@ from sensor_msgs.msg import Image, JointState
 from std_msgs.msg import Header
 
 from aera.autonomous.envs.ar4_mk3_base import Ar4Mk3Env
+from aera.autonomous.envs.kinematic_grasp import KinematicGraspLock
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
     IKConfig,
@@ -61,64 +62,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
         )
         self._act_applied: Optional[np.ndarray] = None
 
-        # Kinematic-lock state. When a grasp activates we record the held
-        # object's pose in the gripper frame and the current jaw qpos, then
-        # every simulation step _enforce_held_object_pose writes both back —
-        # a hard kinematic assignment that produces zero relative motion
-        # between gripper and held object regardless of arm dynamics.
+        # Kinematic grasp lock — records the held object's pose in the gripper
+        # frame and the jaw qpos at grasp time, then re-applies both every sim
+        # step (zero relative motion regardless of arm dynamics). Shared with
+        # the eval env (Ar4Mk3Env) so both attach a held object identically.
         self._known_grasp_objects = ("object0", "object_distractor1", "object_distractor2")
-        self._held_object_name: Optional[str] = None
-        self._held_relpose: Optional[Tuple[np.ndarray, np.ndarray]] = None
-        self._held_jaw_qpos: Optional[np.ndarray] = None
-        self._held_jaw_qpos_indices: Optional[np.ndarray] = None
-        self._held_jaw_dof_indices: Optional[np.ndarray] = None
+        self._grasp_lock = KinematicGraspLock(
+            self.env.model, self.env.data, self._known_grasp_objects
+        )
 
     def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
         """Sets the data collector for recording trajectories."""
         self.data_collector = data_collector
 
     def _enforce_held_object_pose(self) -> None:
-        """If an object is currently held, snap its qpos/qvel to the gripper.
-
-        Writes the world-frame pose directly. Called after every mj_step so any
-        physics drift introduced during the integration is overwritten before
-        the next step or render.
-        """
-        if self._held_object_name is None or self._held_relpose is None:
-            return
-        rel_pos, rel_quat = self._held_relpose
-
-        body1_id = self.env.model.body("gripper_base_link").id
-        p1 = self.env.data.xpos[body1_id]
-        q1 = self.env.data.xquat[body1_id]
-
-        # World pose: p_obj = p1 + R(q1) * rel_pos, q_obj = q1 * rel_quat
-        rotated = np.empty(3)
-        mujoco.mju_rotVecQuat(rotated, rel_pos, q1)  # type: ignore
-        p_obj = p1 + rotated
-        q_obj = np.empty(4)
-        mujoco.mju_mulQuat(q_obj, q1, rel_quat)  # type: ignore
-
-        joint_id = mujoco.mj_name2id(  # type: ignore
-            self.env.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self._held_object_name}:joint"  # type: ignore
-        )
-        qpos_addr = self.env.model.jnt_qposadr[joint_id]
-        dof_addr = self.env.model.jnt_dofadr[joint_id]
-        self.env.data.qpos[qpos_addr : qpos_addr + 3] = p_obj
-        self.env.data.qpos[qpos_addr + 3 : qpos_addr + 7] = q_obj
-        self.env.data.qvel[dof_addr : dof_addr + 6] = 0.0
-
-        # Also pin the jaw positions: without this, fast arm motion can
-        # transiently push a jaw past its frictionloss threshold and make it
-        # slide along its axis, which manifests as the jaws "jumping" relative
-        # to the kinematically-held object.
-        if self._held_jaw_qpos is not None:
-            self.env.data.qpos[self._held_jaw_qpos_indices] = self._held_jaw_qpos
-            self.env.data.qvel[self._held_jaw_dof_indices] = 0.0
-
-        # Refresh derived quantities so render and downstream reads see the
-        # corrected pose this frame, not next step.
-        mujoco.mj_forward(self.env.model, self.env.data)  # type: ignore
+        """Re-pin any kinematically-held object to the gripper (delegated)."""
+        self._grasp_lock.enforce()
 
     def _reset_actuation(self) -> None:
         """Clear the latency buffer and lag state.
@@ -175,70 +134,19 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self._maybe_jitter_step()
 
     def _engage_kinematic_grasp(self, max_distance: float = 0.05) -> None:
-        """Lock the closest known object and the current jaw qpos to the gripper.
-
-        Snapshots the object's pose in the gripper frame and the jaw qpos
-        values; these are then re-applied every simulation step by
-        _enforce_held_object_pose, producing zero relative motion between
-        gripper and held object regardless of arm dynamics.
-        """
-        grip_site_id = mujoco.mj_name2id(  # type: ignore
-            self.env.model, mujoco.mjtObj.mjOBJ_SITE, "grip"  # type: ignore
-        )
-        grip_pos = self.env.data.site_xpos[grip_site_id]
-
-        best_name: Optional[str] = None
-        best_dist = float("inf")
-        for obj_name in self._known_grasp_objects:
-            body_id = self.env.model.body(obj_name).id
-            dist = float(np.linalg.norm(self.env.data.xpos[body_id] - grip_pos))
-            if dist < best_dist:
-                best_dist = dist
-                best_name = obj_name
-
-        if best_name is None or best_dist > max_distance:
+        """Lock the closest known object + jaw qpos to the gripper (delegated)."""
+        locked, best_name, best_dist = self._grasp_lock.engage(max_distance)
+        if locked is None:
             self.logger.warning(
                 f"No graspable object within {max_distance:.3f} m of grip site "
                 f"(closest: {best_name} at {best_dist:.3f} m). Grasp not locked."
             )
-            return
-
-        body1_id = self.env.model.body("gripper_base_link").id
-        body2_id = self.env.model.body(best_name).id
-        p1 = self.env.data.xpos[body1_id]
-        q1 = self.env.data.xquat[body1_id]
-        p2 = self.env.data.xpos[body2_id]
-        q2 = self.env.data.xquat[body2_id]
-
-        # Express body2's pose in body1's frame: rel_pos = R(q1)^T (p2 - p1),
-        # rel_quat = q1^-1 * q2.
-        q1_inv = np.empty(4)
-        mujoco.mju_negQuat(q1_inv, q1)  # type: ignore
-        rel_pos = np.empty(3)
-        mujoco.mju_rotVecQuat(rel_pos, p2 - p1, q1_inv)  # type: ignore
-        rel_quat = np.empty(4)
-        mujoco.mju_mulQuat(rel_quat, q1_inv, q2)  # type: ignore
-
-        self._held_object_name = best_name
-        self._held_relpose = (rel_pos.copy(), rel_quat.copy())
-
-        gripper_joint_names = ["gripper_jaw1_joint", "gripper_jaw2_joint"]
-        self._held_jaw_qpos_indices = self._get_qpos_indices(
-            self.env.model, gripper_joint_names
-        )
-        self._held_jaw_dof_indices = self._get_dof_indices(
-            self.env.model, gripper_joint_names
-        )
-        self._held_jaw_qpos = self.env.data.qpos[self._held_jaw_qpos_indices].copy()
-        self.logger.info(f"Grasp locked: {best_name} (distance {best_dist:.3f} m)")
+        else:
+            self.logger.info(f"Grasp locked: {locked} (distance {best_dist:.3f} m)")
 
     def _release_kinematic_grasp(self) -> None:
         """Clear the kinematic-lock state so the object is back under physics."""
-        self._held_object_name = None
-        self._held_relpose = None
-        self._held_jaw_qpos = None
-        self._held_jaw_qpos_indices = None
-        self._held_jaw_dof_indices = None
+        self._grasp_lock.release()
 
     def _create_joint_state_msg(self, now: float) -> JointState:
         """Creates a JointState message from the current simulation state."""

@@ -311,6 +311,12 @@ class Ar4Mk3EnvConfig:
     # with existing datasets/policies.
     use_geometric_lookat: bool = False
     include_images_in_obs: bool = False
+    # Mirror the data-collection grasp lock into the env.step path (eval). When
+    # True, a grasped object is kinematically attached to the gripper instead of
+    # held by (unstable) contact friction, so eval reproduces the collected
+    # demos' grasp behavior rather than being confounded by soap-squirt contact
+    # physics. No effect on the interface-driven collection path. Default off.
+    kinematic_grasp: bool = False
     domain_rand: Optional[DomainRandConfig] = None
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
     image_width: int = 224

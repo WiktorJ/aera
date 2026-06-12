@@ -24,6 +24,8 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 from aera_semi_autonomous.data.pick_and_place_helpers import (
     get_object_grasp_gripper_pos,
     get_object_pose,
+    inject_partial_grasp,
+    inject_wrong_approach,
 )
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
@@ -102,10 +104,23 @@ def run_pick_and_place_and_collect(
 
     # Pick up the object
     data_collector.record_current_prompt(f"pick {object_color} block")
+    grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
+    # Recovery data (grasp-time failures) — recorded under the same "pick" prompt
+    # so the policy learns to recover under the normal task instruction. Neither
+    # mode ever presses the object. partial_grasp drops the object, so re-detect
+    # before the real grasp. Soft by construction: never discards the demo.
+    if perturbation_config.perturb_recovery:
+        rec = perturbation_config.recovery
+        if rec.wrong_approach:
+            inject_wrong_approach(robot, object_pose, rec, logger)
+        if rec.partial_grasp:
+            object_pose = inject_partial_grasp(
+                robot, env, object_pose, grasp_gripper_pos, rec, logger
+            )
+            grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
     if perturbation_config.perturb_pick:
         for wp in generate_waypoints(object_pose, perturbation_config):
             robot.move_to(wp)
-    grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
     if not robot.grasp_at(object_pose, gripper_pos=grasp_gripper_pos):
         logger.error("Failed to pick up object")
         return False

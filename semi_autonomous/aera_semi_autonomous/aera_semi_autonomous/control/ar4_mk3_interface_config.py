@@ -2,6 +2,8 @@ import dataclasses
 import typing
 from dataclasses import field
 
+from aera.autonomous.envs.kinematic_grasp import GraspEngageConfig
+
 
 @dataclasses.dataclass
 class IKConfig:
@@ -66,3 +68,8 @@ class Ar4Mk3InterfaceConfig:
     render_steps: bool = False
     ik: IKConfig = field(default_factory=IKConfig)
     actuation: ActuationConfig = field(default_factory=ActuationConfig)
+    # Gate for the kinematic grasp lock. Default permissive (old 5cm snap); the
+    # collection scripts flip require_alignment on when injecting recovery data
+    # so a deliberate near-miss genuinely fails to grab. Shared definition with
+    # the eval env so collection and eval grasp under identical rules.
+    grasp_engage: GraspEngageConfig = field(default_factory=GraspEngageConfig)

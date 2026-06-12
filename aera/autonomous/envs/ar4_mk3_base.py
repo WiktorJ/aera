@@ -271,7 +271,10 @@ class Ar4Mk3Env(BaseEnv):
 
         if config.kinematic_grasp:
             self._grasp_lock = KinematicGraspLock(
-                self.model, self.data, self._GRASP_OBJECT_NAMES
+                self.model,
+                self.data,
+                self._GRASP_OBJECT_NAMES,
+                engage_config=config.grasp_engage,
             )
             self._gripper_act_ids = np.array(
                 [self.model.actuator("act8").id, self.model.actuator("act9").id]

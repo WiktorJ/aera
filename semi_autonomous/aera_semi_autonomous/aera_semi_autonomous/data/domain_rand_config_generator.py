@@ -1328,7 +1328,11 @@ def generate_random_domain_rand_config(
             friction=np.random.uniform(
                 [1.5, 0.005, 0.005], [2.5, 0.015, 0.015]
             ).tolist(),
-            damping=np.random.uniform(0.005, 0.015),
+            # Free-joint damping models ~nothing physical for a small block in
+            # air; the old 0.005-0.015 over-damped rotation (tiny inertia) and
+            # made a dropped/slipped block drift in slow motion. Keep it
+            # negligible so a slip falls and tumbles like a real object.
+            damping=np.random.uniform(0.0, 0.001),
         )
 
     object_dynamics = _create_random_dynamics_config()

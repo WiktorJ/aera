@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Dict, List, Literal
+from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 
 import numpy as np
 from geometry_msgs.msg import Pose
@@ -187,6 +187,69 @@ class HoverHeightPerturbation:
 
 
 @dataclass
+class RecoveryPerturbation:
+    """Per-episode grasp-time failure + recovery (sim2real plan #1+#2).
+
+    Real grasps fail at grasp time, not mid-transport — once the object is in
+    the jaws, friction holds it. Two failure modes are reproduced here, both
+    ending in a correct grasp and, crucially, NEITHER ever pressing the object
+    into the table (which would teach the policy to force the arm into a rigid
+    object — a real-world disaster):
+
+      - wrong_approach: the gripper lines up over the WRONG spot at hover height,
+        then corrects laterally and descends cleanly. The mis-alignment lives
+        only at hover, so the gripper never touches the object while off-target.
+      - partial_grasp: a centred grasp with the jaw/object contact friction
+        temporarily lowered (the kinematic lock is NOT engaged) so the block
+        lifts a little then slides out from between the jaws and drops back onto
+        the table — a real "too slippery to hold" slip, not a clean release —
+        then the expert re-detects and re-grasps it.
+
+    NOT probabilities: when ``PerturbationConfig.perturb_recovery`` is on, each
+    enabled mode fires every episode (A/B by collecting twice). The toggles
+    switch a mode off structurally; magnitudes are sampled per-episode.
+
+    Attributes:
+        wrong_approach: Enable the hover-misalign-then-correct failure.
+        wrong_approach_offset_range: Lateral mis-alignment (m) at hover, sampled
+            at a random heading.
+        wrong_approach_hover_range: Height (m) above the object top for the
+            mis-approach — kept well above the object so the descent is never
+            triggered while off-target (no contact, no pressing).
+        partial_grasp: Enable the marginal top-edge grasp that slips on lift.
+        partial_grasp_lift_range: How far (m) the arm lifts before/while the
+            block tips out — small, so it slips shortly after pickup.
+        partial_grasp_slip_friction: Tangential contact friction applied to BOTH
+            the jaws and the block during the slip attempt (MuJoCo takes the max
+            of the two geoms' friction, so both must be lowered). A centred grasp
+            at this friction lifts the block a little then lets it slide out and
+            drop back onto the table. Verified in sim: ~0.45-0.6 slips reliably,
+            >=0.7 holds, <=0.3 never lifts. The table-block friction is untouched
+            so the block still settles normally, on the table, for the re-grasp.
+        partial_grasp_pause_prob: Probability of pausing briefly after the jaws
+            close, before the lift, so some slips look like a completed grasp
+            that then loses the block (rather than a lift that began before the
+            jaws finished closing). The rest get no pause for variety.
+        partial_grasp_pause_steps: Length of that pause, in sim steps (~2 ms
+            each).
+        max_grasp_retries: Number of partial-grasp slips before the successful
+            grasp.
+    """
+
+    wrong_approach: bool = True
+    wrong_approach_offset_range: tuple = (0.018, 0.035)
+    wrong_approach_hover_range: tuple = (0.05, 0.10)
+
+    partial_grasp: bool = True
+    partial_grasp_lift_range: tuple = (0.015, 0.035)
+    partial_grasp_slip_friction: float = 0.55
+    partial_grasp_pause_prob: float = 0.5
+    partial_grasp_pause_steps: int = 40
+
+    max_grasp_retries: int = 1
+
+
+@dataclass
 class PerturbationConfig:
     """Configuration for trajectory perturbation.
 
@@ -238,6 +301,13 @@ class PerturbationConfig:
         default_factory=HoverHeightPerturbation
     )
 
+    # Recovery / off-manifold data (composable, orthogonal to `mode`). When on,
+    # the collection loop injects deliberate missed grasps + corrective detours
+    # so the policy sees recovery, not only clean successes. Enable/disable for
+    # the whole run; A/B by collecting twice.
+    perturb_recovery: bool = False
+    recovery: RecoveryPerturbation = field(default_factory=RecoveryPerturbation)
+
 
 def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> list:
     """Generate waypoints on a disk above the target.
@@ -268,6 +338,28 @@ def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> l
         )
         waypoints.append(waypoint)
     return waypoints
+
+
+def sample_wrong_approach_poses(
+    object_pose: Pose, recovery: RecoveryPerturbation
+) -> Tuple[Pose, Pose]:
+    """Return ``(bad_hover, good_hover)`` for the wrong-approach failure.
+
+    Both poses sit at the same sampled hover height above the object top;
+    ``bad_hover`` is offset laterally (the wrong spot the arm lines up over),
+    ``good_hover`` is directly above the object. The arm visits bad then good,
+    recording a lateral correction — all at hover height, so the gripper never
+    descends onto (and never touches) the object while mis-aligned. Orientation
+    is the object's top-down grasp."""
+    angle = np.random.uniform(0, 2 * np.pi)
+    radius = np.random.uniform(*recovery.wrong_approach_offset_range)
+    hover = np.random.uniform(*recovery.wrong_approach_hover_range)
+    good = copy.deepcopy(object_pose)
+    good.position.z += hover
+    bad = copy.deepcopy(good)
+    bad.position.x += radius * np.cos(angle)
+    bad.position.y += radius * np.sin(angle)
+    return bad, good
 
 
 def generate_waypoints(target_pose: Pose, config: PerturbationConfig) -> list:

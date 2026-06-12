@@ -19,10 +19,41 @@ share the exact same mechanism:
   behavior exactly instead of drifting from it.
 """
 
+from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple
 
 import mujoco
 import numpy as np
+
+
+@dataclass
+class GraspEngageConfig:
+    """Gate deciding when the kinematic lock attaches an object.
+
+    The default reproduces the original permissive behavior: a single 5 cm
+    grip-site-to-object-center snap with no alignment check, so existing
+    datasets and policies are unchanged unless this is opted into.
+
+    Set ``require_alignment=True`` for the demanding gate — the gripper must
+    actually be aligned over the object (jaws straddling it laterally, at the
+    right height) to grab. A small mis-aligned approach then genuinely fails to
+    grasp, which is what makes realistic grasp-failure / recovery data possible
+    instead of the 5 cm snap turning every near-miss into a perfect grab.
+
+    The lock is shared by data collection and eval, so enabling this makes both
+    attach objects under identical, physically-meaningful rules.
+
+    Tolerances are world-frame because the grasp is top-down: ``lateral_tol`` is
+    the max horizontal (xy) offset between the grip site and the object center,
+    ``height_tol`` the max vertical (z) offset. Defaults are sized against the
+    24 mm block / ~14 mm jaw travel so a clean grasp (sub-cm lateral, ~12 mm
+    vertical) passes while a ~20 mm near-miss fails.
+    """
+
+    require_alignment: bool = False
+    max_distance: float = 0.05  # coarse center-distance bound, always applied
+    lateral_tol: float = 0.012  # max world-xy grip->object offset (m)
+    height_tol: float = 0.030  # max world-z grip->object offset (m)
 
 
 class KinematicGraspLock:
@@ -44,12 +75,16 @@ class KinematicGraspLock:
             "gripper_jaw1_joint",
             "gripper_jaw2_joint",
         ),
+        engage_config: Optional[GraspEngageConfig] = None,
     ):
         self.model = model
         self.data = data
         self.grasp_object_names = tuple(grasp_object_names)
         self.gripper_body_name = gripper_body_name
         self.gripper_joint_names = list(gripper_joint_names)
+        # Default = permissive (old 5cm snap, no alignment) so behavior is
+        # unchanged unless a caller opts into the demanding gate.
+        self.engage_config = engage_config or GraspEngageConfig()
 
         self._held_object_name: Optional[str] = None
         self._held_relpose: Optional[Tuple[np.ndarray, np.ndarray]] = None
@@ -75,14 +110,24 @@ class KinematicGraspLock:
         return np.array(qpos_idx), np.array(dof_idx)
 
     def engage(
-        self, max_distance: float = 0.05
+        self, max_distance: Optional[float] = None
     ) -> Tuple[Optional[str], Optional[str], float]:
-        """Lock the closest known object within `max_distance` of the grip site.
+        """Lock the closest known object near the grip site, subject to the gate.
 
         Returns (locked_name, closest_name, closest_dist): locked_name is None
-        if the closest object was out of range (nothing locked). Snapshots the
-        object's pose in the gripper frame and the current jaw qpos.
+        if the closest object failed the gate (nothing locked). Snapshots the
+        object's pose in the gripper frame and the current jaw qpos on success.
+
+        ``max_distance`` overrides the config's coarse center-distance bound when
+        given; otherwise the config value is used. When the config has
+        ``require_alignment`` set, the object must additionally be laterally and
+        vertically aligned with the grip site (jaws actually straddling it), so a
+        small mis-aligned approach fails to grab.
         """
+        cfg = self.engage_config
+        if max_distance is None:
+            max_distance = cfg.max_distance
+
         grip_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "grip")
         grip_pos = self.data.site_xpos[grip_site_id]
 
@@ -97,6 +142,17 @@ class KinematicGraspLock:
 
         if best_name is None or best_dist > max_distance:
             return None, best_name, best_dist
+
+        # Demanding gate: the gripper must straddle the object (small horizontal
+        # offset) at the object's height (small vertical offset). World-frame
+        # because the grasp is top-down. A near-miss violates the lateral bound
+        # and so fails to lock — the physical basis for realistic recovery data.
+        if cfg.require_alignment:
+            obj_pos = self.data.xpos[self.model.body(best_name).id]
+            lateral = float(np.linalg.norm(obj_pos[:2] - grip_pos[:2]))
+            vertical = float(abs(obj_pos[2] - grip_pos[2]))
+            if lateral > cfg.lateral_tol or vertical > cfg.height_tol:
+                return None, best_name, best_dist
 
         body1_id = self.model.body(self.gripper_body_name).id
         body2_id = self.model.body(best_name).id

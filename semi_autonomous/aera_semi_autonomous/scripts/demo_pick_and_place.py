@@ -37,6 +37,8 @@ from aera_semi_autonomous.data.domain_rand_config_generator import (
 from aera_semi_autonomous.data.pick_and_place_helpers import (
     get_object_grasp_gripper_pos,
     get_object_pose,
+    inject_partial_grasp,
+    inject_wrong_approach,
 )
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
@@ -251,6 +253,20 @@ def main():
         logger.info("Attempting to pick up object...")
         gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
         logger.info(f"Computed grasp gripper_pos: {gripper_pos:.4f}")
+
+        # Recovery / grasp-time failure injection so the demo can visualize the
+        # recovery the collector bakes into training data. Neither mode presses
+        # the object; partial_grasp drops it, so re-detect before the real grasp.
+        # No-op unless --perturbation.perturb-recovery.
+        if cfg.perturbation.perturb_recovery:
+            rec = cfg.perturbation.recovery
+            if rec.wrong_approach:
+                inject_wrong_approach(robot, object_pose, rec, logger)
+            if rec.partial_grasp:
+                object_pose = inject_partial_grasp(
+                    robot, env, object_pose, gripper_pos, rec, logger
+                )
+                gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
 
         if cfg.perturbation.perturb_pick:
             for wp in generate_waypoints(object_pose, cfg.perturbation):

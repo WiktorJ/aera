@@ -68,7 +68,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # the eval env (Ar4Mk3Env) so both attach a held object identically.
         self._known_grasp_objects = ("object0", "object_distractor1", "object_distractor2")
         self._grasp_lock = KinematicGraspLock(
-            self.env.model, self.env.data, self._known_grasp_objects
+            self.env.model,
+            self.env.data,
+            self._known_grasp_objects,
+            engage_config=self.config.grasp_engage,
         )
 
     def set_data_collector(self, data_collector: Optional[TrajectoryDataCollector]):
@@ -133,13 +136,29 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self._enforce_held_object_pose()
         self._maybe_jitter_step()
 
-    def _engage_kinematic_grasp(self, max_distance: float = 0.05) -> None:
-        """Lock the closest known object + jaw qpos to the gripper (delegated)."""
+    def _settle(self, steps: int = 120) -> None:
+        """Step the sim in place (arm holds its current command) so a just-dropped
+        object comes to rest before anything re-detects it. Without this the
+        re-detected pose can be a transient mid-bounce reading, which then makes
+        the re-grasp descend to the wrong depth. Frames are recorded so the
+        settle is part of the trajectory."""
+        for _ in range(steps):
+            self._step_simulation()
+            self._record_step()
+            if self.config.render_steps:
+                self.env.render()
+
+    def _engage_kinematic_grasp(self, max_distance: Optional[float] = None) -> None:
+        """Lock the closest known object + jaw qpos to the gripper (delegated).
+
+        With ``max_distance=None`` the lock uses its configured gate
+        (``grasp_engage``) — including the demanding alignment check when that's
+        enabled — so a deliberate near-miss correctly fails to lock."""
         locked, best_name, best_dist = self._grasp_lock.engage(max_distance)
         if locked is None:
             self.logger.warning(
-                f"No graspable object within {max_distance:.3f} m of grip site "
-                f"(closest: {best_name} at {best_dist:.3f} m). Grasp not locked."
+                f"Grasp not locked (closest: {best_name} at {best_dist:.3f} m "
+                f"of grip site; gate may have rejected it)."
             )
         else:
             self.logger.info(f"Grasp locked: {locked} (distance {best_dist:.3f} m)")
@@ -147,6 +166,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
     def _release_kinematic_grasp(self) -> None:
         """Clear the kinematic-lock state so the object is back under physics."""
         self._grasp_lock.release()
+
+    def is_object_held(self) -> bool:
+        """True if the kinematic grasp lock is currently holding an object.
+
+        Used by recovery-data collection to tell a deliberate missed grasp
+        (jaws closed on air, nothing locked) from an accidental success."""
+        return self._grasp_lock.is_held
 
     def _create_joint_state_msg(self, now: float) -> JointState:
         """Creates a JointState message from the current simulation state."""
@@ -728,6 +754,60 @@ class Ar4Mk3RobotInterface(RobotInterface):
             return True
         except Exception as e:
             self.logger.error(f"Failed to grasp at pose: {e}", exc_info=True)
+            return False
+
+    def grasp_and_slip(
+        self, pose: Pose, gripper_pos: float, lift_height: float,
+        pause_steps: int = 0,
+    ) -> bool:
+        """Grasp at ``pose`` WITHOUT the kinematic lock, so the object slips.
+
+        Models a marginal grasp that holds only by jaw contact friction: the jaws
+        close on the object but the kinematic lock is deliberately NOT engaged, so
+        as the arm lifts the (small, unstable) object slides and tumbles out from
+        between the fingers under physics — a real slip, not a clean release. The
+        gripper is left CLOSED as it lifts clear (a real slip leaves the hand
+        shut on nothing); the subsequent re-grasp opens it, so there's no
+        unmotivated open right after the slip. The descent is to the true
+        ``pose`` (aligned), so nothing is pressed.
+
+        This is exactly the contact-grasp instability the kinematic lock exists to
+        prevent — here we lean on it on purpose to produce a believable slip."""
+        try:
+            self.logger.info(
+                f"Grasp-and-slip at: {self._format_pose(pose)} (lift {lift_height:.3f} m)"
+            )
+            if not self.release_gripper():
+                return False
+            above_pose = copy.deepcopy(pose)
+            above_pose.position.z += self.config.above_target_offset
+            if not self.move_to(above_pose):
+                return False
+            if not self.move_to(pose):
+                return False
+            # Close on the object but do NOT engage the kinematic lock — the
+            # object is now held by contact friction only and will slip on lift.
+            if not self._interpolate_gripper(np.array([gripper_pos, gripper_pos])):
+                return False
+            # Optional brief hold after closing, so some slips read as a
+            # completed grasp that then loses the block rather than a lift that
+            # started before the jaws finished closing.
+            if pause_steps > 0:
+                self._settle(pause_steps)
+            # Lift: the marginally-gripped object slides out under physics. The
+            # gripper stays closed (a real slip leaves the hand shut on nothing)
+            # and lifts clear so the slipped object settles unobstructed; the
+            # caller's re-grasp opens the jaws when it goes back in.
+            slip_pose = copy.deepcopy(pose)
+            slip_pose.position.z += lift_height
+            self.move_to(slip_pose)
+            self.move_to(above_pose)
+            # Let the slipped object come to rest before the caller re-detects it,
+            # so the re-grasp targets the settled pose and doesn't descend low.
+            self._settle()
+            return True
+        except Exception as e:
+            self.logger.error(f"grasp_and_slip failed: {e}", exc_info=True)
             return False
 
     def release_at(self, pose: Pose) -> bool:

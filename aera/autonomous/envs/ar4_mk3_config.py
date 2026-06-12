@@ -4,6 +4,8 @@ from typing import Optional, Sequence, Union
 
 import numpy as np
 
+from aera.autonomous.envs.kinematic_grasp import GraspEngageConfig
+
 DEFAULT_CAMERA_CONFIG = {
     "distance": 0.98,
     "azimuth": -133,
@@ -324,6 +326,11 @@ class Ar4Mk3EnvConfig:
     # demos' grasp behavior rather than being confounded by soap-squirt contact
     # physics. No effect on the interface-driven collection path. Default off.
     kinematic_grasp: bool = False
+    # Gate controlling when the kinematic lock attaches an object at eval time.
+    # Default is permissive (old 5cm snap); set require_alignment to make the
+    # eval policy actually align to grasp (matches the demanding grasp used for
+    # recovery-data collection). Only meaningful when kinematic_grasp is True.
+    grasp_engage: GraspEngageConfig = field(default_factory=GraspEngageConfig)
     domain_rand: Optional[DomainRandConfig] = None
     default_camera_config: dict = field(default_factory=lambda: DEFAULT_CAMERA_CONFIG)
     image_width: int = 224

@@ -63,7 +63,7 @@
             <site name="target0" pos="0 0 0.2" size="0.02 0.02 0.02" rgba="1 0 0 1" type="sphere"/>
         </body>
         <body name="object0" pos="0.025 0.025 0.025">
-          <joint name="object0:joint" type="free" damping="0.01"></joint>
+          <joint name="object0:joint" type="free" damping="0"></joint>
           <geom size="0.025 0.025 0.025" type="box" condim="3" name="object0" material="block_mat" mass="2"></geom>
           <site name="object0" pos="0 0 0" size="0.002 0.002 0.002" rgba="1 0 0 1" type="sphere"></site>
         </body>

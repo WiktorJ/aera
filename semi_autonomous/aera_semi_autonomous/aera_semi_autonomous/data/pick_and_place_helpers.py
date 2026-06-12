@@ -1,11 +1,17 @@
 """Shared helpers for pick-and-place scripts."""
 
+import copy
 import logging
 from typing import Optional
 
 import numpy as np
 from geometry_msgs.msg import Point, Pose, Quaternion
 from scipy.spatial.transform import Rotation
+
+from aera_semi_autonomous.data.trajectory_perturbation import (
+    RecoveryPerturbation,
+    sample_wrong_approach_poses,
+)
 
 # Gripper jaw kinematics (see ar4_mk3.xml: gripper_jaw{1,2}_joint range="-0.014 0").
 # Each jaw is a symmetric slide joint: qpos=0 -> fully closed, qpos=-0.014 -> fully open.
@@ -15,6 +21,112 @@ from scipy.spatial.transform import Rotation
 GRIPPER_JAW_QPOS_MIN = -0.014
 GRIPPER_JAW_QPOS_MAX = 0.0
 DEFAULT_GRASP_PRELOAD = 0.0005  # 0.5 mm — just enough to keep the jaws visually touching the object; the kinematic lock prevents this preload from causing any penetration.
+
+# get_object_pose reports z as 2*object_center (the block top surface). A
+# graspable block (half-height <= 0.012) rests at top <= 0.024 m, so anything
+# well above this means the object is still up in the gripper rather than on the
+# table — used to detect a partial grasp that held through the lift.
+_SETTLED_OBJECT_MAX_Z = 0.045
+
+
+# --- Recovery / grasp-time failure injection (sim2real plan #1+#2) ----------
+#
+# Reproduce the two ways real grasps fail at grasp time so the policy learns to
+# recover — and crucially, neither ever presses the object into the table
+# (forcing the arm into a rigid object is a real-world disaster we must not
+# reinforce):
+#   - wrong_approach: line up over the wrong spot at HOVER height, then correct
+#     laterally and descend cleanly. Mis-alignment lives only at hover, so the
+#     gripper never touches the object while off-target.
+#   - partial_grasp: a marginal contact-only grip (no kinematic lock) that
+#     slips out from between the fingers as the arm lifts, then re-detect and
+#     re-grasp.
+# Shared by the bulk collector and the quick demo. All soft: a failure is logged
+# and skipped so injecting recovery never discards an otherwise-good demo.
+# Frames are captured by the interface's own per-step recording, so the caller
+# only sets the granular prompt before invoking these.
+
+
+def inject_wrong_approach(
+    robot,
+    object_pose: Pose,
+    recovery: RecoveryPerturbation,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Line up over the wrong spot at hover, then correct laterally — all above
+    the object so the gripper never touches it. The caller's real grasp then
+    descends cleanly from the corrected hover. Soft."""
+    _log = logger or logging.getLogger(__name__)
+    try:
+        bad_hover, good_hover = sample_wrong_approach_poses(object_pose, recovery)
+        robot.release_gripper()  # open, as a real approach would be
+        robot.move_to(bad_hover)  # mis-aligned hover (above the object, no contact)
+        robot.move_to(good_hover)  # correct laterally, still at hover
+    except Exception as e:
+        _log.warning(f"Wrong-approach injection raised {e}; skipping.")
+
+
+def inject_partial_grasp(
+    robot,
+    env,
+    object_pose: Pose,
+    grasp_gripper_pos: float,
+    recovery: RecoveryPerturbation,
+    logger: Optional[logging.Logger] = None,
+) -> Pose:
+    """Marginally grasp so the object slips out under physics on lift,
+    ``max_grasp_retries`` times, re-detecting between slips. Returns the latest
+    object pose for the caller's real grasp. Soft: any failure ends early."""
+    _log = logger or logging.getLogger(__name__)
+    pose = object_pose
+    gripper_pos = grasp_gripper_pos
+    # Lower the jaw+block contact friction during the slip so a CENTRED grasp
+    # (no gap, no top-edge weirdness) can't hold the block — it lifts a little
+    # then slides out. MuJoCo takes the max of the two geoms' friction, so both
+    # the jaws and the block must be lowered; the table-block friction is
+    # untouched (table geom keeps its friction), so the block settles normally.
+    fric_geoms = [
+        env.model.geom("object0").id,
+        env.model.geom("gripper_jaw1_contact").id,
+        env.model.geom("gripper_jaw2_contact").id,
+    ]
+    saved_fric = {gi: env.model.geom_friction[gi].copy() for gi in fric_geoms}
+    for _ in range(max(1, recovery.max_grasp_retries)):
+        lift = float(np.random.uniform(*recovery.partial_grasp_lift_range))
+        pause = (recovery.partial_grasp_pause_steps
+                 if np.random.random() < recovery.partial_grasp_pause_prob else 0)
+        for gi in fric_geoms:
+            env.model.geom_friction[gi][0] = recovery.partial_grasp_slip_friction
+        try:
+            # Centred grip (no height offset): jaws straddle the full box so there
+            # is no visual gap and the tips clear the table; the lowered friction
+            # is what makes it slip.
+            robot.grasp_and_slip(copy.deepcopy(pose), gripper_pos, lift, pause_steps=pause)
+        except Exception as e:
+            _log.warning(f"Partial-grasp injection raised {e}; stopping.")
+            break
+        finally:
+            for gi in fric_geoms:
+                env.model.geom_friction[gi] = saved_fric[gi]
+        # The object slipped out and settled (maybe shifted) — re-detect for the
+        # next attempt and for the caller's real grasp. If the marginal grip held
+        # through the lift (object still aloft, not on the table), open to drop it
+        # — only fires in that failure case, so a real slip needs no extra open.
+        redetected = get_object_pose(env, _log)
+        if redetected is not None and redetected.position.z > _SETTLED_OBJECT_MAX_Z:
+            _log.info("Partial grasp held through lift; opening to drop the object.")
+            robot.release_gripper()
+            redetected = get_object_pose(env, _log)
+        if redetected is not None:
+            # Use the block's KNOWN resting height for the re-grasp DEPTH (xy from
+            # the measurement). A just-slipped block can be read mid-bounce or
+            # slightly tilted, giving a bad z that makes the re-grasp miss high or
+            # dig into the table; a block always rests with its top at 2*half.
+            box_id = env.model.geom("object0").id
+            redetected.position.z = 2.0 * float(env.model.geom_size[box_id][2])
+            pose = redetected
+            gripper_pos = get_object_grasp_gripper_pos(env, logger=_log)
+    return pose
 
 
 def get_object_pose(env, logger: Optional[logging.Logger] = None) -> Optional[Pose]:

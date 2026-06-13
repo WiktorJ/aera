@@ -57,6 +57,11 @@ class CollectConfig:
     save_dir: str = "rl_training_data"
     seed: int = -1
     use_geometric_lookat: bool = True
+    # Per-episode randomization of the scene + wrist camera extrinsics (samples
+    # the scene camera from the validated anchor hull and jitters the wrist
+    # camera). Off by default; enable so the policy isn't overfit to one fixed
+    # viewpoint and tolerates real-camera mounting/calibration error.
+    randomize_cameras: bool = False
     # Per-episode randomization of arm actuator gains / joint friction / inertia
     # (the "movement" DR axis). Disable to collect against the bare CAD dynamics.
     randomize_arm_dynamics: bool = True
@@ -198,6 +203,7 @@ def main():
                 object_color,
                 target_color,
             ) = generate_random_domain_rand_config(
+                randomize_cameras=cfg.randomize_cameras,
                 randomize_arm_dynamics=cfg.randomize_arm_dynamics,
             )
 

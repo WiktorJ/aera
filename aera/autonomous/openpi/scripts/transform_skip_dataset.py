@@ -73,6 +73,26 @@ def parse_args() -> argparse.Namespace:
         help="Convert actions to delta actions (action[t+skip] - state[t]) for joint dims, keeping gripper absolute.",
     )
     parser.add_argument(
+        "--n-substeps",
+        type=int,
+        default=20,
+        help=(
+            "The sim env's n_substeps (env step = n_substeps * 0.002 s = the rate "
+            "at which eval/deploy applies one action). Collection records per "
+            "mj-step (0.002 s), so the action timescale is skip * 0.002 s; for "
+            "sim->real parity skip must equal n_substeps. See CONTROL_RATE_SPEC.md."
+        ),
+    )
+    parser.add_argument(
+        "--allow-rate-mismatch",
+        action="store_true",
+        default=False,
+        help=(
+            "Proceed even when --skip != --n-substeps. Without this the script "
+            "errors out, so a control-rate mismatch can't slip through silently."
+        ),
+    )
+    parser.add_argument(
         "--num-joint-dims",
         type=int,
         default=6,
@@ -547,6 +567,26 @@ def main():
 
     if args.skip < 1:
         raise ValueError(f"--skip must be >= 1, got {args.skip}")
+
+    # Control-rate parity: collection records per sim mj-step (0.002 s), so the
+    # action timescale is skip * 0.002 s; eval/deploy applies one action per env
+    # step (n_substeps * 0.002 s). They only match when skip == n_substeps, so a
+    # different skip silently trains the policy for the wrong control rate.
+    # See CONTROL_RATE_SPEC.md. Hard-fail unless explicitly overridden.
+    if args.skip != args.n_substeps:
+        msg = (
+            f"--skip ({args.skip}) != --n-substeps ({args.n_substeps}): the "
+            f"resulting action timescale is {args.skip * 0.002:.3f} s but "
+            f"eval/deploy applies one action per {args.n_substeps * 0.002:.3f} s "
+            f"env step, so the policy would run at the wrong control rate on "
+            f"hardware. Set --skip {args.n_substeps}, or pass "
+            f"--allow-rate-mismatch if this is intentional (see "
+            f"CONTROL_RATE_SPEC.md)."
+        )
+        if args.allow_rate_mismatch:
+            logging.warning("CONTROL-RATE MISMATCH (allowed): %s", msg)
+        else:
+            raise ValueError(msg)
 
     if args.state_aug and args.smooth_state:
         raise ValueError(

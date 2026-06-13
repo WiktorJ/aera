@@ -294,6 +294,16 @@ class Ar4Mk3EnvConfig:
     distance_threshold: float = 0.05
     reward_type: str = "sparse"
     object_size: tuple[float, float, float] = (0.012, 0.012, 0.012)
+    # Spawn the blocks (object0 + distractors) at a random yaw about +Z, so the
+    # gripper practices grasping at orientations other than parallel. The grasp
+    # pose aligns to the block's yaw (see get_object_pose), so the scripted
+    # expert still grasps correctly. Off by default (blocks spawn upright).
+    # object_yaw_range is the half-range in radians: yaw ~ U[-range, +range].
+    # Capped at +-45 deg: the blocks are square (90 deg symmetric), so any
+    # orientation reduces into +-45 deg and larger yaws are redundant (and would
+    # demand an unreachable wrist roll).
+    randomize_object_yaw: bool = False
+    object_yaw_range: float = 0.785  # ~45 deg
     use_eef_control: bool = False
     initial_qpos: dict = field(
         default_factory=lambda: {

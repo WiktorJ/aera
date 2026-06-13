@@ -65,6 +65,9 @@ class CollectConfig:
     # Per-episode randomization of arm actuator gains / joint friction / inertia
     # (the "movement" DR axis). Disable to collect against the bare CAD dynamics.
     randomize_arm_dynamics: bool = True
+    # Spawn the blocks at a random yaw so the gripper practices grasping at
+    # orientations other than parallel (the grasp aligns to the block yaw).
+    randomize_object_yaw: bool = False
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
@@ -217,6 +220,7 @@ def main():
                 z_offset=0.3,
                 use_geometric_lookat=cfg.use_geometric_lookat,
                 domain_rand=domain_rand_config,
+                randomize_object_yaw=cfg.randomize_object_yaw,
             )
             env = Ar4Mk3PickAndPlaceEnv(
                 render_mode="human" if cfg.render else None,

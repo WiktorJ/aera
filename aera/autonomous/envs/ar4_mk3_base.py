@@ -1100,6 +1100,18 @@ class Ar4Mk3Env(BaseEnv):
                     self.model.body_pos[body_id] = distractor_pos_3d
                     break
 
+    def _apply_spawn_yaw(self, qpos):
+        """Write a random yaw (about +Z) into a free-joint qpos[3:7] when
+        randomize_object_yaw is on, so blocks spawn rotated and the gripper
+        practices non-parallel grasps. No-op (orientation left as-is) when off,
+        so default behavior is unchanged."""
+        if not self.config.randomize_object_yaw:
+            return qpos
+        r = self.config.object_yaw_range
+        yaw = self.np_random.uniform(-r, r)
+        qpos[3:7] = [np.cos(yaw / 2.0), 0.0, 0.0, np.sin(yaw / 2.0)]
+        return qpos
+
     def _reset_sim(self):
         # Reset buffers for joint states, actuators, warm-start, control buffers etc.
         self._mujoco.mj_resetData(self.model, self.data)
@@ -1147,6 +1159,7 @@ class Ar4Mk3Env(BaseEnv):
             object_qpos[2] = self._block_half_size.get(
                 "object0", self.object_size[2]
             )
+            self._apply_spawn_yaw(object_qpos)
             self._utils.set_joint_qpos(
                 self.model, self.data, "object0:joint", object_qpos
             )
@@ -1175,6 +1188,7 @@ class Ar4Mk3Env(BaseEnv):
                         distractor_qpos[2] = self._block_half_size.get(
                             joint_name.split(":")[0], self.object_size[2]
                         )
+                        self._apply_spawn_yaw(distractor_qpos)
                         self._utils.set_joint_qpos(
                             self.model, self.data, joint_name, distractor_qpos
                         )

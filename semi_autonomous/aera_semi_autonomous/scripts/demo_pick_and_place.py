@@ -66,6 +66,10 @@ class DemoConfig:
     steps: int = 1000
     domain_rand: bool = False
     randomize_cameras: bool = False
+    # Spawn blocks at a random yaw so the gripper grasps at non-parallel
+    # orientations (the grasp aligns to the block yaw). Works with or without
+    # domain_rand.
+    randomize_object_yaw: bool = False
     # Only takes effect when domain_rand is on. Randomizes arm actuator gains /
     # joint friction / inertia (the "movement" DR axis).
     randomize_arm_dynamics: bool = True
@@ -193,6 +197,7 @@ def main():
             image_width=cfg.initial_window_size,
             image_height=cfg.initial_window_size,
             show_grip_overlay=cfg.show_grip_overlay,
+            randomize_object_yaw=cfg.randomize_object_yaw,
         )
         env = Ar4Mk3PickAndPlaceEnv(
             render_mode="human" if cfg.render else "rgb_array",

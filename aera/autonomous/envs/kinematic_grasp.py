@@ -30,30 +30,36 @@ import numpy as np
 class GraspEngageConfig:
     """Gate deciding when the kinematic lock attaches an object.
 
-    The default reproduces the original permissive behavior: a single 5 cm
-    grip-site-to-object-center snap with no alignment check, so existing
-    datasets and policies are unchanged unless this is opted into.
+    With ``require_alignment`` (the default), the gripper must actually be
+    positioned to grasp the object before the lock engages, so the kinematic
+    weld can't grant a "free" grasp the real arm wouldn't get. This makes sim
+    eval predictive (a misaligned policy fails in sim as it would on hardware)
+    and only lets well-aligned grasps become "success" in collected data. Set
+    it False to restore the old permissive 5 cm snap (e.g. to A/B, or to eval an
+    older policy under the conditions it was trained on).
 
-    Set ``require_alignment=True`` for the demanding gate — the gripper must
-    actually be aligned over the object (jaws straddling it laterally, at the
-    right height) to grab. A small mis-aligned approach then genuinely fails to
-    grasp, which is what makes realistic grasp-failure / recovery data possible
-    instead of the 5 cm snap turning every near-miss into a perfect grab.
+    The gate is checked in the gripper's tool frame, because the real grasp
+    envelope is strongly anisotropic: the jaws close along their pinch axis
+    (small tolerance) but the object can sit far along the finger axis (large
+    tolerance). Tolerances are calibrated to the measured physical (non-locked)
+    grasp envelope of the 24 mm block (the binding / largest case): it holds to
+    ~6 mm pinch / ~20 mm finger / ~27 mm tool-height offset and fails beyond, so
+    the gate sits just inside those. The lock is shared by collection and eval,
+    so both attach objects under identical, physically-meaningful rules.
 
-    The lock is shared by data collection and eval, so enabling this makes both
-    attach objects under identical, physically-meaningful rules.
-
-    Tolerances are world-frame because the grasp is top-down: ``lateral_tol`` is
-    the max horizontal (xy) offset between the grip site and the object center,
-    ``height_tol`` the max vertical (z) offset. Defaults are sized against the
-    24 mm block / ~14 mm jaw travel so a clean grasp (sub-cm lateral, ~12 mm
-    vertical) passes while a ~20 mm near-miss fails.
+    Attributes:
+        require_alignment: Enable the demanding tool-frame gate (default on).
+        max_distance: Coarse grip-site-to-object-centre bound, always applied.
+        pinch_tol: Max offset along the jaws' pinch axis (gripper local x).
+        finger_tol: Max offset along the finger axis (gripper local y).
+        height_tol: Max offset along the tool approach axis (gripper local z).
     """
 
-    require_alignment: bool = False
+    require_alignment: bool = True
     max_distance: float = 0.05  # coarse center-distance bound, always applied
-    lateral_tol: float = 0.012  # max world-xy grip->object offset (m)
-    height_tol: float = 0.030  # max world-z grip->object offset (m)
+    pinch_tol: float = 0.007    # gripper-local x (jaws close across this)
+    finger_tol: float = 0.020   # gripper-local y (along the jaws)
+    height_tol: float = 0.027   # gripper-local z (tool approach axis)
 
 
 class KinematicGraspLock:
@@ -82,8 +88,8 @@ class KinematicGraspLock:
         self.grasp_object_names = tuple(grasp_object_names)
         self.gripper_body_name = gripper_body_name
         self.gripper_joint_names = list(gripper_joint_names)
-        # Default = permissive (old 5cm snap, no alignment) so behavior is
-        # unchanged unless a caller opts into the demanding gate.
+        # Demanding alignment gate is on by default; pass an engage_config with
+        # require_alignment=False for the old permissive 5cm snap.
         self.engage_config = engage_config or GraspEngageConfig()
 
         self._held_object_name: Optional[str] = None
@@ -143,15 +149,28 @@ class KinematicGraspLock:
         if best_name is None or best_dist > max_distance:
             return None, best_name, best_dist
 
-        # Demanding gate: the gripper must straddle the object (small horizontal
-        # offset) at the object's height (small vertical offset). World-frame
-        # because the grasp is top-down. A near-miss violates the lateral bound
-        # and so fails to lock — the physical basis for realistic recovery data.
+        # Demanding gate: the object must be within the gripper's real grasp
+        # envelope, checked in the gripper's TOOL FRAME because that envelope is
+        # anisotropic — tight across the jaws' pinch axis, loose along the
+        # fingers, moderate in height. The grip-site->object offset is rotated
+        # into the gripper body frame and bounded per axis, so a near-miss fails
+        # to lock and the kinematic weld can't grant a grasp the real arm
+        # wouldn't get. (Calibrated to the measured non-locked grasp envelope;
+        # see GraspEngageConfig. The one case it can't catch is a small pinch-
+        # axis miss that the closing jaws shove back to centre — no engage-time
+        # check sees past that recentering; only an actual test-lift would.)
         if cfg.require_alignment:
             obj_pos = self.data.xpos[self.model.body(best_name).id]
-            lateral = float(np.linalg.norm(obj_pos[:2] - grip_pos[:2]))
-            vertical = float(abs(obj_pos[2] - grip_pos[2]))
-            if lateral > cfg.lateral_tol or vertical > cfg.height_tol:
+            gripper_q = self.data.xquat[self.model.body(self.gripper_body_name).id]
+            q_inv = np.empty(4)
+            mujoco.mju_negQuat(q_inv, gripper_q)
+            local = np.empty(3)
+            mujoco.mju_rotVecQuat(local, obj_pos - grip_pos, q_inv)
+            if (
+                abs(local[0]) > cfg.pinch_tol
+                or abs(local[1]) > cfg.finger_tol
+                or abs(local[2]) > cfg.height_tol
+            ):
                 return None, best_name, best_dist
 
         body1_id = self.model.body(self.gripper_body_name).id

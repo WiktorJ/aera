@@ -287,6 +287,13 @@ class Ar4Mk3EnvConfig:
     has_object: bool = True
     target_in_the_air: bool = False
     absolute_state_actions: bool = False
+    # Scale applied to the policy's relative arm action before it's added to the
+    # current joint qpos: `arm_target = qpos + action[:6] * relative_action_scale`
+    # (see Ar4Mk3Env._set_action). Set it to match the policy's arm-action units:
+    # 1.0 for a policy that outputs joint deltas directly in radians, 0.05 for one
+    # whose arm output is normalized to ~[-1, 1]. A wrong value scales every
+    # commanded joint motion by a constant factor.
+    relative_action_scale: float = 0.05
     target_offset: tuple[float, float, float] = (0.0, -0.04, 0.03)
     obj_range: tuple[float, float] = (0.09, 0.08)
     obj_offset: tuple[float, float] = (0.0, -0.04)

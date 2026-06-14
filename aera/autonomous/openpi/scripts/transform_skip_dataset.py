@@ -61,9 +61,14 @@ def parse_args() -> argparse.Namespace:
         type=int,
         required=True,
         help=(
-            "Subsample interval. skip=1 means no change (original pairs). "
-            "skip=5 means take every 5th frame and pair obs[t] with action[t+4]. "
-            "Must be >= 1."
+            "Subsample interval — a LEARNING hyperparameter, not a control-rate "
+            "setting. skip=1 keeps every recorded frame; skip=N takes every Nth "
+            "frame and pairs obs[t] with action[t+N]. Pick it so the per-step "
+            "delta carries signal: recording is per mj-step (0.002 s), so tiny "
+            "skips give near-zero deltas and the policy can learn to sit still. "
+            "How the predictions are applied at deploy is a separate concern — "
+            "set the env/driver's n_substeps to match the skip used here so one "
+            "action = one decision interval. Must be >= 1."
         ),
     )
     parser.add_argument(
@@ -71,26 +76,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Convert actions to delta actions (action[t+skip] - state[t]) for joint dims, keeping gripper absolute.",
-    )
-    parser.add_argument(
-        "--n-substeps",
-        type=int,
-        default=20,
-        help=(
-            "The sim env's n_substeps (env step = n_substeps * 0.002 s = the rate "
-            "at which eval/deploy applies one action). Collection records per "
-            "mj-step (0.002 s), so the action timescale is skip * 0.002 s; for "
-            "sim->real parity skip must equal n_substeps. See CONTROL_RATE_SPEC.md."
-        ),
-    )
-    parser.add_argument(
-        "--allow-rate-mismatch",
-        action="store_true",
-        default=False,
-        help=(
-            "Proceed even when --skip != --n-substeps. Without this the script "
-            "errors out, so a control-rate mismatch can't slip through silently."
-        ),
     )
     parser.add_argument(
         "--num-joint-dims",
@@ -568,25 +553,16 @@ def main():
     if args.skip < 1:
         raise ValueError(f"--skip must be >= 1, got {args.skip}")
 
-    # Control-rate parity: collection records per sim mj-step (0.002 s), so the
-    # action timescale is skip * 0.002 s; eval/deploy applies one action per env
-    # step (n_substeps * 0.002 s). They only match when skip == n_substeps, so a
-    # different skip silently trains the policy for the wrong control rate.
-    # See CONTROL_RATE_SPEC.md. Hard-fail unless explicitly overridden.
-    if args.skip != args.n_substeps:
-        msg = (
-            f"--skip ({args.skip}) != --n-substeps ({args.n_substeps}): the "
-            f"resulting action timescale is {args.skip * 0.002:.3f} s but "
-            f"eval/deploy applies one action per {args.n_substeps * 0.002:.3f} s "
-            f"env step, so the policy would run at the wrong control rate on "
-            f"hardware. Set --skip {args.n_substeps}, or pass "
-            f"--allow-rate-mismatch if this is intentional (see "
-            f"CONTROL_RATE_SPEC.md)."
-        )
-        if args.allow_rate_mismatch:
-            logging.warning("CONTROL-RATE MISMATCH (allowed): %s", msg)
-        else:
-            raise ValueError(msg)
+    # skip is a data/learning choice: it sets how far apart paired frames are so
+    # the per-step delta carries signal. The deploy side reproduces this rate by
+    # setting the env/driver's n_substeps equal to the skip used, so record the
+    # skip with the dataset (e.g. in its repo name). See CONTROL_RATE_SPEC.md.
+    logging.info(
+        "Building dataset with skip=%d. Deploy/eval must set n_substeps=%d to "
+        "apply one action per decision interval.",
+        args.skip,
+        args.skip,
+    )
 
     if args.state_aug and args.smooth_state:
         raise ValueError(

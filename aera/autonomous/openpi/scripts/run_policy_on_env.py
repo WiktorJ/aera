@@ -75,6 +75,18 @@ class Args:
     # confounded by unstable MuJoCo contact-grasp physics (the demos are
     # collected with this lock). Disable to eval under raw friction grasping.
     kinematic_grasp: bool = True
+    # mj-steps integrated per env.step (= per policy action). MUST match the
+    # `--skip` the trained dataset was built with: the action delta spans
+    # `skip * 0.002 s` of motion, and one env.step integrates
+    # `n_substeps * 0.002 s`, so they have to be equal for the arm to move at
+    # the rate the policy expects. (e.g. a skip=3 checkpoint → n_substeps=3.)
+    # Defaults to the env's 20.
+    n_substeps: int = 20
+    # Scale applied to the policy's relative arm-joint action in the env. The
+    # dataset stores joint deltas in radians (Unnormalize restores physical
+    # units), so the policy output is applied directly at 1.0. Use a smaller
+    # value only for a policy whose arm output is normalized to ~[-1, 1].
+    relative_action_scale: float = 1.0
     # Apply the shared sensor-realism image augmentation to eval renders so
     # sim-eval matches the augmented training distribution. Off by default.
     obs_image_aug: bool = False
@@ -160,9 +172,11 @@ def _build_env(args: Args, model_path: str, domain_rand_config: Any) -> Ar4Mk3Pi
         reward_type="sparse",
         use_eef_control=False,  # Policy outputs joint positions
         domain_rand=domain_rand_config,
+        n_substeps=args.n_substeps,
         absolute_state_actions=False,
         include_images_in_obs=True,
         kinematic_grasp=args.kinematic_grasp,
+        relative_action_scale=args.relative_action_scale,
         obs_image_aug=args.obs_image_aug,
         obs_image_aug_strength=args.obs_image_aug_strength,
     )
@@ -207,6 +221,15 @@ def _stdin_pressed() -> bool:
         return False
     sys.stdin.readline()
     return True
+
+
+def _is_success(env: Ar4Mk3PickAndPlaceEnv) -> bool:
+    """Task success: the manipulated object sits within distance_threshold of the
+    goal. The env never sets `terminated` (continuing task), so we compute this
+    directly from sim state — mirrors the collector's success check
+    (collect_trajectories.run_pick_and_place_and_collect)."""
+    object_pos = env._utils.get_site_xpos(env.model, env.data, "object0")
+    return bool(np.linalg.norm(object_pos - env.goal) < env.distance_threshold)
 
 
 def _build_warmup_action() -> np.ndarray:
@@ -290,7 +313,7 @@ def _run_episode(
     obs, _ = env.reset(seed=args.seed + episode_idx)
     action_plan: collections.deque = collections.deque()
     replay_images: list[np.ndarray] = []
-    done = False
+    success = False
     last_successful_gripper_action: float = 0.0
     phase = PHASE_PICK
     current_prompt = pick_prompt
@@ -302,7 +325,7 @@ def _run_episode(
     for t in range(args.max_episode_steps):
         try:
             if t < args.num_steps_wait:
-                obs, _, done, _, _ = env.step(warmup_action)
+                obs, _, _, _, _ = env.step(warmup_action)
                 continue
 
             # Check for phase transition (two-phase prompting only).
@@ -343,15 +366,18 @@ def _run_episode(
                 action_plan.extend(steps)
 
             action = _denormalize_gripper(action_plan.popleft())
-            obs, _, done, _, _ = env.step(action)
+            obs, _, terminated, truncated, _ = env.step(action)
 
-            if done:
+            if _is_success(env):
+                success = True
+                break
+            if terminated or truncated:
                 break
         except Exception as e:
             logging.error(f"Caught exception: {e}", exc_info=True)
             break
 
-    return done, replay_images, current_prompt
+    return success, replay_images, current_prompt
 
 
 def run_on_env(args: Args) -> None:

@@ -60,10 +60,11 @@ class Ar4Mk3Inputs(transforms.DataTransformFn):
             },
             "image_mask": {
                 "base_0_rgb": np.True_,
-                # We only mask padding images for pi0 model, not pi0-FAST. Do not change this for your own dataset.
-                "left_wrist_0_rgb": np.True_
-                if self.model_type == _model.ModelType.PI0_FAST
-                else np.False_,
+                # left_wrist_0_rgb is our REAL gripper camera — always attended.
+                "left_wrist_0_rgb": np.True_,
+                # right_wrist_0_rgb is a zero pad (we have no right wrist). pi0
+                # can mask padding out of attention; pi0-FAST cannot, so it must
+                # see the zeros. This is the only image the mask rule applies to.
                 "right_wrist_0_rgb": np.True_
                 if self.model_type == _model.ModelType.PI0_FAST
                 else np.False_,

@@ -16,7 +16,7 @@ class Ar4Mk3PickAndPlaceEnv(Ar4Mk3Env, EzPickle):
     The robot is controlled by small displacements of the gripper in Cartesian coordinates and the inverse kinematics are computed internally by the MuJoCo framework. The gripper can be opened or closed in order to perform the graspping operation of pick and place.
     The task is also continuing which means that the robot has to maintain the block in the target position for an indefinite period of time.
 
-    The control frequency of the robot is of `f = 25 Hz`. This is achieved by applying the same action in 20 subsequent simulator step (with a time step of `dt = 0.002 s`) before returning the control to the robot.
+    By default the control frequency is `f = 25 Hz`: each action is held for `n_substeps = 20` simulator steps (`dt = 0.002 s`) before control returns to the policy. `n_substeps` is configurable, so the rate is `1 / (n_substeps * dt)`; whatever value is used must match the `--skip` the training dataset was built with (see `transform_skip_dataset.py`).
 
     ## Action Space
 

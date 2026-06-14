@@ -483,8 +483,10 @@ class Ar4Mk3Env(BaseEnv):
             if self.absolute_state_actions:
                 new_target_arm_qpos = action[:6]
             else:
-                # Relative position control for the arm
-                arm_joint_deltas = action[:6] * 0.05  # Max 0.05 rad change per step
+                # Relative position control for the arm: action[:6] is scaled and
+                # added to the current joint qpos. The scale matches the policy's
+                # arm-action units (see Ar4Mk3EnvConfig.relative_action_scale).
+                arm_joint_deltas = action[:6] * self.config.relative_action_scale
                 arm_joint_names = [f"joint_{i + 1}" for i in range(6)]
                 current_arm_qpos = np.array(
                     [

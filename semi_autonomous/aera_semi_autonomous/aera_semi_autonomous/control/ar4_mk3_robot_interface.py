@@ -422,6 +422,28 @@ class Ar4Mk3RobotInterface(RobotInterface):
         err_pos, err_rot = err[:3], err[3:]
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)  # type: ignore
         previous_site_xpos = np.full_like(data.site_xpos[site_id], np.inf)
+
+        # No-progress patience. The per-step check below aborts when the grip
+        # site moves < 1e-7 in a single step. Under control-loop realism the arm
+        # responds to a fresh IK target with a whole-step delay (latency_steps)
+        # plus a first-order lag, so the site genuinely barely moves for the
+        # first several steps of every move — tripping the single-step check at
+        # step 1-3 and failing an otherwise-fine solve. Tolerate a stall lasting
+        # up to the actuation warm-up window (delay + lag settling) before
+        # aborting; a true stall (joint limit / singularity) persists well past
+        # it. Only relevant for the in-place solve that actually applies
+        # actuation; the identity config keeps the original single-step abort.
+        stall_patience = 1
+        if data is self.env.data and (
+            self._act_cfg.latency_steps > 0 or self._act_cfg.command_lag_alpha < 1.0
+        ):
+            stall_patience = min(
+                50,
+                self._act_cfg.latency_steps
+                + int(np.ceil(1.0 / max(self._act_cfg.command_lag_alpha, 1e-3))),
+            )
+        stall_count = 0
+
         for steps in range(self.config.ik.max_steps):
             site_xpos = data.site_xpos[site_id]
 
@@ -478,9 +500,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 q[qpos_indices], joint_limits[:, 0], joint_limits[:, 1]
             )
             if np.linalg.norm(site_xpos - previous_site_xpos) < 1e-7:
-                success = False
-                failure_reason = "IK step failed to converge"
-                break
+                stall_count += 1
+                if stall_count >= stall_patience:
+                    success = False
+                    failure_reason = "IK step failed to converge"
+                    break
+            else:
+                stall_count = 0
 
             data.ctrl[actuator_ids] = q[qpos_indices]
 

@@ -45,8 +45,9 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --python 3.12  --frozen --
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen
 
-# Make the training script executable
-RUN chmod +x aera/autonomous/openpi/scripts/run_runpod_train.sh
+# Make the training + eval launch scripts executable
+RUN chmod +x aera/autonomous/openpi/scripts/run_runpod_train.sh \
+    && chmod +x aera/autonomous/openpi/scripts/run_runpod_eval.sh
 RUN echo "cd /app" >> /root/.bashrc
 
 # Setup start script

@@ -35,6 +35,7 @@ import tyro
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera.autonomous.openpi.eval import metrics as _metrics
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
 )
@@ -300,8 +301,8 @@ def _run_episode(
     place_prompt: str,
     episode_idx: int,
     display: dict | None,
-) -> tuple[bool, list[np.ndarray], str]:
-    """Runs a single evaluation episode. Returns (success, replay_images, final_prompt)."""
+) -> tuple[_metrics.EpisodeMetrics, list[np.ndarray], str]:
+    """Runs a single evaluation episode. Returns (metrics, replay_images, final_prompt)."""
     logging.info(f"\nStarting episode {episode_idx + 1}/{args.num_episodes}")
     if args.two_phase_prompt:
         logging.info(f"Phase 1 (pick): {pick_prompt}")
@@ -313,7 +314,8 @@ def _run_episode(
     obs, _ = env.reset(seed=args.seed + episode_idx)
     action_plan: collections.deque = collections.deque()
     replay_images: list[np.ndarray] = []
-    success = False
+    tracker = _metrics.EpisodeTracker(env)
+    tracker_started = False
     last_successful_gripper_action: float = 0.0
     phase = PHASE_PICK
     current_prompt = pick_prompt
@@ -327,6 +329,12 @@ def _run_episode(
             if t < args.num_steps_wait:
                 obs, _, _, _, _ = env.step(warmup_action)
                 continue
+
+            # Capture the spawn geometry once, after the settle steps, so the
+            # progress ratios are normalized against the real starting pose.
+            if not tracker_started:
+                tracker.start()
+                tracker_started = True
 
             # Check for phase transition (two-phase prompting only).
             if (
@@ -367,9 +375,9 @@ def _run_episode(
 
             action = _denormalize_gripper(action_plan.popleft())
             obs, _, terminated, truncated, _ = env.step(action)
+            tracker.update()
 
             if _is_success(env):
-                success = True
                 break
             if terminated or truncated:
                 break
@@ -377,7 +385,29 @@ def _run_episode(
             logging.error(f"Caught exception: {e}", exc_info=True)
             break
 
-    return success, replay_images, current_prompt
+    # If the episode ended during the settle window (e.g. immediate exception),
+    # start() may not have run; produce a zeroed episode rather than crashing.
+    if not tracker_started:
+        tracker.start()
+    return tracker.finalize(), replay_images, current_prompt
+
+
+def _log_funnel(agg: dict[str, float], prefix: str) -> None:
+    """Pretty-print the aggregated funnel + headline scalars."""
+    if not agg:
+        return
+    n = int(agg.get("eval/num_episodes", 0))
+    funnel = " / ".join(
+        f"{stage}={agg.get(f'eval/funnel/{stage}_rate', 0.0) * 100:.0f}%"
+        for stage in ("reached", "grasped", "lifted", "transported", "placed")
+    )
+    logging.info(f"Funnel ({prefix}, n={n}): {funnel}")
+    logging.info(
+        "  reach_progress=%.2f place_progress=%.2f grasp_drop_rate=%.2f",
+        agg.get("eval/reach_progress_mean", 0.0),
+        agg.get("eval/place_progress_mean", 0.0),
+        agg.get("eval/grasp_drop_rate", 0.0),
+    )
 
 
 def run_on_env(args: Args) -> None:
@@ -397,33 +427,31 @@ def run_on_env(args: Args) -> None:
     env = _build_env(args, model_path, domain_rand_config)
     display = None if args.headless else _setup_display()
 
-    total_episodes, total_successes = 0, 0
+    episode_metrics: list[_metrics.EpisodeMetrics] = []
     for episode_idx in range(args.num_episodes):
-        success, replay_images, final_prompt = _run_episode(
+        ep, replay_images, final_prompt = _run_episode(
             args, env, client, pick_prompt, place_prompt, episode_idx, display
         )
-        total_episodes += 1
-        if success:
-            total_successes += 1
+        episode_metrics.append(ep)
 
         _save_episode_video(
-            replay_images, args.video_out_path, episode_idx, final_prompt, success
+            replay_images, args.video_out_path, episode_idx, final_prompt, ep.placed
         )
 
-        logging.info(f"Episode finished. Success: {success}")
-        success_rate = total_successes / total_episodes * 100
         logging.info(
-            f"Success rate so far: {success_rate:.1f}% ({total_successes}/{total_episodes})"
+            "Episode finished. reached=%s grasped=%s lifted=%s transported=%s "
+            "placed=%s (reach_progress=%.2f place_progress=%.2f)",
+            ep.reached, ep.grasped, ep.lifted, ep.transported, ep.placed,
+            ep.reach_progress, ep.place_progress,
         )
+        _log_funnel(_metrics.aggregate(episode_metrics), prefix="so far")
 
     env.close()
     if display is not None:
         plt.ioff()
         plt.close("all")
     logging.info("Evaluation finished.")
-    if total_episodes > 0:
-        final_rate = total_successes / total_episodes * 100
-        logging.info(f"Final success rate: {final_rate:.1f}%")
+    _log_funnel(_metrics.aggregate(episode_metrics), prefix="final")
 
 
 if __name__ == "__main__":

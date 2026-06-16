@@ -1,9 +1,10 @@
 """Generate tileable grayscale FDM layer-line textures for the task objects.
 
 The pick-and-place policy is deployed onto real 3D-PLA-printed blocks and
-target plates. In sim those were flat one-color slabs; this script synthesizes
-the characteristic FDM striation pattern (horizontal layer lines) so the
-domain randomizer can tint + shade them into plausible printed parts.
+target plates, which carry the characteristic FDM striation pattern (horizontal
+layer lines). A flat one-color surface reads as "CAD / sim", so this script
+synthesizes that striation as grayscale textures the domain randomizer can
+tint + shade into plausible printed parts.
 
 Why procedural instead of scanned photos: it's reproducible (seeded), tiles
 cleanly so texrepeat>1 doesn't seam, and is pure grayscale so the runtime's

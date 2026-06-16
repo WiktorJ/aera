@@ -1,10 +1,10 @@
 """Generate chamfered / filleted cube OBJ variants for the pickable PLA blocks.
 
-The task blocks were rendered as sharp boxes — a perfect cube silhouette is the
-strongest remaining "CAD / sim" tell. Real printed parts have beveled or rounded
-edges, and different prints differ. This emits a small library of edge-treatment
-variants; the domain randomizer shows one per block per episode (visual only —
-collision stays the box geom, so grasp physics is unchanged).
+A perfect sharp-edged cube is a strong "CAD / sim" tell — real printed parts
+have beveled or rounded edges, and different prints differ. This emits a small
+library of edge-treatment variants; the domain randomizer shows one per block
+per episode (visual only — collision stays the box geom, so grasp physics is
+unchanged).
 
 Two families:
   * chamfer — a flat 45deg bevel. FLAT per-face normals so each facet shades

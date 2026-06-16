@@ -1,4 +1,4 @@
-"""Generate the MJCF prop pool — assets + slot bodies — from _manifest.json.
+"""Generate the MJCF prop pool — assets + prop bodies — from _manifest.json.
 
 Usage:
     python scripts/generate_props_xml.py                       # defaults
@@ -10,18 +10,19 @@ normalize_props.py) and writes aera/autonomous/simulation/mujoco/ar4_mk3/
 props.xml as a <mujoco> document that:
 
   - Declares one <texture>, one <mesh>, one <material> per kept prop asset.
-  - Defines K=20 reusable prop-slot bodies, each with a single mesh geom that
-    is contype=0/conaffinity=0 (visual-only, never interacts with the arm).
-    Slots start hidden below the room floor (z=-10) so an unconfigured run
-    looks identical to the pre-prop scene.
+  - Defines one prop body per asset, each with a single mesh geom that is
+    contype=0/conaffinity=0 (visual-only, never interacts with the arm).
+    Bodies start hidden below the room floor (z=-10) so an unconfigured run
+    looks identical to a scene with no props.
 
-At runtime the DR pipeline mutates each slot's body_pos / body_quat /
-geom_dataid / geom_matid / geom_rgba (alpha=0 → slot disabled).
+At runtime the DR pipeline picks up to --num-slots bodies to show, and mutates
+each chosen body's body_pos / body_quat / geom_rgba (alpha=0 → hidden). The
+mesh and material are fixed per body at compile time (see _slot_block).
 
 Asset filter: all YCB props are kept (each is unique). Robocasa variants are
 capped per-category (default 4) so the compiled model stays light — at 20
-slots per scene the diversity is the same whether we load 4 or 25 variants of
-each category, but the GPU memory + compile time scale linearly.
+visible bodies per scene the diversity is the same whether we load 4 or 25
+variants of each category, but the GPU memory + compile time scale linearly.
 
 Re-run this script whenever the manifest changes. The output file is
 generated — do not edit by hand.
@@ -116,13 +117,13 @@ def _asset_block(entries: list[dict]) -> str:
 def _slot_block(selected: list[dict]) -> str:
     """One body per asset. Each geom is compiled with its actual mesh — that's
     the only way MuJoCo's mesh-specific geom_pos/geom_quat (the inertial-frame
-    transform) end up correct. We tried sharing K=20 slots with runtime
-    geom_dataid swapping, but MuJoCo bakes mesh geom_pos/quat at compile and
-    ignores runtime writes to those arrays, so swapped meshes float by the
-    placeholder/asset mesh_pos delta.
+    transform) end up correct. A shared pool of bodies whose mesh is swapped at
+    runtime via geom_dataid does not work: MuJoCo bakes mesh geom_pos/quat at
+    compile and ignores runtime writes to those arrays, so a swapped-in mesh
+    floats by its mesh_pos delta from the body the geom was compiled against.
 
     All bodies start hidden (rgba alpha=0, pos below the floor) so an
-    unconfigured run renders identically to the bare scene.
+    unconfigured run renders identically to a scene with no props.
 
     Constraint: each asset can appear at most once per scene since there's
     exactly one body per asset.
@@ -144,14 +145,13 @@ def _slot_block(selected: list[dict]) -> str:
 
 
 def _compile_and_read_aabbs(selected: list[dict]) -> dict[str, dict]:
-    """Build a probe model with one body+geom per asset, then read MuJoCo's
-    authoritative `model.geom_aabb`. That array is stored as
-    (cx, cy, cz, hx, hy, hz) in body frame and already accounts for every
-    compile-time transform — inertial vertex recentering, mesh_pos, mesh_quat,
-    and any geom_pos MuJoCo set implicitly. Trying to recompute this from
-    mesh_vert alone produces wrong placement (objects float or sink) because
-    mesh_quat is non-identity for any asset whose principal axes don't align
-    with mesh +XYZ."""
+    """Build a probe model with one body+geom per asset and compute each asset's
+    true rendered AABB in body frame. MuJoCo's `model.geom_aabb` is NOT enough:
+    it bounds the raw mesh_vert in mesh frame and ignores mesh_quat, so for any
+    asset MuJoCo rotates onto its principal inertial axes the stored AABB is off
+    by that rotation. We instead transform the verts by (mesh_pos, mesh_quat)
+    ourselves — matching the render formula — and bound the result, which is the
+    placement the runtime sampler needs to seat props on the table."""
     asset_lines = []
     body_lines = []
     for e in selected:
@@ -187,9 +187,9 @@ def _compile_and_read_aabbs(selected: list[dict]) -> dict[str, dict]:
         # `model.geom_aabb` is the AABB of raw mesh_vert in mesh frame — it does
         # NOT account for mesh_quat. For assets where MuJoCo rotated the mesh
         # onto its principal inertial axes (e.g. rubik's cube, large_marker),
-        # the actual rendered AABB differs from geom_aabb by that rotation,
-        # which is exactly the 2-4cm residual float left after the per-asset
-        # body refactor. Compute the true post-rotation AABB ourselves.
+        # the actual rendered AABB differs from geom_aabb by that rotation — a
+        # 2-4cm gap that leaves those props floating if used as-is. Compute the
+        # true post-rotation AABB ourselves.
         mid = mujoco.mj_name2id(
             model, mujoco.mjtObj.mjOBJ_MESH, f"m_{e['id']}"
         )

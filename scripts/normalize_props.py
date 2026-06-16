@@ -13,8 +13,7 @@ For each prop asset under aera/autonomous/simulation/props/{ycb,robocasa}/:
     loses per-part specular/shininess (which the DR pipeline overrides anyway).
   - Compute the asset's axis-aligned bounding box from the (merged) mesh.
   - Emit aera/autonomous/simulation/props/_manifest.json — the single source of
-    truth that scene XML generation (step 3) and the runtime sampler (step 4)
-    both consume.
+    truth that generate_props_xml.py and the runtime sampler both consume.
 
 Manifest entries look like:
 

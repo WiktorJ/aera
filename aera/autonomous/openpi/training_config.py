@@ -202,6 +202,7 @@ _BASE_CONFIGS = [
         keep_period=5_000,
         batch_size=32,
     ),
+    # TODO: flat LR now, perhaps try actual decay.
     openpi_config.TrainConfig(
         name="pi05_ar4_mk3",
         model=pi0_config.Pi0Config(
@@ -217,9 +218,9 @@ _BASE_CONFIGS = [
             ),
         ),
         lr_schedule=_optimizer.CosineDecaySchedule(
-            warmup_steps=10_000,
+            warmup_steps=2_000,
             peak_lr=5e-5,
-            decay_steps=1_000_000,
+            decay_steps=300_000,
             decay_lr=5e-5,
         ),
         optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
@@ -227,10 +228,10 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
-        num_train_steps=25_000,
+        num_train_steps=300_000,
         log_interval=400,
-        save_interval=5_000,
-        keep_period=5_000,
+        save_interval=10_000,
+        keep_period=60_000,
         batch_size=32,
     ),
     openpi_config.TrainConfig(

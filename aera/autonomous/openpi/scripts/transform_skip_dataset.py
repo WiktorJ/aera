@@ -97,7 +97,21 @@ def parse_args() -> argparse.Namespace:
             "If set, drop frames whose action is closer than this L2 distance "
             "(over joint dims) to the previously written frame's action within "
             "the same episode. Useful for filtering out static/idle frames "
-            "where the robot pauses between sub-tasks."
+            "where the robot pauses between sub-tasks. The gripper is guarded "
+            "separately (see --gripper-eps) so grasp/release frames survive."
+        ),
+    )
+    parser.add_argument(
+        "--gripper-eps",
+        type=float,
+        default=0.001,
+        help=(
+            "Gripper guard for --min-action-delta: a frame whose gripper dims "
+            "moved more than this (max abs change vs the last written frame) is "
+            "always kept, even when the arm joints are static. Prevents the idle "
+            "filter from deleting grasp/release transitions where only the "
+            "gripper moves. Set relative to gripper travel and above the hold "
+            "jitter floor (default 0.001). Ignored if there are no gripper dims."
         ),
     )
     parser.add_argument(
@@ -277,6 +291,7 @@ def transform_dataset(
     num_joint_dims: int,
     exclude_prompts: set[str] | None = None,
     min_action_delta: float | None = None,
+    gripper_eps: float = 0.001,
     smoothed_actions: np.ndarray | None = None,
     smoothed_state: np.ndarray | None = None,
     excluded_episodes: set[int] | None = None,
@@ -481,12 +496,22 @@ def transform_dataset(
         if action_future is not None:
 
             # Drop frames where the action barely moved relative to the last
-            # written frame in this episode (filters static/idle pauses).
+            # written frame in this episode (filters static/idle pauses). The
+            # gripper is guarded separately: a frame whose gripper dims moved
+            # by more than gripper_eps is always kept, even when the arm joints
+            # are static, so grasp/release transitions (joints held, only the
+            # gripper moving) are never filtered out.
             if min_action_delta is not None and last_action_for_episode is not None:
                 joint_now = action_future[:num_joint_dims]
                 joint_prev = last_action_for_episode[:num_joint_dims]
                 dist = float(np.linalg.norm(joint_now - joint_prev))
-                if dist < min_action_delta:
+                gripper_now = action_future[num_joint_dims:]
+                gripper_prev = last_action_for_episode[num_joint_dims:]
+                gripper_moved = (
+                    gripper_now.size > 0
+                    and float(np.abs(gripper_now - gripper_prev).max()) > gripper_eps
+                )
+                if dist < min_action_delta and not gripper_moved:
                     frames_skipped_static += 1
                     continue
 
@@ -540,7 +565,8 @@ def transform_dataset(
         f"  Skip interval:          {skip}\n"
         f"  Delta actions:          {delta_actions}\n"
         f"  Excluded prompts:       {exclude_prompts or 'none'}\n"
-        f"  Min action delta:       {min_action_delta if min_action_delta is not None else 'disabled'}"
+        f"  Min action delta:       {min_action_delta if min_action_delta is not None else 'disabled'}\n"
+        f"  Gripper eps:            {gripper_eps if min_action_delta is not None else 'n/a'}"
     )
 
     return output_dataset
@@ -578,6 +604,7 @@ def main():
         f"Config: repo_id={args.repo_id}, skip={args.skip}, "
         f"delta_actions={args.delta_actions}, num_joint_dims={args.num_joint_dims}, "
         f"exclude_prompts={exclude_prompts}, min_action_delta={args.min_action_delta}, "
+        f"gripper_eps={args.gripper_eps}, "
         f"smooth_window={args.smooth_window}, smooth_polyorder={args.smooth_polyorder}, "
         f"smooth_state={args.smooth_state}, max_episodes={args.max_episodes}, "
         f"image_aug={args.image_aug}, state_aug={args.state_aug}, "
@@ -636,6 +663,7 @@ def main():
             num_joint_dims=args.num_joint_dims,
             exclude_prompts=exclude_prompts,
             min_action_delta=args.min_action_delta,
+            gripper_eps=args.gripper_eps,
             smoothed_actions=smoothed_actions,
             smoothed_state=smoothed_state,
             excluded_episodes=excluded_episodes,

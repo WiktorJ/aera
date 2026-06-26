@@ -590,11 +590,9 @@ def main():
         args.skip,
     )
 
-    if args.state_aug and args.smooth_state:
-        raise ValueError(
-            "--state-aug with --smooth-state would low-pass away the injected "
-            "state jitter; enable at most one."
-        )
+    # --state-aug + --smooth-state compose fine: smoothing is precomputed on the
+    # raw signal, then the DR noise is layered on top (and still cancels in the
+    # delta reference), so the injected jitter is not low-passed away.
 
     exclude_prompts = None
     if args.exclude_prompts:

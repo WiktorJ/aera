@@ -58,6 +58,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # wheel downloads can exceed uv's default 300s lock timeout, so raise it too.
 ENV UV_CACHE_DIR=/root/.cache/uv
 ENV UV_LOCK_TIMEOUT=900
+# Rootless docker's slirp4netns networking drops DNS queries under uv's
+# default ~50 concurrent downloads (several are 100-800MB CUDA/torch wheels).
+# A modest cap keeps the resolver responsive; completed wheels persist in the
+# cache mount either way, so retried builds resume where they left off.
+ENV UV_CONCURRENT_DOWNLOADS=8
 
 WORKDIR /app
 

@@ -248,6 +248,39 @@ _BASE_CONFIGS = [
         exp_name="debug_pi05",
         wandb_enabled=True,
     ),
+    # End-to-end smoke test of the train + eval-worker pipeline: real data config
+    # (so norm stats are saved into the checkpoint and create_trained_policy can
+    # load it), dummy-width model with random init (no base-checkpoint download).
+    # Unlike debug_pi05 (fake data, no asset_id/transforms), checkpoints from this
+    # config are evaluable by eval_worker.py. The policy itself is garbage; only
+    # the plumbing is being tested.
+    openpi_config.TrainConfig(
+        name="debug_pi05_eval",
+        model=pi0_config.Pi0Config(
+            pi05=True,
+            paligemma_variant="dummy",
+            action_expert_variant="dummy",
+            action_horizon=10,
+            discrete_state_input=False,
+        ),
+        data=Ar4Mk3DataConfig(
+            repo_id=DEFAULT_TRAINING_DATA_REPO,
+            base_config=openpi_config.DataConfig(prompt_from_task=True),
+            extra_delta_transform=False,
+            assets=openpi_config.AssetsConfig(
+                assets_dir=f"hf://datasets/{DEFAULT_TRAINING_DATA_REPO}",
+                asset_id="assets",
+            ),
+        ),
+        batch_size=2,
+        num_train_steps=20,
+        log_interval=10,
+        save_interval=10,
+        keep_period=10,
+        overwrite=True,
+        exp_name="debug_pi05_eval",
+        wandb_enabled=True,
+    ),
 ]
 
 

@@ -39,12 +39,12 @@ This will:
 Once inside the container, you can run training with:
 
 ```bash
-uv run aera/autonomous/openpi/scripts/train.py <config_name> --exp-name=<experiment_name> --overwrite
+uv run aera/autonomous/openpi/scripts/train.py <config_name> --base-config.exp-name=<experiment_name> --base-config.overwrite
 ```
 
 For example:
 ```bash
-uv run aera/autonomous/openpi/scripts/train.py my_config --exp-name=test_experiment --overwrite
+uv run aera/autonomous/openpi/scripts/train.py my_config --base-config.exp-name=test_experiment --base-config.overwrite
 ```
 
 ### 3. Interactive Development

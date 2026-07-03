@@ -2,8 +2,8 @@
 set -e
 
 if [ "$#" -lt 1 ]; then
-    echo "Usage: $0 <config_name> [args...]"
-    exit 1
+  echo "Usage: $0 <config_name> [args...]"
+  exit 1
 fi
 
 CONFIG_NAME=$1
@@ -25,16 +25,16 @@ echo "  Checkpoint Dir: /workspace"
 # (e.g. EVAL_ARGS="--n-substeps 3 --num-episodes 25").
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "${RUN_EVAL:-1}" = "1" ]; then
-    echo "Launching eval worker in background (set RUN_EVAL=0 to disable)..."
-    nohup bash "$SCRIPT_DIR/run_runpod_eval.sh" "$CONFIG_NAME" "$EXP_NAME" \
-        ${EVAL_ARGS:-} >/workspace/eval_worker.log 2>&1 &
-    echo "  eval worker pid $! -> logs at /workspace/eval_worker.log"
-    export XLA_PYTHON_CLIENT_MEM_FRACTION="${TRAIN_MEM_FRACTION:-0.8}"
-    echo "  lowered training GPU mem fraction to $XLA_PYTHON_CLIENT_MEM_FRACTION to share the GPU"
+  echo "Launching eval worker in background (set RUN_EVAL=0 to disable)..."
+  nohup bash "$SCRIPT_DIR/run_runpod_eval.sh" "$CONFIG_NAME" "$EXP_NAME" \
+    ${EVAL_ARGS:-} >/workspace/eval_worker.log 2>&1 &
+  echo "  eval worker pid $! -> logs at /workspace/eval_worker.log"
+  export XLA_PYTHON_CLIENT_MEM_FRACTION="${TRAIN_MEM_FRACTION:-0.8}"
+  echo "  lowered training GPU mem fraction to $XLA_PYTHON_CLIENT_MEM_FRACTION to share the GPU"
 fi
 
 uv run python aera/autonomous/openpi/scripts/train.py \
-    "$CONFIG_NAME" \
-    --checkpoint-base-dir "/workspace" \
-    --exp-name "$EXP_NAME" \
-    "$@"
+  "$CONFIG_NAME" \
+  --base-config.checkpoint-base-dir "/workspace" \
+  --base-config.exp-name "$EXP_NAME" \
+  "$@"

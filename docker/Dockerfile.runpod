@@ -63,6 +63,9 @@ ENV UV_LOCK_TIMEOUT=900
 # A modest cap keeps the resolver responsive; completed wheels persist in the
 # cache mount either way, so retried builds resume where they left off.
 ENV UV_CONCURRENT_DOWNLOADS=8
+# The default 30s idle timeout is too tight for the multi-hundred-MB CUDA
+# wheels over slirp4netns, which can stall mid-transfer under load.
+ENV UV_HTTP_TIMEOUT=600
 
 WORKDIR /app
 

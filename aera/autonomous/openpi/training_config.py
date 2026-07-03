@@ -254,6 +254,9 @@ _BASE_CONFIGS = [
     # Unlike debug_pi05 (fake data, no asset_id/transforms), checkpoints from this
     # config are evaluable by eval_worker.py. The policy itself is garbage; only
     # the plumbing is being tested.
+    # Trains on a 3-episode subset (built by create_subset_dataset.py) for a fast
+    # download, but loads norm-stats assets from the FULL repo (the subset carries
+    # no assets, and full-data stats keep normalization identical to pi05_ar4_mk3).
     openpi_config.TrainConfig(
         name="debug_pi05_eval",
         model=pi0_config.Pi0Config(
@@ -264,7 +267,7 @@ _BASE_CONFIGS = [
             discrete_state_input=False,
         ),
         data=Ar4Mk3DataConfig(
-            repo_id=DEFAULT_TRAINING_DATA_REPO,
+            repo_id=f"{DEFAULT_TRAINING_DATA_REPO}_subset3ep",
             base_config=openpi_config.DataConfig(prompt_from_task=True),
             extra_delta_transform=False,
             assets=openpi_config.AssetsConfig(

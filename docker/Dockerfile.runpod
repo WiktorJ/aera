@@ -50,6 +50,15 @@ RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+# Keep uv's cache on the BuildKit cache mount: XDG_CACHE_HOME above points at
+# /workspace/.cache (the runpod volume, for runtime), which during builds is
+# an ephemeral layer — so the cache mount at /root/.cache/uv never hit and
+# every build re-downloaded all wheels and re-cloned the openpi git repo.
+# openpi + openpi-client share that repo; a slow cold clone alongside ~3GB of
+# wheel downloads can exceed uv's default 300s lock timeout, so raise it too.
+ENV UV_CACHE_DIR=/root/.cache/uv
+ENV UV_LOCK_TIMEOUT=900
+
 WORKDIR /app
 
 # Copy only project deps + the path-source dependency so uv can resolve it

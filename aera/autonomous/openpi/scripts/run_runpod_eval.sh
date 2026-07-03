@@ -27,6 +27,13 @@ shift 2
 export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
 export XLA_PYTHON_CLIENT_MEM_FRACTION="${EVAL_MEM_FRACTION:-0.15}"
 
+# Headless MuJoCo rendering: no X11 in the container, so GLFW (the default)
+# fails with DISPLAY/GLFW/mjr_makeContext errors. Render offscreen via EGL on
+# the GPU; set MUJOCO_GL=osmesa to fall back to CPU rendering if EGL is
+# unavailable on the host.
+export MUJOCO_GL="${MUJOCO_GL:-egl}"
+export PYOPENGL_PLATFORM="${PYOPENGL_PLATFORM:-egl}"
+
 echo "Starting eval worker:"
 echo "  Config:          $CONFIG_NAME"
 echo "  Experiment Name: $EXP_NAME"

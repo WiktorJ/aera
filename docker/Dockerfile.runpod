@@ -9,6 +9,13 @@ ENV OPENPI_DATA_HOME="/workspace/.cache/openpi"
 ENV AERA_CHECKPOINT_DIR="/workspace/checkpoints"
 ENV MLFLOW_TRACKING_URI="http://127.0.0.1:5000"
 
+# Headless MuJoCo rendering for the eval worker: no X11/GLFW in the container,
+# so render offscreen via EGL on the GPU. NVIDIA_DRIVER_CAPABILITIES must
+# include "graphics" for the container runtime to mount libEGL_nvidia.
+ENV MUJOCO_GL=egl
+ENV PYOPENGL_PLATFORM=egl
+ENV NVIDIA_DRIVER_CAPABILITIES=all
+
 # RunPod mounts the GPU driver files here. We must add this to the path
 # so JAX finds the real hardware driver (libcuda.so) before the venv libs.
 # ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -26,8 +33,19 @@ RUN apt-get update && apt-get install -y \
     openssh-server \
     libgl1 \
     libglib2.0-0 \
+    libegl1 \
+    libgles2 \
+    libglvnd0 \
+    libglx0 \
+    libosmesa6 \
     tmux \
     && rm -rf /var/lib/apt/lists/*
+
+# glvnd dispatches EGL calls to the NVIDIA driver via this ICD config. The
+# driver mount provides libEGL_nvidia.so.0 but not always the json, so write it.
+RUN mkdir -p /usr/share/glvnd/egl_vendor.d && \
+    echo '{"file_format_version":"1.0.0","ICD":{"library_path":"libEGL_nvidia.so.0"}}' \
+    > /usr/share/glvnd/egl_vendor.d/10_nvidia.json
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

@@ -298,7 +298,16 @@ class Ar4Mk3EnvConfig:
     obj_range: tuple[float, float] = (0.09, 0.08)
     obj_offset: tuple[float, float] = (0.0, -0.04)
     target_range: float = 0.13
-    distance_threshold: float = 0.05
+    # Success = object-goal 3D distance below this. The goal sits at z=0.03
+    # while a placed block's centre is at z~=0.012, so ~0.018 of the budget is
+    # an irreducible z-offset: 0.03 still allows ~2.4 cm of horizontal
+    # placement error. Kept this tight because the object and goal spawns are
+    # sampled independently from overlapping ranges, so a generous threshold
+    # makes episodes start already "solved" (10% of spawns at the old 0.05,
+    # ~2.7% at 0.03) — free sparse reward and a policy-independent floor under
+    # eval success rates. Shared by eval and the collectors' success labeling
+    # (a scripted place lands ~0.018 from the goal, well inside).
+    distance_threshold: float = 0.03
     reward_type: str = "sparse"
     object_size: tuple[float, float, float] = (0.012, 0.012, 0.012)
     # Spawn the blocks (object0 + distractors) at a random yaw about +Z, so the

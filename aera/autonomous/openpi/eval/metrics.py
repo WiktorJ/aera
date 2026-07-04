@@ -14,6 +14,9 @@ Scalars (mean / p50 / p90 across episodes):
         well" with "the block spawned close to the gripper / goal".
     max_lift_height                 -- height the object was raised above spawn (m).
     grasp_count, time_to_first_grasp, grasp_drop_rate -- grasp quality / stability.
+    wrong_object_grasp_count        -- kinematic-lock engagements on a distractor
+        block. Kept separate from the funnel: "grasped" means object0 only, so a
+        wrong-block grab reads as a grounding failure, not manipulation progress.
 
 The tracker reads the env's sim state (object0 / grip sites, goal, and the
 kinematic grasp lock) and is reused by both the manual `run_policy_on_env.py`
@@ -56,6 +59,7 @@ class EpisodeMetrics:
     grasp_count: int
     held_at_end: bool
     time_to_first_grasp: int | None  # steps after settle; None if never grasped
+    wrong_object_grasp_count: int  # lock engagements on a distractor block
 
     # Absolute distances (m), useful when comparing against the ratios.
     min_reach_dist: float
@@ -99,12 +103,18 @@ class EpisodeTracker:
     def _grip_pos(self) -> np.ndarray:
         return self.env._utils.get_site_xpos(self.env.model, self.env.data, "grip")
 
-    def _is_held(self, lift_height: float) -> bool:
-        """True while the object is grasped. Uses the kinematic lock when present;
-        otherwise falls back to "object lifted off the table" (physical grasp)."""
+    def _held_state(self, lift_height: float) -> tuple[bool, bool]:
+        """(holding object0, holding a different block). Uses the kinematic
+        lock's held-object name when present — the lock can attach distractor
+        blocks too, and those must not count as task grasps. Falls back to
+        "object0 lifted off the table" (physical grasp), which is object0-only
+        by construction and can't see wrong-object grabs."""
         if self._lock is not None:
-            return bool(self._lock.is_held)
-        return lift_height > self.t.lift
+            held_name = self._lock.held_object
+            return held_name == "object0", (
+                held_name is not None and held_name != "object0"
+            )
+        return lift_height > self.t.lift, False
 
     # --- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -122,7 +132,9 @@ class EpisodeTracker:
         self._min_transport = float("inf")  # horizontal object->goal while lifted
 
         self._grasp_count = 0
+        self._wrong_grasp_count = 0
         self._prev_held = False
+        self._prev_wrong_held = False
         self._held_at_end = False
         self._first_grasp_step: int | None = None
         self._steps = 0
@@ -139,16 +151,19 @@ class EpisodeTracker:
         lift = float(obj[2]) - self._spawn_z
         self._max_lift = max(self._max_lift, lift)
 
-        held = self._is_held(lift)
+        held, wrong_held = self._held_state(lift)
         if held and not self._prev_held:
             self._grasp_count += 1
             if self._first_grasp_step is None:
                 self._first_grasp_step = self._steps
+        if wrong_held and not self._prev_wrong_held:
+            self._wrong_grasp_count += 1
         if lift > self.t.lift:
             horiz = float(np.linalg.norm(obj[:2] - goal[:2]))
             self._min_transport = min(self._min_transport, horiz)
 
         self._prev_held = held
+        self._prev_wrong_held = wrong_held
         self._held_at_end = held
 
     def finalize(self) -> EpisodeMetrics:
@@ -178,6 +193,7 @@ class EpisodeTracker:
             grasp_count=self._grasp_count,
             held_at_end=self._held_at_end,
             time_to_first_grasp=self._first_grasp_step,
+            wrong_object_grasp_count=self._wrong_grasp_count,
             min_reach_dist=self._min_reach,
             min_place_dist=self._min_place,
         )
@@ -221,6 +237,9 @@ def aggregate(episodes: list[EpisodeMetrics]) -> dict[str, float]:
         out[f"eval/{name}_p90"] = float(np.percentile(vals, 90))
 
     out["eval/grasp_count_mean"] = float(np.mean([e.grasp_count for e in episodes]))
+    out["eval/wrong_object_grasp_count_mean"] = float(
+        np.mean([e.wrong_object_grasp_count for e in episodes])
+    )
 
     # Time-to-first-grasp only over episodes that actually grasped.
     grasp_times = [

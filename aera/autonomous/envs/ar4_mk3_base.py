@@ -232,9 +232,17 @@ class Ar4Mk3Env(BaseEnv):
     # Objects the eval grasp lock may attach (mirrors the interface's set).
     _GRASP_OBJECT_NAMES = ("object0", "object_distractor1", "object_distractor2")
     # Gripper-target thresholds (ctrl units, range [-0.014 open, 0 closed]) used
-    # to infer engage/release from the policy's gripper command. A block grasp
-    # commands the jaws to ~-0.0115 (the object surface), so "closing" is any
-    # target clearly inside full-open; a small hysteresis band avoids chatter.
+    # to infer engage/release from the policy's gripper command. Engage is
+    # two-staged: this floor ("clearly inside full-open", kept above the release
+    # threshold for hysteresis) plus the lock's per-object close-depth gate,
+    # which requires the command to reach the candidate block's own surface
+    # (collection closes to -(half_width - 0.5mm), so grasp depth scales with
+    # block size: -0.009 for the 19 mm preset down to -0.0125 for the 24 mm
+    # graspable max). A policy sweeping past a block with a barely-closing
+    # command welds nothing. The grasp target is always <= 24 mm
+    # (_GRASPABLE_BLOCK_PRESETS), so the floor only binds for wrong-object
+    # grabs of the larger distractor-only presets (27/30 mm), whose deeper
+    # close commands sit at or below it — those cannot weld, which is fine.
     _GRASP_ENGAGE_CTRL = -0.013
     _GRASP_RELEASE_CTRL = -0.0135
 
@@ -299,15 +307,21 @@ class Ar4Mk3Env(BaseEnv):
         """Engage/release the lock from the policy's gripper command.
 
         Engage the closest in-range object once the gripper is commanded to
-        close (mirrors the interface's 5 cm proximity rule, gated on the close
-        command so we don't glue an object during the open-gripper approach);
-        release when it's commanded back open."""
+        grasp depth (gated on the close command so we don't glue an object
+        during the open-gripper approach); release when it's commanded back
+        open. The jaws are NOT frozen at engage time — the command fires before
+        they have physically travelled, so they're left under actuator control
+        to close onto the welded object and pinned once they settle. This keeps
+        eval's held frames (jaws closed on the block) matching the collection
+        demos, where engage happens after a completed scripted close."""
         target = float(self.data.ctrl[self._gripper_act_ids].mean())
         if self._grasp_lock.is_held:
             if target <= self._GRASP_RELEASE_CTRL:
                 self._grasp_lock.release()
+            else:
+                self._grasp_lock.maybe_pin_jaws()
         elif target >= self._GRASP_ENGAGE_CTRL:
-            self._grasp_lock.engage()
+            self._grasp_lock.engage(pin_jaws=False, close_ctrl_target=target)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         # gymnasium.Env.reset

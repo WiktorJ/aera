@@ -53,6 +53,11 @@ class GraspEngageConfig:
         pinch_tol: Max offset along the jaws' pinch axis (gripper local x).
         finger_tol: Max offset along the finger axis (gripper local y).
         height_tol: Max offset along the tool approach axis (gripper local z).
+        close_depth_tol: Slack on the close-depth gate (engage's
+            ``close_ctrl_target``): the commanded jaw target may stop this far
+            short of the candidate's surface (``-pinch_half_width``) and still
+            count as a committed close. Matches the collection preload (0.5 mm),
+            so a demo-faithful close command passes with exactly that margin.
     """
 
     require_alignment: bool = True
@@ -60,6 +65,7 @@ class GraspEngageConfig:
     pinch_tol: float = 0.007    # gripper-local x (jaws close across this)
     finger_tol: float = 0.020   # gripper-local y (along the jaws)
     height_tol: float = 0.027   # gripper-local z (tool approach axis)
+    close_depth_tol: float = 0.0005  # jaw-travel slack for the close-depth gate
 
 
 class KinematicGraspLock:
@@ -97,10 +103,19 @@ class KinematicGraspLock:
         self._held_jaw_qpos: Optional[np.ndarray] = None
         self._held_jaw_qpos_indices: Optional[np.ndarray] = None
         self._held_jaw_dof_indices: Optional[np.ndarray] = None
+        # Deferred-pin bookkeeping (see maybe_pin_jaws).
+        self._pin_prev_jaw_qpos: Optional[np.ndarray] = None
+        self._pin_calls: int = 0
 
     @property
     def is_held(self) -> bool:
         return self._held_object_name is not None
+
+    @property
+    def jaws_pinned(self) -> bool:
+        """True once the jaw qpos is being enforced (immediately for
+        ``engage(pin_jaws=True)``, after :meth:`maybe_pin_jaws` otherwise)."""
+        return self._held_jaw_qpos is not None
 
     @property
     def held_object(self) -> Optional[str]:
@@ -115,8 +130,21 @@ class KinematicGraspLock:
             dof_idx.append(self.model.jnt_dofadr[jid])
         return np.array(qpos_idx), np.array(dof_idx)
 
+    def _pinch_half_width(self, obj_name: str) -> Optional[float]:
+        """Half-width of the object's collision box across the pinch dimension
+        (the shorter horizontal extent — the side the yaw-aligned jaws close
+        on). None if the object has no geom named after it."""
+        geom_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, obj_name)
+        if geom_id == -1:
+            return None
+        size = self.model.geom_size[geom_id]
+        return float(min(size[0], size[1]))
+
     def engage(
-        self, max_distance: Optional[float] = None
+        self,
+        max_distance: Optional[float] = None,
+        pin_jaws: bool = True,
+        close_ctrl_target: Optional[float] = None,
     ) -> Tuple[Optional[str], Optional[str], float]:
         """Lock the closest known object near the grip site, subject to the gate.
 
@@ -129,6 +157,26 @@ class KinematicGraspLock:
         ``require_alignment`` set, the object must additionally be laterally and
         vertically aligned with the grip site (jaws actually straddling it), so a
         small mis-aligned approach fails to grab.
+
+        ``pin_jaws=True`` (collection: engage is called after a scripted close
+        has physically completed, so the current jaw qpos is the closed-on-block
+        pose) freezes the jaws at their current qpos immediately.
+        ``pin_jaws=False`` (eval: engage fires on the policy's close *command*,
+        while the jaws are still travelling) leaves the jaws under actuator
+        control so they physically close onto the welded object; the caller then
+        pins them via :meth:`maybe_pin_jaws` once they settle. Without that
+        deferral the jaws would be frozen visibly open around a floating block —
+        an image the training demos never contain.
+
+        ``close_ctrl_target`` (eval): the commanded jaw target, in jaw-qpos
+        units. When given, the candidate only locks if the command reaches its
+        surface — ``close_ctrl_target >= -(pinch_half_width + close_depth_tol)``
+        — i.e. the policy committed to a genuine close ON THIS object, not a
+        twitch off full-open. The bound is per-candidate because the grasp
+        command scales with block width (collection closes to
+        ``-(half_width - preload)``), so no flat threshold fits every size.
+        None (collection) skips the gate: there the scripted close has already
+        physically happened.
         """
         cfg = self.engage_config
         if max_distance is None:
@@ -173,6 +221,15 @@ class KinematicGraspLock:
             ):
                 return None, best_name, best_dist
 
+        # Close-depth gate: the commanded jaw target must reach this candidate's
+        # surface (within close_depth_tol slack) before the weld is granted.
+        if close_ctrl_target is not None:
+            half_width = self._pinch_half_width(best_name)
+            if half_width is not None and close_ctrl_target < -(
+                half_width + cfg.close_depth_tol
+            ):
+                return None, best_name, best_dist
+
         body1_id = self.model.body(self.gripper_body_name).id
         body2_id = self.model.body(best_name).id
         p1 = self.data.xpos[body1_id]
@@ -194,8 +251,40 @@ class KinematicGraspLock:
         self._held_jaw_qpos_indices, self._held_jaw_dof_indices = self._slide_indices(
             self.gripper_joint_names
         )
-        self._held_jaw_qpos = self.data.qpos[self._held_jaw_qpos_indices].copy()
+        self._held_jaw_qpos = (
+            self.data.qpos[self._held_jaw_qpos_indices].copy() if pin_jaws else None
+        )
+        self._pin_prev_jaw_qpos = None
+        self._pin_calls = 0
         return best_name, best_name, best_dist
+
+    def maybe_pin_jaws(
+        self, settle_tol: float = 1e-5, max_wait_calls: int = 25
+    ) -> bool:
+        """Pin the jaws once their closing motion has physically settled.
+
+        Intended to be called once per control step after an
+        ``engage(pin_jaws=False)``. The jaws settle when consecutive samples
+        move less than ``settle_tol`` (they've stalled against the held object
+        or reached their target); ``max_wait_calls`` force-pins after that many
+        calls so contact jitter can't leave them unpinned forever. Returns True
+        once the jaws are pinned (or already were). No-op while nothing is held.
+        """
+        if self._held_object_name is None:
+            return False
+        if self._held_jaw_qpos is not None:
+            return True
+        qpos = self.data.qpos[self._held_jaw_qpos_indices].copy()
+        self._pin_calls += 1
+        settled = self._pin_prev_jaw_qpos is not None and bool(
+            np.max(np.abs(qpos - self._pin_prev_jaw_qpos)) < settle_tol
+        )
+        if settled or self._pin_calls >= max_wait_calls:
+            self._held_jaw_qpos = qpos
+            self._pin_prev_jaw_qpos = None
+            return True
+        self._pin_prev_jaw_qpos = qpos
+        return False
 
     def enforce(self) -> None:
         """Re-apply the held object's world pose and the pinned jaw qpos.
@@ -245,3 +334,5 @@ class KinematicGraspLock:
         self._held_jaw_qpos = None
         self._held_jaw_qpos_indices = None
         self._held_jaw_dof_indices = None
+        self._pin_prev_jaw_qpos = None
+        self._pin_calls = 0

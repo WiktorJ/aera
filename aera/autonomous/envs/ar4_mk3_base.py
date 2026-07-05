@@ -154,6 +154,17 @@ class BaseEnv(MujocoRobotEnv):
             height=config.image_height,
         )
 
+    def _initialize_simulation(self):
+        super()._initialize_simulation()
+        # The base class asserts render_fps == 1/dt with a class-level metadata
+        # of 25 fps, which only holds for n_substeps=20. Recompute it from the
+        # actual dt (timestep * n_substeps) so any n_substeps passes; instance
+        # copy so the shared class dict isn't mutated.
+        self.metadata = {
+            **self.metadata,
+            "render_fps": int(np.round(1.0 / self.dt)),
+        }
+
     # GoalEnv methods
     # ----------------------------
 

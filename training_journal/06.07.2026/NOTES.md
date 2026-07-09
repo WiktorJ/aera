@@ -65,3 +65,12 @@ Also worth considering for the next run regardless: exclude the gripper dim from
 ## Final conclusion
 
 _To be filled in after evaluating the 50k checkpoint._
+
+
+## checkpoint 50k
+Never works in manual tests. Arm approaches fine but then it tries to grasp a bit off (like in front and next to the block) and obviously keeps failing to grasp and lift. Sometimes it manages an awkward grasp (not nicely enclosed, but half levitating with some gaps between object and jaws) but usually drops it. This won't be fixed changing the fully closed to 0, the position of gripper is not precise enough. Even a few it did grasp, it didn't drop it off.
+
+Works better with DR off. Sometimes it grasp okish but then randomly drops it, it look a bit like an artifact of the recovery/partial grasp (policy seems to learn to just drop???), have to revisit how this is implemented/perhaps do not use this feature. Maybe it's similar story with wrong approach perturbation? It learns to go approach a bit off?
+I'm thinking, since the training just sees random subset of steps in trajectory (actually how many subsequent steps does it see during training?), it doesn't actually learn the intended "fix your approach"/"fix your grasp", it learns to approach awkwardly and randomly drop.
+
+

@@ -77,3 +77,61 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
 ## To change for next training iteration
   * Do not include partial grasp, maybe even not wrong approach (have to think about that)
   * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.
+
+## Multi-seed eval-variance run (first pass)
+
+Script: `aera/autonomous/openpi/scripts/eval_variance.py`
+
+Parameters:
+  * `--config pi05_ar4_mk3`
+  * `--n-dr-seeds 10 --n-seeds 6 --k-repeats 3` (seeds 0-9 with domain_rand on, seeds 0-5 with domain_rand off, each repeated 3x with an identical reset seed)
+  * `--n-substeps 3 --replan-steps 10 --max-episode-steps 1000 --kinematic-grasp`
+  * prompt: `pick the yellow block and place it on the red target`
+  * Checkpoints: `checkpoints/pi05_ar4_mk3/pi05_ar4_mk3_2026-07-04_16-51-56/{20000,30000,40000,50000,60000,70000}` (10k not evaluated, not present locally)
+  * Output: `eval_results/pi05_ar4_mk3_2026-07-04_16-51-56/<step>/{summary.json,episodes.jsonl}`
+
+### Funnel rates
+
+| step | mode | n | reached | grasped | lifted | transported | placed |
+|------|------|---|---------|---------|--------|--------------|--------|
+| 20k | DR   | 30 | 0.73 | 0.40 | 0.40 | 0.03 | 0.03 |
+| 20k | noDR | 18 | 0.67 | 0.61 | 0.50 | 0.06 | 0.00 |
+| 20k | all  | 48 | 0.71 | 0.48 | 0.44 | 0.04 | 0.02 |
+| 30k | DR   | 30 | 0.73 | 0.47 | 0.40 | 0.07 | 0.07 |
+| 30k | noDR | 18 | 1.00 | 0.94 | 0.94 | 0.17 | 0.06 |
+| 30k | all  | 48 | 0.83 | 0.65 | 0.60 | 0.10 | 0.06 |
+| 40k | DR   | 30 | 0.67 | 0.43 | 0.47 | 0.07 | 0.03 |
+| 40k | noDR | 18 | 0.61 | 0.50 | 0.50 | 0.11 | 0.00 |
+| 40k | all  | 48 | 0.65 | 0.46 | 0.48 | 0.08 | 0.02 |
+| 50k | DR   | 30 | 0.73 | 0.33 | 0.37 | 0.03 | 0.03 |
+| 50k | noDR | 18 | 0.89 | 0.78 | 0.78 | 0.06 | 0.00 |
+| 50k | all  | 48 | 0.79 | 0.50 | 0.52 | 0.04 | 0.02 |
+| 60k | DR   | 30 | 0.80 | 0.53 | 0.53 | 0.13 | 0.10 |
+| 60k | noDR | 18 | 0.61 | 0.61 | 0.56 | 0.11 | 0.11 |
+| 60k | all  | 48 | 0.73 | 0.56 | 0.54 | 0.12 | 0.10 |
+| 70k | DR   | 30 | 0.77 | 0.40 | 0.37 | 0.03 | 0.03 |
+| 70k | noDR | 18 | 0.67 | 0.56 | 0.44 | 0.06 | 0.00 |
+| 70k | all  | 48 | 0.73 | 0.46 | 0.40 | 0.04 | 0.02 |
+
+### Between-seed std / within-seed std (mean), per stage
+
+| step | mode | reached | grasped | lifted | transported | placed |
+|------|------|---------|---------|--------|--------------|--------|
+| 20k | DR   | 0.33 / 0.19 | 0.33 / 0.28 | 0.33 / 0.28 | 0.10 / 0.05 | 0.10 / 0.05 |
+| 20k | noDR | 0.38 / 0.16 | 0.36 / 0.24 | 0.37 / 0.24 | 0.12 / 0.08 | 0.00 / 0.00 |
+| 20k | all  | 0.35 / 0.18 | 0.35 / 0.27 | 0.35 / 0.27 | 0.11 / 0.06 | 0.08 / 0.03 |
+| 30k | DR   | 0.39 / 0.09 | 0.45 / 0.09 | 0.39 / 0.19 | 0.13 / 0.09 | 0.13 / 0.09 |
+| 30k | noDR | 0.00 / 0.00 | 0.12 / 0.08 | 0.12 / 0.08 | 0.25 / 0.16 | 0.12 / 0.08 |
+| 30k | all  | 0.33 / 0.06 | 0.43 / 0.09 | 0.41 / 0.15 | 0.19 / 0.12 | 0.13 / 0.09 |
+| 40k | DR   | 0.39 / 0.14 | 0.40 / 0.19 | 0.40 / 0.19 | 0.13 / 0.09 | 0.10 / 0.05 |
+| 40k | noDR | 0.30 / 0.31 | 0.37 / 0.24 | 0.37 / 0.24 | 0.25 / 0.08 | 0.00 / 0.00 |
+| 40k | all  | 0.36 / 0.21 | 0.39 / 0.21 | 0.39 / 0.21 | 0.19 / 0.09 | 0.08 / 0.03 |
+| 50k | DR   | 0.42 / 0.05 | 0.37 / 0.19 | 0.38 / 0.19 | 0.10 / 0.05 | 0.10 / 0.05 |
+| 50k | noDR | 0.16 / 0.16 | 0.25 / 0.24 | 0.25 / 0.24 | 0.12 / 0.08 | 0.00 / 0.00 |
+| 50k | all  | 0.35 / 0.09 | 0.39 / 0.21 | 0.39 / 0.21 | 0.11 / 0.06 | 0.08 / 0.03 |
+| 60k | DR   | 0.34 / 0.09 | 0.45 / 0.09 | 0.45 / 0.09 | 0.31 / 0.05 | 0.30 / 0.00 |
+| 60k | noDR | 0.45 / 0.08 | 0.45 / 0.08 | 0.42 / 0.16 | 0.25 / 0.08 | 0.25 / 0.08 |
+| 60k | all  | 0.39 / 0.09 | 0.45 / 0.09 | 0.44 / 0.12 | 0.29 / 0.06 | 0.28 / 0.03 |
+| 70k | DR   | 0.33 / 0.14 | 0.39 / 0.19 | 0.38 / 0.19 | 0.10 / 0.05 | 0.10 / 0.05 |
+| 70k | noDR | 0.38 / 0.16 | 0.31 / 0.31 | 0.37 / 0.24 | 0.12 / 0.08 | 0.00 / 0.00 |
+| 70k | all  | 0.36 / 0.15 | 0.37 / 0.24 | 0.38 / 0.21 | 0.11 / 0.06 | 0.08 / 0.03 |

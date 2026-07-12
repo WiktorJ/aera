@@ -71,7 +71,7 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
   * [Done] Write a script that evaluates checkpoints with more attempts/seeds
   * [In Progress] Run evaluation with current checkpoints
   * Understand why there is difference between evals at training time and done offline.
-  * Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
+  * [Done] Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
   * [Done] Improve the evals, so that we have better understanding of the failure mode (how?) — metrics.py now tracks failed grasp attempts with tool-frame miss offsets (pinch/finger/height), commanded releases (premature drops), gripper open/close cycles (retry loops / jaw pulsing), block-pressed-into-table contact force, pre-grasp shoving, and a per-episode failure_mode label; eval_variance reports the breakdown per group/seed and tags videos with the mode.
 
 ## To change for next training iteration

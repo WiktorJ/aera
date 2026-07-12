@@ -8,39 +8,40 @@ checkpoint's step). Keeping eval in a separate process means the training loop
 is never slowed by the (expensive) MuJoCo rollouts, and the eval can sit on a
 different GPU/host.
 
-Architecture note: this reuses the exact rollout used by the manual
-`run_policy_on_env.py` (env construction, episode loop, metric tracking), so the
-two stay in sync. The trained `openpi` `Policy` object exposes the same
+Architecture note: the eval itself is the shared suite in
+aera.autonomous.openpi.eval.suite — the *same* {DR on x seeds, DR off x seeds}
+x K-repeats grid, with the same defaults, as the offline eval_variance script
+— so training-time curves and offline deep-dives are directly comparable (an
+offline run at defaults reproduces the training-time suite exactly). The
+trained `openpi` `Policy` object exposes the same
 `.infer(obs)["actions"]` interface as the websocket client, so it is passed
-straight in where the script would use the websocket client.
+straight into the suite's rollout. Per checkpoint, the flattened summary
+scalars go to mlflow metrics (eval/dr/... and eval/nodr/...) and the raw
+per-episode records (episodes.jsonl + summary.json) are attached as run
+artifacts under eval/<step>/.
 
 Example:
     python aera/autonomous/openpi/scripts/eval_worker.py \
         --config pi0_fast_ar4_mk3_low_mem_finetune \
         --checkpoint-base-dir checkpoints/ar4_mk3/my_exp \
-        --num-episodes 25 --n-substeps 3
+        --n-substeps 3
 """
 
 import dataclasses
+import json
 import logging
 import pathlib
+import tempfile
 import time
 
 import mlflow
-import numpy as np
 import tyro
 
 import openpi.policies.policy_config as _policy_config
 
 import aera.autonomous.openpi.training_config as _training_config
-from aera.autonomous.openpi.eval import metrics as _metrics
-from aera.autonomous.openpi.scripts.run_policy_on_env import (
-    Args as RolloutArgs,
-    _build_env,
-    _find_model_path,
-    _resolve_prompts,
-    _run_episode,
-)
+from aera.autonomous.openpi.eval import suite as _suite
+from aera.autonomous.openpi.scripts.run_policy_on_env import _find_model_path
 from aera.autonomous.openpi.scripts.train import _maybe_override_checkpoint_dir
 
 _EVALUATED_FILE = "evaluated_steps.txt"
@@ -70,23 +71,29 @@ class WorkerArgs:
     mlflow_run_id: str | None = None
 
     # --- Eval suite (fixed across checkpoints so curves are comparable) ---
-    # Defaults below match the verified-correct manual eval command from
-    # training_journal/06.07.2026/NOTES.md (and eval_variance.py) rather than
-    # arbitrary prior defaults: a prior run launched without EVAL_ARGS silently
-    # used n_substeps=20 against a skip=3 dataset (~6.7x too fast per policy
-    # step), making that run's on-training eval curve meaningless. Always
-    # double check n_substeps against the checkpoint's dataset `--skip`.
-    num_episodes: int = 20
-    seed: int = 1000  # eval-suite seed, deliberately separate from training seed
-    prompt: str = "pick the yellow block and place it on the red target"
-    domain_rand: bool = False
-    max_episode_steps: int = 1000
-    replan_steps: int = 10
+    # Defaults come straight from SuiteConfig — the one canonical suite shared
+    # with eval_variance.py (15 DR seeds x 2 + 10 no-DR seeds x 2 = 50
+    # episodes, seed starts at 1000) — so training-time and offline evals run
+    # the same scenarios by default. Rollout defaults match the
+    # verified-correct manual eval command from
+    # training_journal/06.07.2026/NOTES.md: a prior run launched without
+    # EVAL_ARGS silently used n_substeps=20 against a skip=3 dataset (~6.7x too
+    # fast per policy step), making that run's on-training eval curve
+    # meaningless. Always double check n_substeps against the checkpoint's
+    # dataset `--skip`.
+    n_dr_seeds: int = _suite.SuiteConfig.n_dr_seeds
+    n_seeds: int = _suite.SuiteConfig.n_seeds
+    k_repeats: int = _suite.SuiteConfig.k_repeats
+    dr_seed_start: int = _suite.SuiteConfig.dr_seed_start
+    seed_start: int = _suite.SuiteConfig.seed_start
+    prompt: str = _suite.SuiteConfig.prompt
+    max_episode_steps: int = _suite.SuiteConfig.max_episode_steps
+    replan_steps: int = _suite.SuiteConfig.replan_steps
     # mj-steps per env.step. MUST match the dataset `--skip` the checkpoint was
     # trained on (see run_policy_on_env.Args.n_substeps), else the arm moves at
     # the wrong rate and eval understates the policy.
-    n_substeps: int = 3
-    kinematic_grasp: bool = True
+    n_substeps: int = _suite.SuiteConfig.n_substeps
+    kinematic_grasp: bool = _suite.SuiteConfig.kinematic_grasp
 
     # --- Polling ---
     poll_interval_s: float = 60.0
@@ -94,22 +101,11 @@ class WorkerArgs:
     save_videos: bool = False
     video_out_path: str = "data/ar4_mk3/eval_worker_videos"
 
-
-def _build_rollout_args(args: WorkerArgs) -> RolloutArgs:
-    """Translate worker args into the rollout script's Args (headless, no stdin)."""
-    return RolloutArgs(
-        prompt=args.prompt,
-        replan_steps=args.replan_steps,
-        num_episodes=args.num_episodes,
-        max_episode_steps=args.max_episode_steps,
-        domain_rand=args.domain_rand,
-        headless=True,
-        kinematic_grasp=args.kinematic_grasp,
-        n_substeps=args.n_substeps,
-        two_phase_prompt=False,
-        seed=args.seed,
-        video_out_path=args.video_out_path,
-    )
+    def suite_config(self) -> _suite.SuiteConfig:
+        fields = {f.name for f in dataclasses.fields(_suite.SuiteConfig)}
+        return _suite.SuiteConfig(
+            **{k: v for k, v in dataclasses.asdict(self).items() if k in fields}
+        )
 
 
 def _discover_checkpoints(base: pathlib.Path) -> list[int]:
@@ -192,35 +188,33 @@ def _eval_checkpoint(
     if model_path is None:
         raise FileNotFoundError("Could not find AR4 MK3 scene.xml model file.")
 
-    rollout_args = _build_rollout_args(args)
-    # Seed before resolving prompts / building the env so domain randomization
-    # (when enabled) is identical across checkpoints — same suite every time.
-    np.random.seed(args.seed)
-    pick_prompt, place_prompt, dr_config = _resolve_prompts(rollout_args)
-    env = _build_env(rollout_args, model_path, dr_config)
+    suite_cfg = args.suite_config()
+    records = _suite.run_suite(suite_cfg, policy, model_path)
+    summary = _suite.summarize(records, suite_cfg)
+    _suite.log_summary(summary, suite_cfg)
 
-    episodes: list[_metrics.EpisodeMetrics] = []
-    try:
-        for episode_idx in range(args.num_episodes):
-            ep, _replay, _prompt = _run_episode(
-                rollout_args, env, policy, pick_prompt, place_prompt, episode_idx, None
-            )
-            episodes.append(ep)
-    finally:
-        env.close()
-
-    agg = _metrics.aggregate(episodes)
+    flat = _suite.flatten_for_mlflow(summary)
     client = mlflow.tracking.MlflowClient()
-    for key, value in agg.items():
+    for key, value in flat.items():
         client.log_metric(run_id, key, value, step=step)
+
+    # Attach the raw per-episode records (incl. per-attempt / per-release
+    # failure-mode events, which don't fit scalar metrics) to the run, so
+    # post-hoc analysis never needs to re-run rollouts.
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = pathlib.Path(tmp)
+        _suite.write_episodes_jsonl(records, tmp_dir / "episodes.jsonl")
+        (tmp_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+        client.log_artifacts(run_id, tmp, artifact_path=f"eval/{step}")
+
     logging.info(
-        "Logged step %d: success=%.1f%% grasped=%.1f%% reach_progress=%.2f "
-        "place_progress=%.2f",
+        "Logged step %d: success=%.1f%% grasped=%.1f%% "
+        "(dr success=%.1f%% | nodr success=%.1f%%)",
         step,
-        agg.get("eval/success_rate", 0.0) * 100,
-        agg.get("eval/funnel/grasped_rate", 0.0) * 100,
-        agg.get("eval/reach_progress_mean", 0.0),
-        agg.get("eval/place_progress_mean", 0.0),
+        flat.get("eval/success_rate", 0.0) * 100,
+        flat.get("eval/funnel/grasped_rate", 0.0) * 100,
+        flat.get("eval/dr/success_rate", 0.0) * 100,
+        flat.get("eval/nodr/success_rate", 0.0) * 100,
     )
 
 

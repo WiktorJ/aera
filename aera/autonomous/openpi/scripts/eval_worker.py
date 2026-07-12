@@ -70,16 +70,22 @@ class WorkerArgs:
     mlflow_run_id: str | None = None
 
     # --- Eval suite (fixed across checkpoints so curves are comparable) ---
+    # Defaults below match the verified-correct manual eval command from
+    # training_journal/06.07.2026/NOTES.md (and eval_variance.py) rather than
+    # arbitrary prior defaults: a prior run launched without EVAL_ARGS silently
+    # used n_substeps=20 against a skip=3 dataset (~6.7x too fast per policy
+    # step), making that run's on-training eval curve meaningless. Always
+    # double check n_substeps against the checkpoint's dataset `--skip`.
     num_episodes: int = 20
     seed: int = 1000  # eval-suite seed, deliberately separate from training seed
     prompt: str = "pick the yellow block and place it on the red target"
     domain_rand: bool = False
-    max_episode_steps: int = 400
-    replan_steps: int = 5
+    max_episode_steps: int = 1000
+    replan_steps: int = 10
     # mj-steps per env.step. MUST match the dataset `--skip` the checkpoint was
     # trained on (see run_policy_on_env.Args.n_substeps), else the arm moves at
     # the wrong rate and eval understates the policy.
-    n_substeps: int = 20
+    n_substeps: int = 3
     kinematic_grasp: bool = True
 
     # --- Polling ---
@@ -158,6 +164,21 @@ def _mark_evaluated(base: pathlib.Path, step: int) -> None:
         f.write(f"{step}\n")
 
 
+def _log_worker_args(client: mlflow.tracking.MlflowClient, run_id: str, args: WorkerArgs) -> None:
+    """Log the resolved eval args to mlflow so a run's eval curve is always
+    traceable to exactly what settings produced it (e.g. whether n_substeps
+    matched the dataset's --skip). Without this, EVAL_ARGS (the shell env var
+    used to override these at launch) leaves no record anywhere once the
+    process exits -- which previously made a wrong n_substeps unrecoverable."""
+    for key, value in dataclasses.asdict(args).items():
+        try:
+            client.log_param(run_id, f"eval_worker.{key}", value)
+        except mlflow.exceptions.MlflowException:
+            # Params are immutable once logged; a restarted worker re-logging
+            # the same run's args should just no-op rather than crash.
+            logging.debug("eval_worker.%s already logged for run %s", key, run_id)
+
+
 def _eval_checkpoint(
     args: WorkerArgs, run_id: str, step: int, ckpt_dir: pathlib.Path
 ) -> None:
@@ -229,6 +250,7 @@ def run_worker(args: WorkerArgs) -> None:
         f"Eval worker logging to mlflow run {run_id} "
         f"(tracking_uri={mlflow.get_tracking_uri()})"
     )
+    _log_worker_args(client, run_id, args)
 
     evaluated = _load_evaluated(base)
     while True:

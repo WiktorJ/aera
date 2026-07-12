@@ -151,15 +151,17 @@ def _run_seed_repeats(
             records.append(EpisodeRecord(seed=seed, repeat=repeat, domain_rand=domain_rand, metrics=ep))
             if args.save_videos:
                 tag = "dr" if domain_rand else "nodr"
+                # Failure mode in the filename so reviewing a specific mode
+                # (e.g. all grasp_missed episodes) is a glob, not a full watch.
                 _save_episode_video(
                     replay_images,
                     args.video_out_path,
-                    episode_idx=f"{tag}_seed{seed}_rep{repeat}",
+                    episode_idx=f"{tag}_seed{seed}_rep{repeat}_{ep.failure_mode}",
                     prompt=final_prompt,
                     success=ep.placed,
                 )
             logging.info(
-                "  [%s seed=%d rep=%d/%d] reached=%s grasped=%s transported=%s placed=%s",
+                "  [%s seed=%d rep=%d/%d] reached=%s grasped=%s transported=%s placed=%s mode=%s",
                 "dr" if domain_rand else "nodr",
                 seed,
                 repeat + 1,
@@ -168,6 +170,7 @@ def _run_seed_repeats(
                 ep.grasped,
                 ep.transported,
                 ep.placed,
+                ep.failure_mode,
             )
     finally:
         env.close()
@@ -196,6 +199,9 @@ def _per_seed_stats(records: list[EpisodeRecord], seed: int) -> dict:
         vals = [float(getattr(e, name)) for e in eps]
         out[f"{name}_mean"] = float(np.mean(vals))
         out[f"{name}_std"] = float(np.std(vals))
+    # Per-seed outcome counts: shows whether a seed fails *consistently* the
+    # same way across its K repeats or scatters across modes.
+    out["failure_modes"] = _metrics.failure_mode_counts(eps)
     return out
 
 
@@ -203,6 +209,7 @@ def _group_summary(records: list[EpisodeRecord], seeds: range) -> dict:
     per_seed = [_per_seed_stats(records, s) for s in seeds]
     summary: dict = {
         "aggregate": _metrics.aggregate([r.metrics for r in records]),
+        "failure_modes": _metrics.failure_mode_counts([r.metrics for r in records]),
         "per_seed": per_seed,
         # Between-seed spread: std, across seeds, of each seed's own mean rate.
         # This is scenario variance (different spawn geometry / DR draw).
@@ -241,6 +248,31 @@ def _log_group_summary(summary: dict, label: str, n_seeds: int, k_repeats: int) 
     )
     logging.info("  between-seed std: %s", between)
     logging.info("  within-seed  std: %s (repeat/policy variance)", within)
+    n = max(int(agg.get("eval/num_episodes", 0)), 1)
+    modes = " / ".join(
+        f"{mode}={count / n * 100:.0f}%"
+        for mode, count in summary["failure_modes"].items()
+    )
+    logging.info("  failure modes: %s", modes)
+    miss_keys = [
+        ("side (pinch)", "eval/miss/pinch_rate"),
+        ("front/back (finger)", "eval/miss/finger_rate"),
+        ("too high (height)", "eval/miss/height_rate"),
+        ("shallow close", "eval/miss/close_shallow_rate"),
+        ("far", "eval/miss/coarse_far_rate"),
+    ]
+    if any(k in agg for _, k in miss_keys):
+        miss = " / ".join(
+            f"{label}={agg.get(key, 0.0) * 100:.0f}%" for label, key in miss_keys
+        )
+        logging.info(
+            "  missed-grasp anatomy (%d failed attempts): %s",
+            int(
+                agg.get("eval/failed_grasp_attempts_mean", 0.0)
+                * agg.get("eval/num_episodes", 0)
+            ),
+            miss,
+        )
 
 
 def run_eval(args: Args) -> dict:

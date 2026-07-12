@@ -440,9 +440,11 @@ def run_on_env(args: Args) -> None:
 
         logging.info(
             "Episode finished. reached=%s grasped=%s lifted=%s transported=%s "
-            "placed=%s (reach_progress=%.2f place_progress=%.2f)",
+            "placed=%s mode=%s (reach_progress=%.2f place_progress=%.2f "
+            "attempts=%d close_cycles=%d press_steps=%d)",
             ep.reached, ep.grasped, ep.lifted, ep.transported, ep.placed,
-            ep.reach_progress, ep.place_progress,
+            ep.failure_mode, ep.reach_progress, ep.place_progress,
+            ep.grasp_attempt_count, ep.gripper_close_cycles, ep.press_steps,
         )
         _log_funnel(_metrics.aggregate(episode_metrics), prefix="so far")
 

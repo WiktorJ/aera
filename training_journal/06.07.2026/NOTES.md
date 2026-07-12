@@ -24,7 +24,7 @@
 Never works in manual tests. Arm approaches fine but then it tries to grasp a bit off (like in front and next to the block) and obviously keeps failing to grasp and lift. It goes down tries to graps, fails goes a bit up and tries again and so on, usually the longer it goes the worse it gets. Sometimes it manages an awkward grasp (not nicely enclosed, but half levitating with some gaps between object and jaws) but usually drops it. This won't be fixed changing the fully closed to 0, the position of gripper is not precise enough. Even a few it did grasp, it didn't drop it off.
 
 Works better with DR off. Sometimes it grasp okish but then randomly drops it, it look a bit like an artifact of the recovery/partial grasp (policy seems to learn to just drop???), have to revisit how this is implemented/perhaps do not use this feature. Maybe it's similar story with wrong approach perturbation? It learns to go approach a bit off?
-I'm thinking, since the training just sees random step in trajectory (TODO confirm that is really just gets current state, not a N recent steps), it doesn't actually learn the intended "fix your approach"/"fix your grasp", it learns to approach awkwardly and randomly drop.
+I'm thinking, since the training just sees random step in trajectory (TODO confirm that is really just gets current state, not a N recent steps), it doesn't actually learn the intended "fix your approach"/"fix your grasp", it learns to approach awkwardly and randomly drop. If you think about, policy will learn to pick up after drop, simply because it is just trained to pick up when block is on the table, so when it slips, policy will naturally understand that now is time to pick it up.
 
 Overall, useless policy.
 
@@ -66,3 +66,14 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
   * With DR off, the results are better. Not surprising, DR introduced a lot of visual noise, shadows, etc. With DR off, there is just few object and colors of objects and target are very easily distinguishable from background.
   * We should have automated evals that would be able to find more detailed failure patters. Manually testing a describing these as above is not feasible. Even for the same seed with have different behaviours, so running just once per seed is not enough. The manual test I did probably have huge variance/
   * Taking all these into account, I think the description of behaviour per checkpoint can be highly misleading for the actual performance. Because of 1) variance 2) My bias (it just get tiring) 3) My failure to put in words 3d arm movement and all the failure modes (there are some that I omitted, e.g. happens often that jaws push on the object (pushing it into the table), this would be catastrophic in real execution.)
+
+## To improve in evals:
+  * [Done] Write a script that evaluates checkpoints with more attempts/seeds
+  * [In Progress] Run evaluation with current checkpoints
+  * Understand why there is difference between evals at training time and done offline.
+  * Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
+  * Improve the evals, so that we have better understanding of the failure mode (how?)
+
+## To change for next training iteration
+  * Do not include partial grasp, maybe even not wrong approach (have to think about that)
+  * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.

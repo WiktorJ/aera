@@ -63,7 +63,7 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
   * Eval command `uv run aera/autonomous/openpi/scripts/run_policy_on_env.py --replan_steps=10 --n_substeps=3 --max_episode_steps=1000 --seed=<seed> --domain_rand`
   * Server start-up command `uv run aera/autonomous/openpi/scripts/serve_policy.py checkpoint:checkpoint --checkpoint.config=pi05_ar4_mk3 --checkpoint.dir=checkpoints/pi05_ar4_mk3/pi05_ar4_mk3_2026-07-04_16-51-56/70000`
 
-## Summary
+### Summary
   * It seems weird that, I was not able to match even the modest success of eval during training. I think first order of business is to figure out this one to eliminate all errors coming from some training, on training eval, and manual eval. In particular it seems that checkpoint 20k or 60k is the best, but this is not reflected by eval stats.
   * With DR off, the results are better. Not surprising, DR introduced a lot of visual noise, shadows, etc. With DR off, there is just few object and colors of objects and target are very easily distinguishable from background.
   * We should have automated evals that would be able to find more detailed failure patters. Manually testing a describing these as above is not feasible. Even for the same seed with have different behaviours, so running just once per seed is not enough. The manual test I did probably have huge variance/
@@ -73,9 +73,10 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
 ## To improve in evals:
   * [Done] Write a script that evaluates checkpoints with more attempts/seeds
   * [In Progress] Run evaluation with current checkpoints
-  * Understand why there is difference between evals at training time and done offline.
+  * [Done] Understand why there is difference between evals at training time and done offline. - This was mostly caused by n_replan=10 vs n_replan=5 during training eval (also reducing n_substeps may have some impact, higher could be better, but not confirmed)
   * [Done] Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
   * [Done] Improve the evals, so that we have better understanding of the failure mode (how?) — metrics.py now tracks failed grasp attempts with tool-frame miss offsets (pinch/finger/height), commanded releases (premature drops), gripper open/close cycles (retry loops / jaw pulsing), block-pressed-into-table contact force, pre-grasp shoving, and a per-episode failure_mode label; eval_variance reports the breakdown per group/seed and tags videos with the mode.
+  * In eval, the arm can sometimes lift the block even if it's not between the jaws, it gets "glued" to the front or side of the jaws, it seems that the lock engages too early. Some successes are "caused" by this behaviour.
 
 ## Eval tooling changes (12.07.2026)
 
@@ -94,7 +95,6 @@ Caveat: the eval-variance tables below predate these changes (old defaults, no f
 ## To change for next training iteration
   * Do not include partial grasp, maybe even not wrong approach (have to think about that)
   * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.
-  * In eval, the arm can sometimes lift the block even if it's not between the jaws, it gets "glued" to the front or side of the jaws, it seems that the lock engages too early.
 
 ## Multi-seed eval-variance run (first pass)
 
@@ -240,3 +240,6 @@ Parameters:
 | 50k | 0.09 | 0.19 | 0.34 | 0.22 | 0.58 | 0.53 | 0.84 | 0.62 |
 | 60k | 0.11 | 0.14 | 0.21 | 0.07 | 0.84 | 0.49 | 0.52 | 0.60 |
 | 70k | 0.10 | 0.13 | 0.18 | 0.12 | 0.85 | 0.69 | 1.98 | 0.60 |
+
+## Observations
+  * There is this behavior in eval where arm pushed down on block, it rotates (while going partially into the table) and because of the rotation it position itself inside jaws. Sometimes it flips to exactly flat position so that we ends-up with good grasp, sometimes it ends-up grasping "diagonally" and we have OOD grasp.

@@ -232,14 +232,24 @@ Parameters:
 
 ### Missed-grasp anatomy + other diagnostics (overall, i.e. all 50 episodes pooled)
 
-| step | coarse_far | pinch | finger | height | close_shallow | grasp_attempt_success_rate | premature_release_count_mean | press/episode_rate |
-|------|------------|-------|--------|--------|----------------|------------------------------|-------------------------------|----------------------|
-| 20k | 0.12 | 0.16 | 0.38 | 0.29 | 0.72 | 0.32 | 0.72 | 0.62 |
-| 30k | 0.10 | 0.22 | 0.16 | 0.11 | 0.83 | 0.49 | 0.64 | 0.64 |
-| 40k | 0.20 | 0.16 | 0.17 | 0.19 | 0.68 | 0.55 | 1.08 | 0.70 |
-| 50k | 0.09 | 0.19 | 0.34 | 0.22 | 0.58 | 0.53 | 0.84 | 0.62 |
-| 60k | 0.11 | 0.14 | 0.21 | 0.07 | 0.84 | 0.49 | 0.52 | 0.60 |
-| 70k | 0.10 | 0.13 | 0.18 | 0.12 | 0.85 | 0.69 | 1.98 | 0.60 |
+| step | coarse_far | pinch | finger | height | close_shallow | unknown | grasp_attempts_mean | failed_grasp_attempts_mean | grasp_attempt_success_rate | premature_release_count_mean | press/episode_rate | pushed_dist_pre_grasp_mean | gripper_close_cycles_mean |
+|------|------------|-------|--------|--------|----------------|---------|----------------------|-------------------------------|------------------------------|-------------------------------|----------------------|------------------------------|------------------------------|
+| 20k | 0.12 | 0.16 | 0.38 | 0.29 | 0.72 | 0.00 | 3.28 | 2.22 | 0.32 | 0.72 | 0.62 | 0.0092 | 3.52 |
+| 30k | 0.10 | 0.22 | 0.16 | 0.11 | 0.83 | 0.00 | 2.48 | 1.26 | 0.49 | 0.64 | 0.64 | 0.0150 | 2.98 |
+| 40k | 0.20 | 0.16 | 0.17 | 0.19 | 0.68 | 0.00 | 3.06 | 1.38 | 0.55 | 1.08 | 0.70 | 0.0059 | 3.12 |
+| 50k | 0.09 | 0.19 | 0.34 | 0.22 | 0.58 | 0.00 | 2.88 | 1.34 | 0.53 | 0.84 | 0.62 | 0.0114 | 2.84 |
+| 60k | 0.11 | 0.14 | 0.21 | 0.07 | 0.84 | 0.00 | 2.20 | 1.12 | 0.49 | 0.52 | 0.60 | 0.0175 | 2.10 |
+| 70k | 0.10 | 0.13 | 0.18 | 0.12 | 0.85 | 0.00 | 3.84 | 1.20 | 0.69 | 1.98 | 0.60 | 0.0045 | 3.82 |
+
+Column meanings:
+  * `coarse_far` / `pinch` / `finger` / `height` / `close_shallow` / `unknown` — rate (of failed grasp attempts) tagged with each miss reason; not exclusive, one attempt can have multiple reasons
+  * `grasp_attempts_mean` — avg. close commands issued near the block per episode
+  * `failed_grasp_attempts_mean` — avg. of those that didn't engage the lock
+  * `grasp_attempt_success_rate` — fraction of attempts (not episodes) that engaged
+  * `premature_release_count_mean` — avg. drops before success per episode
+  * `press/episode_rate` — fraction of episodes where a jaw pressed the block into the table (>3x its weight) while nothing was held
+  * `pushed_dist_pre_grasp_mean` — avg. distance (m) the block was dragged/shoved before ever being grasped
+  * `gripper_close_cycles_mean` — avg. open→close command cycles per episode (retry loops / jaw pulsing)
 
 ## Observations
   * There is this behavior in eval where arm pushed down on block, it rotates (while going partially into the table) and because of the rotation it position itself inside jaws. Sometimes it flips to exactly flat position so that we ends-up with good grasp, sometimes it ends-up grasping "diagonally" and we have OOD grasp.

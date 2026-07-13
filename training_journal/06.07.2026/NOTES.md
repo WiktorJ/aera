@@ -20,7 +20,9 @@
 | 70k  | 0.90 | 0.70 | 0.40 | 0.45 | 0.36 |
 
 
-## checkpoint 50k
+## Manual Eval replan_steps=10 n_substeps=3 max_episode_steps=1000
+
+### checkpoint 50k
 Never works in manual tests. Arm approaches fine but then it tries to grasp a bit off (like in front and next to the block) and obviously keeps failing to grasp and lift. It goes down tries to graps, fails goes a bit up and tries again and so on, usually the longer it goes the worse it gets. Sometimes it manages an awkward grasp (not nicely enclosed, but half levitating with some gaps between object and jaws) but usually drops it. This won't be fixed changing the fully closed to 0, the position of gripper is not precise enough. Even a few it did grasp, it didn't drop it off.
 
 Works better with DR off. Sometimes it grasp okish but then randomly drops it, it look a bit like an artifact of the recovery/partial grasp (policy seems to learn to just drop???), have to revisit how this is implemented/perhaps do not use this feature. Maybe it's similar story with wrong approach perturbation? It learns to go approach a bit off?
@@ -28,33 +30,33 @@ I'm thinking, since the training just sees random step in trajectory (TODO confi
 
 Overall, useless policy.
 
-## checkpoint 40k
+### checkpoint 40k
 Worked 1 out of 10 tries with DR. In general symptoms are similar like in 50k, but approach is a bit better (it sill doesn't puts the jaws around object, but less frequently). I also see sometimes the jaws pulsating back and forth when in grasping pose, like the arm cannot properly close them and then tries to open and try again (here maybe the full closure would help). 
 
 Doesn't seem to be any better with DR off.
 
 Overall, useless policy.
 
-## checkpoint 30k
+### checkpoint 30k
 Seems a bit better overall, but not much, it was able to grasp few more times (not super precisely and still with the visible gaps) but drops prematurely. Seems to behave better with DR off.
 
 Overall, useless policy.
 
-## checkpoint 20k
+### checkpoint 20k
 Seems again slightly better than 30k. Positioning around the object is a bit better, it grasped few times, be the grip was rather bad (gaps, etc.). Overall not much difference from 30k, maybe less often approach is off to the side/in front (but more often jaws press on the object). 
 
 Overall, useless policy.
 
-## checkpoint 60k
+### checkpoint 60k
 This is peculiar, but I found 60k to be doing better, probably the best checkpoint so far. In DR off it actually grasped in all 5 attempts (crapy grasps mostly, but it's something), it succeeded once. The problem with arm going to much to the side or in front seems to be much less prevalent here. It actually succeeded 2/10 in DR also. But still many of previously described failure modes are present.
 
 Overall, useless policy. But can sometimes do the job, which is better than the other ones.
 
-## checkpoint 70k
+### checkpoint 70k
 Nothing new, but seems worse than 60k (no success with DR nor without DR)
 
 
-## Additional details about manual tests:
+### Additional details about manual tests:
   * It doesn't use the same seed as eval done during training, but the same seeds between checkpoint.
   * Seeds 1-10 were tested with DR and seed 1-5 without DR
   * Eval numbers are most likely skewed upwards because 2 out of 20 start with object already on target (so real success ~= success -0.1)
@@ -92,6 +94,7 @@ Caveat: the eval-variance tables below predate these changes (old defaults, no f
 ## To change for next training iteration
   * Do not include partial grasp, maybe even not wrong approach (have to think about that)
   * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.
+  * In eval, the arm can sometimes lift the block even if it's not between the jaws, it gets "glued" to the front or side of the jaws, it seems that the lock engages too early.
 
 ## Multi-seed eval-variance run (first pass)
 

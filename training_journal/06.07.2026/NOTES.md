@@ -474,6 +474,104 @@ Open question (to decide after testing): the both-pads contact requirement effec
 
 
 
+## Ablation: best combo (nsub=20, replan=4, max=300) on ALL checkpoints, NEW pinch-contact engage gate
+
+First eval after the 13.07.2026 pinch-contact engage gate (see "Eval tooling changes (13.07.2026)"). Re-runs the best rollout combo found on 70k against every checkpoint, so the funnel is now free of glue-assisted false grasps.
+
+Script: `aera/autonomous/openpi/scripts/eval_variance.py` (driver: `scratchpad/run_ablation_pinch.sh`)
+
+Parameters:
+  * `--config pi05_ar4_mk3`
+  * Suite shape (defaults): DR seeds `1000-1014` (15), no-DR seeds `1000-1009` (10), `k_repeats=2` (50 episodes/checkpoint)
+  * `--n-substeps 20 --replan-steps 4 --max-episode-steps 300 --kinematic-grasp` (best combo from the 70k grid)
+  * prompt: `pick the yellow block and place it on the red target`
+  * Checkpoints: `checkpoints/pi05_ar4_mk3/pi05_ar4_mk3_2026-07-04_16-51-56/{20000,30000,40000,50000,60000,70000}`
+  * Output: `eval_results/pi05_ar4_mk3_2026-07-04_16-51-56_pinch_ablation/<step>/{summary.json,episodes.jsonl}`
+
+### Funnel rates (overall / DR / noDR)
+
+| step | mode | n | reached | grasped | lifted | transported | placed |
+|------|------|---|---------|---------|--------|--------------|--------|
+| 20k | overall | 50 | 0.84 | 0.60 | 0.56 | 0.40 | 0.48 |
+| 20k | DR      | 30 | 0.83 | 0.60 | 0.57 | 0.47 | 0.53 |
+| 20k | noDR    | 20 | 0.85 | 0.60 | 0.55 | 0.30 | 0.40 |
+| 30k | overall | 50 | 0.82 | 0.58 | 0.42 | 0.28 | 0.42 |
+| 30k | DR      | 30 | 0.83 | 0.50 | 0.43 | 0.30 | 0.40 |
+| 30k | noDR    | 20 | 0.80 | 0.70 | 0.40 | 0.25 | 0.45 |
+| 40k | overall | 50 | 0.86 | 0.60 | 0.46 | 0.30 | 0.38 |
+| 40k | DR      | 30 | 0.87 | 0.60 | 0.60 | 0.43 | 0.47 |
+| 40k | noDR    | 20 | 0.85 | 0.60 | 0.25 | 0.10 | 0.25 |
+| 50k | overall | 50 | 0.90 | 0.62 | 0.50 | 0.28 | 0.40 |
+| 50k | DR      | 30 | 0.90 | 0.57 | 0.47 | 0.23 | 0.40 |
+| 50k | noDR    | 20 | 0.90 | 0.70 | 0.55 | 0.35 | 0.40 |
+| 60k | overall | 50 | 0.78 | 0.60 | 0.54 | 0.34 | 0.42 |
+| 60k | DR      | 30 | 0.83 | 0.63 | 0.60 | 0.40 | 0.47 |
+| 60k | noDR    | 20 | 0.70 | 0.55 | 0.45 | 0.25 | 0.35 |
+| 70k | overall | 50 | 0.84 | 0.60 | 0.48 | 0.36 | 0.44 |
+| 70k | DR      | 30 | 0.90 | 0.70 | 0.63 | 0.50 | 0.53 |
+| 70k | noDR    | 20 | 0.75 | 0.45 | 0.25 | 0.15 | 0.30 |
+
+### Between-seed std / within-seed std (mean), per stage (DR / noDR only)
+
+| step | mode | reached | grasped | lifted | transported | placed |
+|------|------|---------|---------|--------|--------------|--------|
+| 20k | DR   | 0.30 / 0.10 | 0.45 / 0.07 | 0.44 / 0.10 | 0.43 / 0.13 | 0.39 / 0.20 |
+| 20k | noDR | 0.32 / 0.05 | 0.37 / 0.20 | 0.35 / 0.25 | 0.33 / 0.20 | 0.30 / 0.30 |
+| 30k | DR   | 0.35 / 0.03 | 0.41 / 0.17 | 0.44 / 0.10 | 0.40 / 0.10 | 0.45 / 0.07 |
+| 30k | noDR | 0.40 / 0.00 | 0.40 / 0.10 | 0.37 / 0.20 | 0.34 / 0.15 | 0.42 / 0.15 |
+| 40k | DR   | 0.29 / 0.07 | 0.37 / 0.20 | 0.42 / 0.13 | 0.40 / 0.17 | 0.39 / 0.20 |
+| 40k | noDR | 0.32 / 0.05 | 0.37 / 0.20 | 0.34 / 0.15 | 0.20 / 0.10 | 0.34 / 0.15 |
+| 50k | DR   | 0.27 / 0.03 | 0.48 / 0.03 | 0.46 / 0.07 | 0.31 / 0.17 | 0.37 / 0.20 |
+| 50k | noDR | 0.30 / 0.00 | 0.40 / 0.10 | 0.35 / 0.25 | 0.32 / 0.25 | 0.37 / 0.20 |
+| 60k | DR   | 0.35 / 0.03 | 0.43 / 0.10 | 0.45 / 0.07 | 0.45 / 0.07 | 0.50 / 0.00 |
+| 60k | noDR | 0.33 / 0.20 | 0.35 / 0.25 | 0.35 / 0.25 | 0.34 / 0.15 | 0.39 / 0.15 |
+| 70k | DR   | 0.27 / 0.03 | 0.36 / 0.17 | 0.39 / 0.17 | 0.41 / 0.17 | 0.29 / 0.33 |
+| 70k | noDR | 0.34 / 0.15 | 0.42 / 0.15 | 0.25 / 0.25 | 0.23 / 0.15 | 0.33 / 0.20 |
+
+### Failure-mode counts (overall / DR / noDR, out of n episodes above)
+
+| step | mode | success | never_reached | no_grasp_attempt | grasp_missed | wrong_object_grasp | grasped_not_lifted | dropped_early | dropped_or_missed_at_goal | timeout_holding |
+|------|------|----|----|----|----|----|----|----|----|----|
+| 20k | overall | 24 | 4 | 2 | 9  | 0 | 2 | 3 | 0 | 6 |
+| 20k | DR      | 16 | 3 | 0 | 6  | 0 | 1 | 1 | 0 | 3 |
+| 20k | noDR    | 8  | 1 | 2 | 3  | 0 | 1 | 2 | 0 | 3 |
+| 30k | overall | 21 | 5 | 4 | 5  | 0 | 4 | 3 | 0 | 8 |
+| 30k | DR      | 12 | 3 | 3 | 5  | 0 | 0 | 1 | 0 | 6 |
+| 30k | noDR    | 9  | 2 | 1 | 0  | 0 | 4 | 2 | 0 | 2 |
+| 40k | overall | 19 | 3 | 0 | 11 | 0 | 7 | 4 | 0 | 6 |
+| 40k | DR      | 14 | 2 | 0 | 7  | 0 | 0 | 1 | 0 | 6 |
+| 40k | noDR    | 5  | 1 | 0 | 4  | 0 | 7 | 3 | 0 | 0 |
+| 50k | overall | 20 | 1 | 1 | 11 | 0 | 3 | 7 | 1 | 6 |
+| 50k | DR      | 12 | 1 | 0 | 9  | 0 | 0 | 5 | 0 | 3 |
+| 50k | noDR    | 8  | 0 | 1 | 2  | 0 | 3 | 2 | 1 | 3 |
+| 60k | overall | 21 | 7 | 1 | 6  | 0 | 2 | 5 | 0 | 8 |
+| 60k | DR      | 14 | 3 | 0 | 4  | 0 | 0 | 3 | 0 | 6 |
+| 60k | noDR    | 7  | 4 | 1 | 2  | 0 | 2 | 2 | 0 | 2 |
+| 70k | overall | 22 | 4 | 1 | 8  | 1 | 4 | 4 | 1 | 5 |
+| 70k | DR      | 16 | 1 | 0 | 5  | 0 | 1 | 2 | 1 | 4 |
+| 70k | noDR    | 6  | 3 | 1 | 3  | 1 | 3 | 2 | 0 | 1 |
+
+### Missed-grasp anatomy + other diagnostics (overall, all 50 episodes pooled)
+
+Note the new `no_pinch` miss reason (attempt passed every offset/depth gate but the jaws never physically pinched the block — the gate's new check).
+
+| step | coarse_far | pinch | finger | height | close_shallow | no_pinch | grasp_attempts_mean | failed_grasp_attempts_mean | grasp_attempt_success_rate | premature_release_count_mean | press/episode_rate | pushed_dist_pre_grasp_mean | gripper_close_cycles_mean |
+|------|----|----|----|----|----|----|----|----|----|----|----|----|----|
+| 20k | 0.18 | 0.04 | 0.20 | 0.15 | 0.67 | 0.12 | 2.90 | 1.64 | 0.43 | 0.64 | 0.64 | 0.0096 | 2.80 |
+| 30k | 0.25 | 0.02 | 0.11 | 0.03 | 0.77 | 0.06 | 4.34 | 1.76 | 0.59 | 2.04 | 0.58 | 0.0168 | 4.36 |
+| 40k | 0.26 | 0.08 | 0.20 | 0.05 | 0.68 | 0.10 | 3.42 | 2.00 | 0.42 | 0.88 | 0.64 | 0.0150 | 3.28 |
+| 50k | 0.01 | 0.27 | 0.39 | 0.16 | 0.70 | 0.13 | 4.16 | 2.30 | 0.45 | 1.44 | 0.74 | 0.0167 | 4.14 |
+| 60k | 0.18 | 0.06 | 0.24 | 0.08 | 0.57 | 0.12 | 2.32 | 1.02 | 0.56 | 0.84 | 0.60 | 0.0158 | 2.34 |
+| 70k | 0.09 | 0.09 | 0.10 | 0.05 | 0.70 | 0.15 | 4.00 | 1.60 | 0.60 | 1.62 | 0.66 | 0.0173 | 3.92 |
+
+### Read
+
+  * **Training beyond 20k brings essentially no benefit.** Success (placed): 20k=0.48, 30k=0.42, 40k=0.38, 50k=0.40, 60k=0.42, 70k=0.44. With n=50 and 2 correlated repeats/seed the effective SE is ~8-10pp, so all six sit within ~1 SE of each other — the curve is *flat*. Safe statement is "no improvement past 20k", NOT "20k is best" (we can't rank them). Can't tell if 20k is already past the plateau: 10k wasn't saved locally and there's no earlier checkpoint.
+  * **`grasped` is pinned at 0.58-0.62 across every checkpoint.** The policy reaches its final reach+grasp skill by 20k and never improves it; extra steps move neither grasp nor the downstream lift->transport bleed. The remaining loss is systematic: `close_shallow` dominates missed grasps (0.57-0.77) and `grasp_missed`/`grasped_not_lifted` are the top non-success buckets — the policy commands closes that don't reach the block surface. This is a **data / action-space limitation, not undertraining**, which is why more gradient steps do nothing and why the planned "jaws always close to 0" change is the right lever.
+  * **The pinch gate did what its caveat predicted, and flattened the apparent training curve.** The old (glue-permitting) trainargs table showed a rising curve (20k placed=0.28 -> 70k=0.64) that looked like a training benefit; a chunk of it was glue-assisted welds inflating later checkpoints. At the two checkpoints with a same-combo baseline (the 70k grid at replan4/max300, and the 40k best-combo run), the gate knocked 40k 0.60->0.38 and 70k 0.60->0.44. With honest grasps the curve is flat — "training helps" was partly an eval artifact.
+  * **`no_pinch` misses are only 0.06-0.15 of failed attempts** — the both-pads contact requirement bites a little but is not dominant, so the gate is not obviously too strict (the open question from 13.07). `close_shallow` remains the real problem.
+  * **Bottleneck is grasp/close mechanics baked into the data, not training duration.** Scaling steps further on this dataset is not the move; the next-iteration data changes (below) are.
+
 ## To change for next training iteration
   * Do not include partial grasp, maybe even not wrong approach (have to think about that)
   * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.

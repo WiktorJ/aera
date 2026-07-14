@@ -142,8 +142,13 @@
     <!-- Invisible deep collision volume. Matches table-top xy footprint but
          spans the full pedestal height so the contact MTV is always toward
          the +z face regardless of how deep an object penetrates. Default
-         geometry is overwritten per-episode by domain randomization. -->
-    <geom name="table_collision" type="box" size="0.6 0.55 0.375" pos="0 -0.2 -0.375" rgba="0 0 0 0" group="3"/>
+         geometry is overwritten per-episode by domain randomization.
+         solref/solimp match the blocks/jaw pads: MuJoCo averages the two
+         geoms' params per contact, so leaving the table at the soft defaults
+         (solref 0.02) let the strong arm press blocks/jaws visibly INTO the
+         table (~35 mm at 100 N vs ~1.4 mm with this). -->
+    <geom name="table_collision" type="box" size="0.6 0.55 0.375" pos="0 -0.2 -0.375" rgba="0 0 0 0" group="3"
+          solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"/>
     <!-- Visual pedestal under the table top. Default geometry is overwritten
          per-episode when domain randomization is active. -->
     <geom name="table_pedestal" type="box" size="0.5 0.45 0.365" pos="0 -0.2 -0.385" material="tablemat" contype="0" conaffinity="0"/>

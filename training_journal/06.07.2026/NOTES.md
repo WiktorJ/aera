@@ -469,10 +469,14 @@ Fixes the "block glued to the front/side of the jaws" false grasps. Root cause: 
 
 Caveat: success/funnel numbers from runs before this change may include glue-assisted grasps (the journal suspected "some successes are caused by this behaviour"), so they are optimistic relative to the next run's numbers — expect grasped/success to drop where the policy relied on the free weld, and `grasp_missed`/`no_pinch` to absorb those episodes.
 
-Open question (to decide after testing): the both-pads contact requirement effectively tightens the required close depth — the old close-depth gate accepted a command up to 0.5 mm *short* of the block surface, but contact needs the command to reach/penetrate the surface. With variable block widths in training, the policy may not have that sub-mm close precision, so genuine straddles that stop a hair short would now count as `no_pinch` misses (on the deep side there's no precision demand — the jaws just stall on the block). Watch the `no_pinch` miss rate to see how often this bites; fallbacks if it's too strict: accept one-pad contact, add a small contact margin, or `require_pinch_contact=False`. The planned "jaws always close to 0" change for the next training iteration removes the issue entirely.
+## Sim fix (14.07.2026): stiff table contact — no more blocks/jaws pressed INTO the table
 
+The "arm pushes the block partially into the table" behaviour was a contact-softness bug, not policy physics. `table_collision` had no solref/solimp, so it used MuJoCo's soft defaults (solref 0.02) while the blocks/jaw pads use stiff ones (solref 0.004) — and MuJoCo *averages* the two geoms' params per contact, so every block/jaw↔table contact inherited half the table's softness. Combined with the effectively unlimited arm actuators (kp 20000, forcerange ±1000), a downward press sank the block deep into the table: measured 35 mm at 100 N, 120 mm at 200 N. Fix: gave `table_collision` the same `solref="0.004 1" solimp="0.95 0.99 0.001 0.5 2"` as the blocks (one-line scene.xml change; dynamics DR only rewrites the geom's size/pos, so the params survive).
 
-
+  * After: 1.4 mm at 100 N, 1.8 mm at 200 N; resting penetration 0.53 mm → 0.04 mm (block sits ~0.5 mm higher at rest — visually negligible).
+  * Verified: drop-from-10 cm settles with zero jitter; pinch-gate harness + env/metrics smoke unchanged.
+  * Consequence for eval: the "block rotates while going partially into the table and flips into the jaws" pathway (Observations below) loses its into-the-table half; presses now stall on the surface, so the press-into-table diagnostic (`eval/press/*`) will read higher contact forces at much shallower depths. Demos never pressed into the table, so no train/eval mismatch is introduced.
+  * Not changed (possible follow-up): arm actuator `forcerange` ±1000 N·m is unphysical for an AR4 — a realistic limit would make table presses stall the arm like real hardware faults/skipped steps would. Left alone because it changes tracking dynamics everywhere, not just in contact.
 
 ## Ablation: best combo (nsub=20, replan=4, max=300) on ALL checkpoints, NEW pinch-contact engage gate
 

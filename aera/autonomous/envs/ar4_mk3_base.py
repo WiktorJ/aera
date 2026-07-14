@@ -317,14 +317,17 @@ class Ar4Mk3Env(BaseEnv):
     def _update_grasp_engagement(self):
         """Engage/release the lock from the policy's gripper command.
 
-        Engage the closest in-range object once the gripper is commanded to
-        grasp depth (gated on the close command so we don't glue an object
-        during the open-gripper approach); release when it's commanded back
-        open. The jaws are NOT frozen at engage time — the command fires before
-        they have physically travelled, so they're left under actuator control
-        to close onto the welded object and pinned once they settle. This keeps
-        eval's held frames (jaws closed on the block) matching the collection
-        demos, where engage happens after a completed scripted close."""
+        While the gripper is commanded to grasp depth, an engage is attempted
+        every control step; release when it's commanded back open. The engage
+        only succeeds once the physically-closing jaws actually pinch the
+        candidate (both jaw pads in contact, normals along the pinch axis —
+        see GraspEngageConfig.require_pinch_contact), typically a few control
+        steps after the close command. So the close command alone welds
+        nothing: a block outside/below the closed jaws can't be glued to them,
+        and the welded pose is the contact-recentred pinched pose — the same
+        physics as collection's scripted close. The jaws are NOT frozen at
+        engage time — they may still be settling into their preload, so
+        they're left under actuator control and pinned once they settle."""
         target = float(self.data.ctrl[self._gripper_act_ids].mean())
         if self._grasp_lock.is_held:
             if target <= self._GRASP_RELEASE_CTRL:

@@ -58,6 +58,23 @@ class GraspEngageConfig:
             short of the candidate's surface (``-pinch_half_width``) and still
             count as a committed close. Matches the collection preload (0.5 mm),
             so a demo-faithful close command passes with exactly that margin.
+        require_pinch_contact: Only engage while BOTH jaw contact pads are in
+            contact with the candidate, with contact normals roughly along the
+            pinch axis — i.e. the object is physically pinched between the
+            jaws right now. This is what stops the weld from gluing a block to
+            the *outside* of the jaws (front / side / below the fingertips):
+            the centre-offset tolerances above allow offsets larger than the
+            pads' own extent, so without this gate a closed gripper brushing a
+            block can weld it mid-air. It also means eval engagement completes
+            only after the jaws have physically closed onto the block (the
+            close command alone no longer welds), so the welded pose is the
+            genuinely pinched pose — recentred by contact physics exactly as
+            in collection's scripted close — not a snapshot taken while the
+            jaws were still open.
+        pinch_normal_align: Min |cos| between a pad-object contact normal and
+            the pinch axis for that contact to count as pinching. Rejects the
+            fully-closed jaws pressing down on a block's top face (normal is
+            vertical) while accepting tilted/diagonal but genuine pinches.
     """
 
     require_alignment: bool = True
@@ -66,6 +83,8 @@ class GraspEngageConfig:
     finger_tol: float = 0.020   # gripper-local y (along the jaws)
     height_tol: float = 0.027   # gripper-local z (tool approach axis)
     close_depth_tol: float = 0.0005  # jaw-travel slack for the close-depth gate
+    require_pinch_contact: bool = True
+    pinch_normal_align: float = 0.5  # |cos| >= this vs pinch axis, ~60 deg cone
 
 
 class KinematicGraspLock:
@@ -87,6 +106,10 @@ class KinematicGraspLock:
             "gripper_jaw1_joint",
             "gripper_jaw2_joint",
         ),
+        jaw_contact_geom_names: Sequence[str] = (
+            "gripper_jaw1_contact",
+            "gripper_jaw2_contact",
+        ),
         engage_config: Optional[GraspEngageConfig] = None,
     ):
         self.model = model
@@ -94,6 +117,7 @@ class KinematicGraspLock:
         self.grasp_object_names = tuple(grasp_object_names)
         self.gripper_body_name = gripper_body_name
         self.gripper_joint_names = list(gripper_joint_names)
+        self.jaw_contact_geom_names = tuple(jaw_contact_geom_names)
         # Demanding alignment gate is on by default; pass an engage_config with
         # require_alignment=False for the old permissive 5cm snap.
         self.engage_config = engage_config or GraspEngageConfig()
@@ -140,6 +164,47 @@ class KinematicGraspLock:
         size = self.model.geom_size[geom_id]
         return float(min(size[0], size[1]))
 
+    def jaws_pinching(self, obj_name: str) -> bool:
+        """True while the object is physically pinched between the jaws.
+
+        Requires a current contact between EACH jaw contact pad and the
+        object, with the contact normal within ``pinch_normal_align`` of the
+        pinch axis (gripper-local x, the jaws' slide axis). One-sided touches,
+        or the closed jaws pressing on the block's top face (vertical
+        normals), don't count. Reads ``data.contact``, so it reflects the last
+        stepped/forwarded state.
+        """
+        obj_body_id = self.model.body(obj_name).id
+        pad_ids = []
+        for name in self.jaw_contact_geom_names:
+            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
+            if gid == -1:
+                raise ValueError(f"Jaw contact geom '{name}' not found in model")
+            pad_ids.append(gid)
+
+        gripper_xmat = self.data.xmat[
+            self.model.body(self.gripper_body_name).id
+        ].reshape(3, 3)
+        pinch_axis = gripper_xmat[:, 0]
+
+        pinching = {gid: False for gid in pad_ids}
+        for i in range(self.data.ncon):
+            con = self.data.contact[i]
+            for gid in pad_ids:
+                if con.geom1 == gid:
+                    other = con.geom2
+                elif con.geom2 == gid:
+                    other = con.geom1
+                else:
+                    continue
+                if self.model.geom_bodyid[other] != obj_body_id:
+                    continue
+                normal = con.frame[:3]
+                align = abs(float(np.dot(normal, pinch_axis)))
+                if align >= self.engage_config.pinch_normal_align:
+                    pinching[gid] = True
+        return all(pinching.values())
+
     def engage(
         self,
         max_distance: Optional[float] = None,
@@ -161,11 +226,13 @@ class KinematicGraspLock:
         ``pin_jaws=True`` (collection: engage is called after a scripted close
         has physically completed, so the current jaw qpos is the closed-on-block
         pose) freezes the jaws at their current qpos immediately.
-        ``pin_jaws=False`` (eval: engage fires on the policy's close *command*,
-        while the jaws are still travelling) leaves the jaws under actuator
-        control so they physically close onto the welded object; the caller then
-        pins them via :meth:`maybe_pin_jaws` once they settle. Without that
-        deferral the jaws would be frozen visibly open around a floating block —
+        ``pin_jaws=False`` (eval: engage is retried on every control step while
+        the policy commands a close; with the pinch-contact gate it succeeds
+        once the jaws have stalled against the object, but they may still be
+        settling into their preload) leaves the jaws under actuator control so
+        they finish closing onto the welded object; the caller then pins them
+        via :meth:`maybe_pin_jaws` once they settle. Without that deferral the
+        jaws could be frozen slightly off their final closed-on-block pose —
         an image the training demos never contain.
 
         ``close_ctrl_target`` (eval): the commanded jaw target, in jaw-qpos
@@ -229,6 +296,15 @@ class KinematicGraspLock:
                 half_width + cfg.close_depth_tol
             ):
                 return None, best_name, best_dist
+
+        # Pinch-contact gate: the candidate must be physically pinched between
+        # both jaw pads right now. In eval (engage retried every control step
+        # while the close command holds) this defers the weld until the jaws
+        # have actually closed onto the block, so a block outside/below the
+        # jaws can never be welded and the snapshot pose is the real pinched
+        # pose. See GraspEngageConfig.require_pinch_contact.
+        if cfg.require_pinch_contact and not self.jaws_pinching(best_name):
+            return None, best_name, best_dist
 
         body1_id = self.model.body(self.gripper_body_name).id
         body2_id = self.model.body(best_name).id

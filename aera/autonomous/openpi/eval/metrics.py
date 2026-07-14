@@ -80,7 +80,18 @@ _PRESS_FORCE_RATIO = 3.0
 
 # Why a failed grasp attempt missed, from the engage gate's own axes (see
 # GraspEngageConfig): evaluated at the attempt's closest-approach sample.
-MISS_REASONS = ("coarse_far", "pinch", "finger", "height", "close_shallow", "unknown")
+# "no_pinch": every offset/depth gate passed but the jaws never physically
+# pinched the block during the attempt (both-pads contact gate) — e.g. the
+# close shoved it away, or it sat outside/below the jaw pads.
+MISS_REASONS = (
+    "coarse_far",
+    "pinch",
+    "finger",
+    "height",
+    "close_shallow",
+    "no_pinch",
+    "unknown",
+)
 
 # Per-episode outcome labels, ordered by how far the episode got.
 FAILURE_MODES = (
@@ -431,6 +442,7 @@ class EpisodeTracker:
                         "finger": float(local[1]),
                         "height": float(local[2]),
                         "close_cmd": cmd,
+                        "pinched": True,
                         "miss_reasons": [],
                     }
                 )
@@ -445,6 +457,7 @@ class EpisodeTracker:
                     "finger": 0.0,
                     "height": 0.0,
                     "close_cmd": cmd,
+                    "pinched": False,
                     "miss_reasons": [],
                 }
             if reach_dist < self._attempt["min_dist"]:
@@ -456,6 +469,13 @@ class EpisodeTracker:
                     height=float(local[2]),
                     close_cmd=cmd,
                 )
+            # Did the jaws ever physically pinch the block during the attempt?
+            # (Both-pads contact gate; drives the "no_pinch" miss reason.)
+            if not self._attempt["pinched"] and self._lock is not None:
+                try:
+                    self._attempt["pinched"] = self._lock.jaws_pinching("object0")
+                except ValueError:
+                    self._attempt["pinched"] = True  # model lacks pad geoms
         elif self._attempt is not None:
             self._finish_attempt(engaged=False)
 
@@ -485,6 +505,8 @@ class EpisodeTracker:
             self._pinch_half_width + cfg.close_depth_tol
         ):
             reasons.append("close_shallow")
+        if not reasons and not att.get("pinched", True):
+            reasons.append("no_pinch")
         if not reasons:
             # Gate passed at our (post-step) closest sample but the lock never
             # engaged — usually a transient the engage-time (pre-step) check

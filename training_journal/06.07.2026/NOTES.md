@@ -22,6 +22,8 @@
 
 ## Manual Eval replan_steps=10 n_substeps=3 max_episode_steps=1000
 
+This observations were made with suboptimal replan/substeps setup. Keeping it here for completnes. Below we have numbers for other configurations that show better performance.
+
 ### checkpoint 50k
 Never works in manual tests. Arm approaches fine but then it tries to grasp a bit off (like in front and next to the block) and obviously keeps failing to grasp and lift. It goes down tries to graps, fails goes a bit up and tries again and so on, usually the longer it goes the worse it gets. Sometimes it manages an awkward grasp (not nicely enclosed, but half levitating with some gaps between object and jaws) but usually drops it. This won't be fixed changing the fully closed to 0, the position of gripper is not precise enough. Even a few it did grasp, it didn't drop it off.
 
@@ -69,32 +71,6 @@ Nothing new, but seems worse than 60k (no success with DR nor without DR)
   * We should have automated evals that would be able to find more detailed failure patters. Manually testing a describing these as above is not feasible. Even for the same seed with have different behaviours, so running just once per seed is not enough. The manual test I did probably have huge variance/
   * Taking all these into account, I think the description of behaviour per checkpoint can be highly misleading for the actual performance. Because of 1) variance 2) My bias (it just get tiring) 3) My failure to put in words 3d arm movement and all the failure modes (there are some that I omitted, e.g. happens often that jaws push on the object (pushing it into the table), this would be catastrophic in real execution.)
   * Some seeds may be genuinely hard, because color of object and some other elements in viz are very similar.
-
-## To improve in evals:
-  * [Done] Write a script that evaluates checkpoints with more attempts/seeds
-  * [In Progress] Run evaluation with current checkpoints
-  * [Done] Understand why there is difference between evals at training time and done offline. - This was mostly caused by n_replan=10 vs n_replan=5 during training eval (also reducing n_substeps may have some impact, higher could be better, but not confirmed)
-  * [Done] Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
-  * [Done] Improve the evals, so that we have better understanding of the failure mode (how?) — metrics.py now tracks failed grasp attempts with tool-frame miss offsets (pinch/finger/height), commanded releases (premature drops), gripper open/close cycles (retry loops / jaw pulsing), block-pressed-into-table contact force, pre-grasp shoving, and a per-episode failure_mode label; eval_variance reports the breakdown per group/seed and tags videos with the mode.
-  * In eval, the arm can sometimes lift the block even if it's not between the jaws, it gets "glued" to the front or side of the jaws, it seems that the lock engages too early. Some successes are "caused" by this behaviour.
-
-## Eval tooling changes (12.07.2026)
-
-What was added to the evals (commits a3eb8bd, 0f8db07), effective from the next run:
-
-  * **Failure-mode diagnostics** (`eval/metrics.py`): each episode now records *how* it failed, not just where in the funnel it stopped. All derived from the kinematic lock's command semantics:
-    - Grasp attempts: a close command near the block that doesn't engage = missed grasp, with the grip→block offset at closest approach in the gripper tool frame (pinch/finger/height — the engage gate's own axes) and a miss reason (`pinch`/`finger`/`height`/`close_shallow`/`coarse_far`). Signed offset bias shows systematic "approaches in front / to the side" errors.
-    - Releases: with the lock, a drop can only be a commanded release — each one records where it happened (dist to goal, height, hold length) and whether premature.
-    - Gripper open/close command cycles (retry loops, jaw pulsing), block-pressed-into-table contact force (>3x block weight while a jaw touches it), pre-grasp shoving distance.
-    - One `failure_mode` label per episode (`never_reached`, `no_grasp_attempt`, `grasp_missed`, `wrong_object_grasp`, `grasped_not_lifted`, `dropped_early`, `dropped_or_missed_at_goal`, `timeout_holding`, `success`) = the terminal outcome; the event lists keep everything that went wrong on the way. Videos are tagged with the label.
-  * **One shared eval suite** (`eval/suite.py`): eval_worker and eval_variance now run the *same* {DR on x seeds, DR off x seeds} x K-repeats grid (env rebuilt per seed so each DR seed has its own reproducible draw) with *identical defaults*: 15 DR seeds x 2 + 10 no-DR seeds x 2 = 50 episodes, seed starts 1000. A default offline run reproduces the training-time suite exactly — removes the suite mismatch as an explanation for training-vs-offline eval differences (the old worker rolled 20 sequential seeds in one env, no repeats).
-  * **mlflow layout**: headline metrics stay pooled under plain `eval/...` names (`eval/success_rate`, `eval/funnel/*`, plus new `eval/failure/*`, `eval/miss/*`, release/press/cycle stats); per-group breakdowns under `eval/dr/...` / `eval/nodr/...` incl. between-/within-seed std. The worker also attaches `episodes.jsonl` + `summary.json` per checkpoint as run artifacts, so raw per-attempt/per-release events from training-time evals are preserved.
-
-Caveat: the eval-variance tables below predate these changes (old defaults, no failure-mode fields in their episodes.jsonl); numbers from the new suite are comparable with each other but not 1:1 with those tables.
-
-## To change for next training iteration
-  * Do not include partial grasp, maybe even not wrong approach (have to think about that)
-  * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.
 
 ## Multi-seed eval-variance run (first pass)
 
@@ -251,8 +227,7 @@ Column meanings:
   * `pushed_dist_pre_grasp_mean` — avg. distance (m) the block was dragged/shoved before ever being grasped
   * `gripper_close_cycles_mean` — avg. open→close command cycles per episode (retry loops / jaw pulsing)
 
-## Observations
-  * There is this behavior in eval where arm pushed down on block, it rotates (while going partially into the table) and because of the rotation it position itself inside jaws. Sometimes it flips to exactly flat position so that we ends-up with good grasp, sometimes it ends-up grasping "diagonally" and we have OOD grasp.
+
 ## Ablation: replan_steps x n_substeps grid, checkpoint 70k
 
 Script: `aera/autonomous/openpi/scripts/eval_variance.py`
@@ -459,3 +434,51 @@ Parameters:
 |----|----|----|----|----|----|----|----|----|----|----|----|----|
 | 0.12 | 0.07 | 0.23 | 0.05 | 0.77 | 0.00 | 2.26 | 0.86 | 0.62 | 0.66 | 0.52 | 0.0135 | 2.26 |
 
+## To improve in evals:
+  * [Done] Write a script that evaluates checkpoints with more attempts/seeds
+  * [In Progress] Run evaluation with current checkpoints
+  * [Done] Understand why there is difference between evals at training time and done offline. - This was mostly caused by n_replan=10 vs n_replan=5 during training eval (also reducing n_substeps may have some impact, higher could be better, but not confirmed)
+  * [Done] Make the evals during training more representative (but not too heavy, we cannot just run 100s of eval trajectories without starving training from resources for too long)
+  * [Done] Improve the evals, so that we have better understanding of the failure mode (how?) — metrics.py now tracks failed grasp attempts with tool-frame miss offsets (pinch/finger/height), commanded releases (premature drops), gripper open/close cycles (retry loops / jaw pulsing), block-pressed-into-table contact force, pre-grasp shoving, and a per-episode failure_mode label; eval_variance reports the breakdown per group/seed and tags videos with the mode.
+  * [Done] In eval, the arm can sometimes lift the block even if it's not between the jaws, it gets "glued" to the front or side of the jaws, it seems that the lock engages too early. Some successes are "caused" by this behaviour. — Root cause: the lock welded at close-*command* time with only a centre-offset gate (7/20/27 mm around the grip site), never checking the jaws touch the block; the jaws were usually still open (zero contact), so the block froze mid-air at its offset. Fixed by a pinch-contact engage gate (see 13.07.2026 tooling changes).
+
+## Eval tooling changes (12.07.2026)
+
+What was added to the evals (commits a3eb8bd, 0f8db07), effective from the next run:
+
+  * **Failure-mode diagnostics** (`eval/metrics.py`): each episode now records *how* it failed, not just where in the funnel it stopped. All derived from the kinematic lock's command semantics:
+    - Grasp attempts: a close command near the block that doesn't engage = missed grasp, with the grip→block offset at closest approach in the gripper tool frame (pinch/finger/height — the engage gate's own axes) and a miss reason (`pinch`/`finger`/`height`/`close_shallow`/`coarse_far`). Signed offset bias shows systematic "approaches in front / to the side" errors.
+    - Releases: with the lock, a drop can only be a commanded release — each one records where it happened (dist to goal, height, hold length) and whether premature.
+    - Gripper open/close command cycles (retry loops, jaw pulsing), block-pressed-into-table contact force (>3x block weight while a jaw touches it), pre-grasp shoving distance.
+    - One `failure_mode` label per episode (`never_reached`, `no_grasp_attempt`, `grasp_missed`, `wrong_object_grasp`, `grasped_not_lifted`, `dropped_early`, `dropped_or_missed_at_goal`, `timeout_holding`, `success`) = the terminal outcome; the event lists keep everything that went wrong on the way. Videos are tagged with the label.
+  * **One shared eval suite** (`eval/suite.py`): eval_worker and eval_variance now run the *same* {DR on x seeds, DR off x seeds} x K-repeats grid (env rebuilt per seed so each DR seed has its own reproducible draw) with *identical defaults*: 15 DR seeds x 2 + 10 no-DR seeds x 2 = 50 episodes, seed starts 1000. A default offline run reproduces the training-time suite exactly — removes the suite mismatch as an explanation for training-vs-offline eval differences (the old worker rolled 20 sequential seeds in one env, no repeats).
+  * **mlflow layout**: headline metrics stay pooled under plain `eval/...` names (`eval/success_rate`, `eval/funnel/*`, plus new `eval/failure/*`, `eval/miss/*`, release/press/cycle stats); per-group breakdowns under `eval/dr/...` / `eval/nodr/...` incl. between-/within-seed std. The worker also attaches `episodes.jsonl` + `summary.json` per checkpoint as run artifacts, so raw per-attempt/per-release events from training-time evals are preserved.
+
+Caveat: the eval-variance tables below predate these changes (old defaults, no failure-mode fields in their episodes.jsonl); numbers from the new suite are comparable with each other but not 1:1 with those tables.
+
+## Eval tooling changes (13.07.2026): pinch-contact engage gate
+
+Fixes the "block glued to the front/side of the jaws" false grasps. Root cause: the eval env attempted `engage()` on every control step while a close-ish command was latched, and the gate only bounded the block's *centre offset* from the grip site (pinch 7 / finger 20 / height 27 mm) — it never checked that the jaws touch the block. Since the close command fires while the jaws are still open, the weld usually attached with **zero jaw contact**, freezing the block mid-air at whatever offset it had (hence "half-levitating with gaps", glued to the tips, lifted without being between the jaws). The offset tolerances allow poses well outside the jaw pads' own extent (pads span only y∈[-14.4, 8.6], z∈[-2.1, 15.5] mm around the grip site).
+
+  * **`GraspEngageConfig.require_pinch_contact` (default on)** in `envs/kinematic_grasp.py`: `engage()` now only welds while BOTH jaw contact pads are in contact with the candidate with contact normals along the pinch axis (|cos| ≥ 0.5). Consequences:
+    - The close command alone welds nothing; the weld attaches a few control steps later, once the jaws have physically closed onto the block. During those steps the block is under real contact physics — it gets recentred (or shoved away) by the closing jaws exactly like collection's scripted close — so the welded pose is the genuinely pinched pose, not a command-time snapshot.
+    - A block outside/below/next-to the closed jaws can never weld (no two-sided pinch contact); closed jaws pressing on the block's top face are rejected too (contact normals vertical, not along the pinch axis).
+    - Applies to collection as well via the shared config (harmless there: collection engages after a completed scripted close with 0.5 mm preload, which passes). Old permissive behaviour available with `require_pinch_contact=False` for A/B.
+  * **New `no_pinch` miss reason** in `eval/metrics.py`: attempt passed every offset/depth gate but the jaws never physically pinched the block during the attempt window (shoved it away, or closed beside/above it). Attempts now carry a `pinched` field in `episodes.jsonl`.
+  * Verified with a standalone MuJoCo harness (scene.xml, no env): genuine physical close still welds; the old config reproducibly welds a contactless mid-air block at (finger 17, height 10) mm offset while the new gate refuses; press-on-top rejected; plus an env+metrics integration smoke (engage deferred until pinch, release on open command, metrics finalize).
+
+Caveat: success/funnel numbers from runs before this change may include glue-assisted grasps (the journal suspected "some successes are caused by this behaviour"), so they are optimistic relative to the next run's numbers — expect grasped/success to drop where the policy relied on the free weld, and `grasp_missed`/`no_pinch` to absorb those episodes.
+
+Open question (to decide after testing): the both-pads contact requirement effectively tightens the required close depth — the old close-depth gate accepted a command up to 0.5 mm *short* of the block surface, but contact needs the command to reach/penetrate the surface. With variable block widths in training, the policy may not have that sub-mm close precision, so genuine straddles that stop a hair short would now count as `no_pinch` misses (on the deep side there's no precision demand — the jaws just stall on the block). Watch the `no_pinch` miss rate to see how often this bites; fallbacks if it's too strict: accept one-pad contact, add a small contact margin, or `require_pinch_contact=False`. The planned "jaws always close to 0" change for the next training iteration removes the issue entirely.
+
+
+
+
+## To change for next training iteration
+  * Do not include partial grasp, maybe even not wrong approach (have to think about that)
+  * Make the jaws close to 0 always, don't force arm to estimate the size of block to precisely close around the object.
+
+### Observations
+   Things to change but not yet clear how.
+
+  * There is this behavior in eval where arm pushed down on block, it rotates (while going partially into the table) and because of the rotation it position itself inside jaws. Sometimes it flips to exactly flat position so that we ends-up with good grasp, sometimes it ends-up grasping "diagonally" and we have OOD grasp.

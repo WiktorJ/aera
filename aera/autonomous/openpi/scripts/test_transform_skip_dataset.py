@@ -3,6 +3,7 @@
 import numpy as np
 
 from aera.autonomous.openpi.scripts.transform_skip_dataset import (
+    _binarize_gripper_action,
     _build_output_repo_id,
     _gripper_moved,
     _parse_image_from_sample,
@@ -68,6 +69,68 @@ def test_gripper_guard_falls_back_to_the_action_without_state():
         state_prev=None,
         action_now=_frame(joints, 0.0),
         action_prev=_frame(joints, -0.014),
+        num_joint_dims=6,
+        gripper_eps=0.0002,
+    )
+
+
+# --- --binarize-gripper ------------------------------------------------------
+
+# The written values are float32, so compare at that precision rather than
+# against the float64 literals.
+OPEN = np.float32(-0.014)
+CLOSED = np.float32(0.0)
+
+
+def _binarized(gripper, threshold=-0.013):
+    return _binarize_gripper_action(_frame([0.1] * 6, gripper), 6, threshold)[6]
+
+
+def test_binarize_maps_either_side_of_the_threshold():
+    # Just closed of the threshold -> full close; just open of it -> full open.
+    assert _binarized(-0.0129) == CLOSED
+    assert _binarized(-0.0131) == OPEN
+    # The threshold itself is "not above" -> open, so the mapping is total.
+    assert _binarized(-0.013) == OPEN
+
+
+def test_binarize_collapses_the_whole_close_ramp_to_two_values():
+    # The ramp is what motivates this: the recorded action is the measured next
+    # jaw qpos, so a close writes a run of mid-values that teach partial closes.
+    ramp = [-0.014, -0.0138, -0.0125, -0.011, -0.0105, -0.005, 0.0]
+    out = [_binarized(g) for g in ramp]
+    assert set(out) == {OPEN, CLOSED}
+    # And it stays monotone: open frames first, then closed, no flapping.
+    assert out == sorted(out)
+
+
+def test_binarize_is_width_invariant():
+    # The whole point: three block sizes stall the jaws at three different
+    # qpos values, and all three must produce the SAME "closed" command so the
+    # policy never has to regress half-width from pixels.
+    holding = [-0.0095, -0.011, -0.012]  # 19 / 22 / 24 mm blocks
+    assert {_binarized(g) for g in holding} == {CLOSED}
+
+
+def test_binarize_leaves_the_arm_joints_untouched():
+    joints = [0.1, -0.2, 0.3, -0.4, 0.5, -0.6]
+    out = _binarize_gripper_action(_frame(joints, -0.007), 6, -0.013)
+    np.testing.assert_allclose(out[:6], joints)
+
+
+def test_binarized_action_is_static_while_the_state_still_moves():
+    # The interaction that made T3 necessary. Across a close ramp the binarized
+    # action is constant, so an action-based idle filter would drop every frame
+    # of the grasp window; the state-based guard keeps them.
+    joints = [0.1] * 6
+    a_prev = _binarize_gripper_action(_frame(joints, -0.0125), 6, -0.013)
+    a_now = _binarize_gripper_action(_frame(joints, -0.0110), 6, -0.013)
+    assert a_prev[6] == a_now[6]  # constant label...
+    assert _gripper_moved(                     # ...but the world moved
+        state_now=_frame(joints, -0.0110),
+        state_prev=_frame(joints, -0.0125),
+        action_now=a_now,
+        action_prev=a_prev,
         num_joint_dims=6,
         gripper_eps=0.0002,
     )

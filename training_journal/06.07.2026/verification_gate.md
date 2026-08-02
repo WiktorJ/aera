@@ -81,7 +81,7 @@ python -m aera.autonomous.openpi.scripts.transform_skip_dataset \
 
 Two notes:
 * **No `--min-action-delta`** (implementation plan T3 — with the arm parked during the ramp and a binarized gripper action, the idle filter deletes the grasp window).
-* `--binarize-gripper` does not exist until **T1** lands. If the flag errors, that is the reason, and check 6 will fail until it is in.
+* `--binarize-gripper` landed with **T1**. It snaps only the **action** gripper dims to `{-0.014, 0}` (`--gripper-binarize-threshold`, default `-0.013`); the state channel stays continuous, which is what check 6 asserts. There is also `--drop-leading-closed`, which is **not** needed here — C6 removed the leading closed frames at the source. Use it only when re-processing a dataset collected before that landed.
 
 ---
 

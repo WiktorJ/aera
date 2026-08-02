@@ -35,6 +35,10 @@ from aera.autonomous.obs_augmentation import (
     sample_camera_profile,
     sample_state_noise_profile,
 )
+from aera.autonomous.envs.jaw_geometry import (
+    GRIPPER_FULL_CLOSE,
+    GRIPPER_JAW_QPOS_MIN,
+)
 from aera.autonomous.openpi.dataset_transforms import compute_smoothed_arrays
 
 
@@ -194,6 +198,38 @@ def parse_args() -> argparse.Namespace:
         help="Seed for the obs-augmentation RNG (reproducible augmented datasets).",
     )
     parser.add_argument(
+        "--binarize-gripper",
+        action="store_true",
+        default=False,
+        help=(
+            "Snap the ACTION gripper dims to exactly {-0.014 open, 0 closed}. "
+            "The recorded action is the measured next jaw qpos, so without this "
+            "it varies with block width (forcing the policy to regress "
+            "half-width from pixels) and passes through the close ramp's "
+            "mid-values (producing partial closes). The STATE channel is left "
+            "continuous as a proprioceptive cue."
+        ),
+    )
+    parser.add_argument(
+        "--gripper-binarize-threshold",
+        type=float,
+        default=-0.013,
+        help=(
+            "Action gripper values above this map to closed (0), else to open "
+            "(-0.014). Default matches the env's own engage threshold."
+        ),
+    )
+    parser.add_argument(
+        "--drop-leading-closed",
+        action="store_true",
+        default=False,
+        help=(
+            "Drop each episode's leading frames up to the first 'open' action. "
+            "Only for datasets collected before the env started episodes with "
+            "open jaws; newer data has no such frames to drop."
+        ),
+    )
+    parser.add_argument(
         "--push-to-hub",
         action="store_true",
         default=False,
@@ -269,6 +305,30 @@ def _extract_string_features(source_dataset: LeRobotDataset) -> dict:
     return string_features
 
 
+def _binarize_gripper_action(
+    action: np.ndarray, num_joint_dims: int, threshold: float
+) -> np.ndarray:
+    """Snap the ACTION's gripper dims to {open, closed} in place.
+
+    The recorded "action" is the measured NEXT jaw qpos, not the command that
+    produced it, so it stalls wherever the jaws stall — it varies with block
+    width, and the 50-step close ramp writes a run of mid-values. That forces
+    the policy to regress block half-width from pixels (a task with no payoff,
+    since full close is safe on any block) and teaches it to emit partial
+    closes that wobble across the open/close boundary.
+
+    The STATE gripper channel is deliberately left alone: its physical value is
+    a useful proprioceptive cue (open -0.014, holding ~-0.0095/-0.011/-0.012 for
+    the three graspable sizes, closed-on-nothing ~0 = a miss). The policy may
+    read it; it just never has to reproduce it. Width-invariance is wanted on
+    the command side only.
+    """
+    action[num_joint_dims:] = np.where(
+        action[num_joint_dims:] > threshold, GRIPPER_FULL_CLOSE, GRIPPER_JAW_QPOS_MIN
+    )
+    return action
+
+
 def _gripper_moved(
     state_now,
     state_prev,
@@ -331,6 +391,9 @@ def transform_dataset(
     state_aug: bool = False,
     aug_strength: float = 1.0,
     aug_seed: int = 0,
+    binarize_gripper: bool = False,
+    gripper_binarize_threshold: float = -0.013,
+    drop_leading_closed: bool = False,
 ) -> LeRobotDataset:
     """Transform the source dataset by pairing obs[t] with action[t+skip].
 
@@ -346,6 +409,17 @@ def transform_dataset(
     Returns:
         The new LeRobotDataset with transformed data.
     """
+    # The delta conversion below only rewrites [:num_joint_dims], which is what
+    # lets the binarized gripper pass through absolute (a delta of a two-valued
+    # channel would be meaningless). That holds only while the gripper dims are
+    # exactly the tail past the 6 arm joints.
+    if binarize_gripper and num_joint_dims != 6:
+        raise ValueError(
+            f"--binarize-gripper assumes the 6 arm joints come first, got "
+            f"num_joint_dims={num_joint_dims}; the gripper dims it would snap "
+            f"are not the ones the delta conversion leaves absolute."
+        )
+
     # Build feature definitions from source
     image_features = _extract_image_features(source_dataset)
     numeric_features = _extract_numeric_features(source_dataset)
@@ -380,9 +454,11 @@ def transform_dataset(
     frames_skipped_prompt = 0
     frames_skipped_static = 0
     frames_skipped_short_episode = 0
+    frames_skipped_leading_closed = 0
     episodes_written = 0
     last_action_for_episode: np.ndarray | None = None
     last_state_for_episode: np.ndarray | None = None
+    episode_has_opened = False
     episodes_seen: set[int] = set()
     excluded_episodes = excluded_episodes or set()
 
@@ -458,6 +534,7 @@ def transform_dataset(
             )
             last_action_for_episode = None
             last_state_for_episode = None
+            episode_has_opened = False
 
         current_episode = episode_t
 
@@ -532,6 +609,29 @@ def transform_dataset(
             action_future = _to_numpy(sample_future["actions"]).astype(np.float32)
 
         if action_future is not None:
+            # Before the static filter and before last_action_for_episode is
+            # updated, so every downstream consumer sees the binarized label.
+            # (Ordering against the filter no longer matters — its gripper guard
+            # reads the state — but keeping it first means the "last action"
+            # reference is in the same units as what gets written.)
+            if binarize_gripper:
+                action_future = _binarize_gripper_action(
+                    action_future, num_joint_dims, gripper_binarize_threshold
+                )
+
+            # Fallback for datasets collected BEFORE the env started episodes
+            # with open jaws: those open with a 0 -> -14 mm ramp that binarizes
+            # to "commanded closed" while nothing is held. Not the primary fix
+            # (that one is in the env, so collection and eval agree at t=0),
+            # but the only option when re-processing old recordings.
+            if drop_leading_closed and not episode_has_opened:
+                if bool(
+                    (action_future[num_joint_dims:] <= gripper_binarize_threshold).all()
+                ):
+                    episode_has_opened = True
+                else:
+                    frames_skipped_leading_closed += 1
+                    continue
 
             # Drop frames where the action barely moved relative to the last
             # written frame in this episode (filters static/idle pauses). The
@@ -599,6 +699,7 @@ def transform_dataset(
         f"  Skipped (boundary):     {frames_skipped_boundary}\n"
         f"  Skipped (prompt filter):{frames_skipped_prompt}\n"
         f"  Skipped (static):       {frames_skipped_static}\n"
+        f"  Skipped (lead closed):  {frames_skipped_leading_closed}\n"
         f"  Skipped (short ep):     {frames_skipped_short_episode}\n"
         f"  Episodes written:       {episodes_written}\n"
         f"  Skip interval:          {skip}\n"
@@ -645,7 +746,9 @@ def main():
         f"smooth_window={args.smooth_window}, smooth_polyorder={args.smooth_polyorder}, "
         f"smooth_state={args.smooth_state}, max_episodes={args.max_episodes}, "
         f"image_aug={args.image_aug}, state_aug={args.state_aug}, "
-        f"obs_aug_strength={args.obs_aug_strength}, obs_aug_seed={args.obs_aug_seed}"
+        f"obs_aug_strength={args.obs_aug_strength}, obs_aug_seed={args.obs_aug_seed}, "
+        f"binarize_gripper={args.binarize_gripper}, "
+        f"gripper_binarize_threshold={args.gripper_binarize_threshold}"
     )
 
     output_repo_id = _build_output_repo_id(
@@ -709,6 +812,9 @@ def main():
             state_aug=args.state_aug,
             aug_strength=args.obs_aug_strength,
             aug_seed=args.obs_aug_seed,
+            binarize_gripper=args.binarize_gripper,
+            gripper_binarize_threshold=args.gripper_binarize_threshold,
+            drop_leading_closed=args.drop_leading_closed,
         )
         output_dataset.finalize()
 

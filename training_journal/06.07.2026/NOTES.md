@@ -584,3 +584,13 @@ Note the new `no_pinch` miss reason (attempt passed every offset/depth gate but 
    Things to change but not yet clear how.
 
   * There is this behavior in eval where arm pushed down on block, it rotates (while going partially into the table) and because of the rotation it position itself inside jaws. Sometimes it flips to exactly flat position so that we ends-up with good grasp, sometimes it ends-up grasping "diagonally" and we have OOD grasp.
+
+## Next-run changes → moved to [next_run_changes.md](./next_run_changes.md)
+
+The deep-dive analyses + decisions for the fixes to apply before the next training run live in a separate file (this one was getting too large). Covered there so far:
+  * **Action timescale / skip** — demo arm is ~10× too fast (sim 1.46 s/episode); skip & demo-speed collapse to one knob Δ for learning; re-collect with a slow arm then skip≈20 @ 25 Hz.
+  * **Recovery injection** — drop both `partial_grasp` (anti-learning) and `wrong_approach` (off-target, adds grasp multimodality); zero recovery this round, add DAgger post-training.
+  * **Gripper channel** — command full-close (0) at collection + binarize the action to {−0.014, 0} at transform (load-bearing); kills `close_shallow`.
+  * **Batched-fixes decision:** no cheap re-transform — fix everything → re-collect → train.
+
+(Still to discuss and append there: noDR-is-OOD, DR-eval prompt string, grasp-phase oversampling / more episodes.)

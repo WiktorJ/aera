@@ -201,6 +201,24 @@ def main():
     logger = setup_logging(cfg.debug)
     logger.info(f"Starting trajectory collection for {cfg.num_trajectories} episodes.")
 
+    # Loud, because a stale collection script reintroducing recovery is silent
+    # otherwise and only shows up as a mysterious premature-release rate several
+    # thousand episodes later. Recovery is deliberately off for this run; it
+    # belongs in a post-training DAgger round, on the failures the policy
+    # actually has.
+    if cfg.perturbation.perturb_recovery:
+        logger.warning(
+            "!!! perturb_recovery is ON. This injects partial_grasp "
+            "(a release-while-holding-a-lifted-block demo) and wrong_approach "
+            "into the dataset. Intended OFF for this run — check the "
+            "collection script."
+        )
+    if not cfg.full_close_grasp:
+        logger.warning(
+            "!!! full_close_grasp is OFF: the grasp closes to a width-derived "
+            "target. Expect far fewer locked grasps; A/B use only."
+        )
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
     model_path = os.path.join(

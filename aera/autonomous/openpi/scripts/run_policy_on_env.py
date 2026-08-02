@@ -46,7 +46,7 @@ from openpi_client import websocket_client_policy as _websocket_client_policy
 ENV_RESOLUTION = 256  # resolution used for rendered images
 ARM_JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"]
 GRIPPER_JOINT_NAME = "gripper_jaw1_joint"
-GRIPPER_CLOSED_ACTION = -1.0  # Normalized gripper action: -1 closed, +1 open
+GRIPPER_OPEN_ACTION = 1.0  # Normalized gripper action: -1 closed, +1 open
 
 # Two-phase prompting
 PHASE_PICK = "pick"
@@ -236,8 +236,14 @@ def _is_success(env: Ar4Mk3PickAndPlaceEnv) -> bool:
 def _build_warmup_action() -> np.ndarray:
     # With absolute_state_actions=False, arm actions are relative deltas, so
     # zeros mean "no movement". Gripper is normalized: -1 closed, +1 open.
+    #
+    # OPEN, and it must stay paired with the env starting with open jaws
+    # (Ar4Mk3Env._open_jaws). Holding it closed through the settle window would
+    # re-shut the jaws the training data now shows open at t=0 — reintroducing
+    # at eval exactly the spurious leading "closed" frames that were just
+    # removed from collection.
     warmup_action = np.zeros(7)
-    warmup_action[-1] = GRIPPER_CLOSED_ACTION
+    warmup_action[-1] = GRIPPER_OPEN_ACTION
     return warmup_action
 
 

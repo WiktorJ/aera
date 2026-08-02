@@ -12,6 +12,7 @@ from gymnasium_robotics.utils import rotations
 from scipy.spatial.transform import Rotation
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig, PLA_BLOCK_PRESETS
+from aera.autonomous.envs.jaw_geometry import GRIPPER_JAW_QPOS_MIN
 from aera.autonomous.envs.kinematic_grasp import KinematicGraspLock
 from aera.autonomous.obs_augmentation import augment_image, sample_camera_profile
 
@@ -1151,6 +1152,11 @@ class Ar4Mk3Env(BaseEnv):
         self.data.qvel[:] = np.copy(self.initial_qvel)
         if self.model.na != 0:
             self.data.act[:] = None
+        # initial_qpos carries the open jaws, but mj_resetData above just zeroed
+        # data.ctrl — and 0 is the CLOSED end of the jaw actuators' range, so
+        # without re-seeding it the first step commands them shut again.
+        if not self.block_gripper:
+            self._open_jaws()
         if self.use_eef_control:
             self._mujoco.mj_forward(self.model, self.data)
             gripper_body_id = self._model_names.body_name2id["gripper_base_link"]
@@ -1227,9 +1233,37 @@ class Ar4Mk3Env(BaseEnv):
         self._mujoco.mj_forward(self.model, self.data)
         return True
 
+    # Jaw joints (see jaw_geometry for the sign convention). The model's qpos0
+    # for both is 0 = fully CLOSED, which meant every episode opened with a
+    # 0 -> -14 mm ramp: a "commanded closed" stretch at t=0 while nothing was
+    # held. Measured on 16_06: 8 such leading frames in a normal episode and 57
+    # in a recovery one. Under a binarized gripper action those frames are
+    # indistinguishable from a real grasp, so the policy is taught to start
+    # every episode by closing on air. Opening the jaws in the initial state
+    # removes them at the source, for collection and eval alike.
+    _JAW_JOINT_NAMES = ("gripper_jaw1_joint", "gripper_jaw2_joint")
+
+    def _open_jaws(self):
+        """Put the jaws at full open in both qpos and ctrl.
+
+        Both halves matter: qpos alone would be re-closed on the very first
+        step, because mj_resetData zeros ctrl and 0 is the closed end of
+        act8/act9's range.
+        """
+        for name in self._JAW_JOINT_NAMES:
+            self._utils.set_joint_qpos(
+                self.model, self.data, name, GRIPPER_JAW_QPOS_MIN
+            )
+        for act_name in ("act8", "act9"):
+            self.data.ctrl[self.model.actuator(act_name).id] = GRIPPER_JAW_QPOS_MIN
+
     def _env_setup(self, initial_qpos):
         for name, value in initial_qpos.items():
             self._utils.set_joint_qpos(self.model, self.data, name, value)
+        # Before the base class snapshots initial_qpos from data.qpos, so every
+        # subsequent _reset_sim restores open jaws.
+        if not self.block_gripper:
+            self._open_jaws()
 
         if self.use_eef_control:
             self._utils.reset_mocap_welds(self.model, self.data)

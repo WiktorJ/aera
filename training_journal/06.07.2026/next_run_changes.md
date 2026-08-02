@@ -11,7 +11,7 @@ Training is expensive, so we will NOT run the cheap skip-re-transform on existin
 1. **Slow the scripted arm** — `IKConfig.integration_dt` ~0.15 → ~0.03 (+ more interp steps as needed) so the pick→place runs ~5–8 s sim-time (~15 cm/s EEF), not ~1.5 s. Fixes contact-shove artifacts + gives faithful deploy a realistic speed.
 2. **No recovery injection** — drop `partial_grasp` + `wrong_approach` (set `perturb_recovery` off in every collection segment). Keep `ik_noise` + `offset_approach` for approach variety.
 3. **Gripper full-close at collection** — `get_object_grasp_gripper_pos → 0.0` (command full close; jaws stall on the block, lock engages on contact).
-4. **Raise the low-light floor** — clamp the dark end of the lighting-mood distribution so no scene renders near-unperceivable. Keep lighting variation otherwise. No other DR axes changed.
+4. **Lighting DR — NOT changed this run** (deferred, see the section below). The collection DR distribution stays exactly as it was in `16_06` — no visual/dynamics axis touched — so eval can mirror it verbatim (item 10) and the run stays a clean A/B on the base fixes.
 5. **Sensor aug stays OFF** — `image_aug` / `state_aug` off (as in `16_06`). Revisit in the sim2real phase, applied per-epoch in the loader.
 
 **Transform** (`transform_skip_dataset.py`)
@@ -21,7 +21,7 @@ Training is expensive, so we will NOT run the cheap skip-re-transform on existin
 
 **Eval** (`suite.py` / `run_policy_on_env.py`)
 9. **Drop the DR/noDR split** — all eval seeds full-DR from the same generator as collection; remove the noDR arm + `dr/nodr` split in logging.
-10. **Fix DR-on in-distribution mismatches** — `randomize_cameras=True` in eval DR generation (match collection); prompt string → training's exact `"pick the … target"` (lowercase, no period). Rule: eval DR flags == collection DR flags.
+10. **Fix DR-on in-distribution mismatches** — build the eval env from the *same env-config factory as collection* rather than patching flags one at a time. Four known gaps: `randomize_cameras=True` **and** `use_geometric_lookat=True` (the camera flag alone is actively harmful — see below), `randomize_object_yaw=True`, and the prompt string → training's exact `"pick the … target"` (lowercase, no period). Rule: eval env config == collection env config.
 11. **Deploy at faithful rate** — `n_substeps = skip` (≈20) for the scored eval.
 12. Keep `--domain_rand=False` as a dev/visualization tool only (not a scored metric).
 
@@ -33,8 +33,8 @@ Training is expensive, so we will NOT run the cheap skip-re-transform on existin
 1. **Timescale** — slow arm (`ik.integration_dt` ~0.15→~0.03) to ~15 cm/s; skip≈20 @ 25 Hz.
 2. **Recovery** — none (drop `partial_grasp` + `wrong_approach`); keep ik_noise + offset_approach.
 3. **Gripper** — full-close (0) at collection **+** binarize action to {−0.014, 0} at transform.
-4. **Eval** — in-distribution only; drop DR/noDR split; fix camera flag + prompt string.
-5. **Lighting DR** — raise the low-light floor.
+4. **Eval** — in-distribution only; drop DR/noDR split; rebuild the eval env from collection's config (cameras + geometric lookat + object yaw + prompt string).
+5. **Lighting DR** — deferred, no change this run.
 6. **Sensor aug** — leave OFF for run 1 (confirmed off in `16_06`); add per-epoch in the sim2real phase.
 
 ---
@@ -134,19 +134,25 @@ Rationale (user): (1) noDR is just another arbitrary sim scene, NOT the target d
 
 ### Implementation
   1. **Drop the noDR arm from `suite.py`** — remove the `n_seeds`/DR-off group; all eval seeds draw a fresh full-DR config from the *same generator as collection*, k repeats each. Move the whole seed budget to DR seeds (raises precision of the in-distribution estimate; between-seed std was ~0.30–0.45). Rip out the `dr`/`nodr` split in the mlflow logging + summary.
-  2. **Make the surviving DR-on path genuinely in-distribution** — two silent train/eval mismatches, both in `run_policy_on_env._resolve_prompts`, that matter more now that DR-on is the ONLY eval:
+  2. **Make the surviving DR-on path genuinely in-distribution** — four silent train/eval mismatches (in `run_policy_on_env._resolve_prompts` and `_build_env`) that matter more now that DR-on is the ONLY eval. **Verified in code + numerically, 02.08.2026.**
      * **Camera flag:** eval calls `generate_random_domain_rand_config()` with defaults ⇒ `randomize_cameras=False`, but collection used `--randomize-cameras`. So every DR-on eval scene sits at the single fixed default camera pose while training saw random anchor-hull poses. Set `randomize_cameras=True` in eval DR generation. (`randomize_arm_dynamics=True` already matches.)
+     * **Geometric lookat — flipping the camera flag ALONE is worse than leaving it off.** `_build_env` never passes `use_geometric_lookat`, so eval runs the `(T, Q, False)` parameterization while collection runs `(T_GEOMETRIC, Q_GEOMETRIC, True)`. With no camera DR the two are identical by construction (verified: same lookat/azimuth/elevation/distance — that's what T_GEOMETRIC was calibrated for). But `_apply_camera_offset` *adds* the sampled offset to the base translation, and the anchor offsets are 0.1–1.0 m validated in collection's parameterization — so on the eval base they land somewhere else entirely. Measured, offset `[-0.031, 0.308, -0.004]`: collection → `azim 209.3°, elev −31.2°, dist 1.11`; eval → `azim 264.2°, elev −7.9°, dist 0.855` (camera on the other side of the scene). Same for the other samples. ⇒ `randomize_cameras=True` without `use_geometric_lookat=True` samples an OOD camera distribution, i.e. it would make eval *less* in-distribution, not more. Both flags or neither.
+     * **Object yaw:** `collect_mixed.sh` passes `--randomize-object-yaw`; `_build_env` leaves the env default (`False`). So every eval block spawns axis-aligned while training saw random yaw — eval is *easier* than training here, and it hides the diagonal / OOD-grasp failure described in NOTES' Observations. Set `randomize_object_yaw=True`.
      * **Prompt string:** DR-on eval builds `"Pick the … target."` (capital P + trailing period) vs training's `"pick the … target"`. Match training's exact format.
-     * **Rule going forward: eval DR flags == collection DR flags, exactly.** Whatever the re-collect uses, the eval mirrors it.
+     * **Rule going forward: eval env config == collection env config, exactly.** These four were found one at a time by reading `_build_env` against `collect_trajectories`; assume there are more. The durable fix is **one shared env-config factory** consumed by both collection and eval (the eval-only knobs — `n_substeps`, `kinematic_grasp`, `relative_action_scale`, `include_images_in_obs` — layered on top), not a list of flags kept in sync by hand.
   3. **Keep `--domain_rand=False` in `run_policy_on_env` as a dev/visualization tool** (eyeballing the policy in a clean scene is easier), just NOT as a scored suite metric. Distinction: clean scene as debugging aid (keep) vs noDR as a reported number (drop).
 
 Net: a single, honest, in-distribution success metric — the thing to nail before sim2real is even on the table.
 
 ---
 
-## Lighting DR: raise the low-light floor (02.08.2026)
+## Lighting DR: DEFERRED — no change for the next run (02.08.2026)
 
-Some scenes render too dark (the `dim` / low-ambient end of the lighting-mood distribution), making the block hard to perceive. Raise the floor on the dark end so no scene is near-unperceivable. Keep lighting variation otherwise — varied light is required for sim2real; only the darkest tail is trimmed. No other DR axes changed.
+**Decision: skip this for run 1.** The next run is a clean test of the base fixes (timescale + gripper + eval in-distribution); changing the visual DR distribution at the same time confounds that A/B, and the analysis below says the intended fix wouldn't do much anyway. Kept here in case dark scenes turn out to matter after the run.
+
+Original observation: some scenes render too dark (the `dim` / low-ambient end of the lighting-mood distribution), making the block hard to perceive. Intended fix was to raise the floor on the dark end so no scene is near-unperceivable, keeping lighting variation otherwise (varied light is required for sim2real; only the darkest tail trimmed).
+
+Why it's also low-value as specified: `dim` is only **5%** of episodes (`_LIGHT_MOODS` in `domain_rand_config_generator.py`), so clamping it changes 1 episode in 20. The genuinely dark renders more likely come from `key` (**35%**, ambient 0.02–0.10) and `harsh` (**15%**, ambient 0.01–0.06), both combined with `p_active_aux` 0.5–0.65 — i.e. a sizeable share of scenes lit by the headlight plus a single aux light, with near-black fill in shadow. If we revisit this, the lever is the **ambient floor across `key`/`harsh` and/or `p_active_aux`**, not the `dim` bucket.
 
 ---
 

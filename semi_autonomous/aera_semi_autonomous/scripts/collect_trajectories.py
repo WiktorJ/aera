@@ -12,9 +12,9 @@ import numpy as np
 import tyro
 from geometry_msgs.msg import Pose, Point, Quaternion
 
-from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera.autonomous.envs.jaw_geometry import GRIPPER_FULL_CLOSE
+from aera.autonomous.envs.task_env_factory import build_prompt, build_task_env_config
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
 )
@@ -38,17 +38,6 @@ from aera_semi_autonomous.data.trajectory_perturbation import (
     perturb_ik_config,
     sample_actuation_config,
 )
-
-T = np.array([0.6233588611899381, 0.05979687559388906, 0.7537742046170788])
-Q = np.array(
-    [
-        -0.36336720179946663,
-        -0.8203835174702869,
-        0.22865474664402222,
-        0.37769321910336584,
-    ]
-)
-
 
 @dataclass
 class CollectConfig:
@@ -100,11 +89,9 @@ def run_pick_and_place_and_collect(
     logger = robot.get_logger()
     env = robot.env
 
-    # Start episode
-    input_message = (
-        f"pick the {object_color} block and place it on the {target_color} target"
-    )
-    data_collector.start_episode(input_message)
+    # Start episode. The prompt template is shared with eval so the scored eval
+    # can't send the policy a differently-cased or punctuated string.
+    data_collector.start_episode(build_prompt(object_color, target_color))
 
     # Go home
     data_collector.record_current_prompt("go home")
@@ -243,16 +230,10 @@ def main():
                 randomize_arm_dynamics=cfg.randomize_arm_dynamics,
             )
 
-            env_config = Ar4Mk3EnvConfig(
-                model_path=model_path,
-                reward_type="sparse",
-                use_eef_control=False,
-                translation=T,
-                quaterion=Q,
-                distance_multiplier=1.2,
-                z_offset=0.3,
+            env_config = build_task_env_config(
+                model_path,
+                domain_rand_config,
                 use_geometric_lookat=cfg.use_geometric_lookat,
-                domain_rand=domain_rand_config,
                 randomize_object_yaw=cfg.randomize_object_yaw,
             )
             env = Ar4Mk3PickAndPlaceEnv(

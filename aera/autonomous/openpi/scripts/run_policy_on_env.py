@@ -33,8 +33,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tyro
 
-from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera.autonomous.envs.task_env_factory import (
+    COLLECTION_DR_FLAGS,
+    build_phase_prompts,
+    build_prompt,
+    build_task_env_config,
+)
 from aera.autonomous.openpi.eval import metrics as _metrics
 from aera_semi_autonomous.data.domain_rand_config_generator import (
     generate_random_domain_rand_config,
@@ -145,22 +150,29 @@ def _resolve_prompts(args: Args) -> tuple[str, str, Any]:
     For non-two-phase mode, both prompts are identical (the combined prompt).
     """
     if args.domain_rand:
+        # Same generator call as collection (see COLLECTION_DR_FLAGS). Calling
+        # it bare left randomize_cameras off, so every DR-on eval scene sat at
+        # the single fixed default camera pose while training saw random
+        # anchor-hull poses.
         domain_rand_config, object_color, target_color = (
-            generate_random_domain_rand_config()
+            generate_random_domain_rand_config(**COLLECTION_DR_FLAGS)
         )
     else:
+        # Dev/visualization only, never a scored number: collection has no
+        # clean episodes, so this scene differs from every training episode on
+        # every visual axis at once — the most OOD point in appearance space,
+        # not a baseline that "should" be easier.
         domain_rand_config = None
         object_color = args.pick_color
         target_color = args.place_color
 
     if args.two_phase_prompt:
-        pick_prompt = f"pick the {object_color} block"
-        place_prompt = f"place on the {target_color} target"
+        pick_prompt, place_prompt = build_phase_prompts(object_color, target_color)
     elif args.domain_rand:
-        combined = (
-            f"Pick the {object_color} block and place it on the {target_color} target."
-        )
-        pick_prompt = place_prompt = combined
+        # Collection's exact string. This used to be capitalized and
+        # punctuated, i.e. a different string to the tokenizer than anything
+        # the policy was trained on.
+        pick_prompt = place_prompt = build_prompt(object_color, target_color)
     else:
         pick_prompt = place_prompt = args.prompt
 
@@ -168,18 +180,20 @@ def _resolve_prompts(args: Args) -> tuple[str, str, Any]:
 
 
 def _build_env(args: Args, model_path: str, domain_rand_config: Any) -> Ar4Mk3PickAndPlaceEnv:
-    env_config = Ar4Mk3EnvConfig(
-        model_path=model_path,
-        reward_type="sparse",
-        use_eef_control=False,  # Policy outputs joint positions
-        domain_rand=domain_rand_config,
-        n_substeps=args.n_substeps,
-        absolute_state_actions=False,
-        include_images_in_obs=True,
-        kinematic_grasp=args.kinematic_grasp,
-        relative_action_scale=args.relative_action_scale,
-        obs_image_aug=args.obs_image_aug,
-        obs_image_aug_strength=args.obs_image_aug_strength,
+    # Everything task-defining comes from the shared factory, so eval cannot
+    # drift from collection again; only the eval-only knobs are layered on.
+    env_config = build_task_env_config(
+        model_path,
+        domain_rand_config,
+        eval_overrides={
+            "n_substeps": args.n_substeps,
+            "absolute_state_actions": False,
+            "include_images_in_obs": True,
+            "kinematic_grasp": args.kinematic_grasp,
+            "relative_action_scale": args.relative_action_scale,
+            "obs_image_aug": args.obs_image_aug,
+            "obs_image_aug_strength": args.obs_image_aug_strength,
+        },
     )
     return Ar4Mk3PickAndPlaceEnv(render_mode="rgb_array", config=env_config)
 

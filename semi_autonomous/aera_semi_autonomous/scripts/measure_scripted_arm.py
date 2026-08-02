@@ -73,6 +73,8 @@ from aera_semi_autonomous.data.pick_and_place_helpers import (  # noqa: E402
     get_object_pose,
 )
 
+from aera.autonomous.envs.jaw_geometry import GRIPPER_FULL_CLOSE  # noqa: E402
+
 MODEL_PATH = "aera/autonomous/simulation/mujoco/ar4_mk3/scene.xml"
 ARM_JOINTS = [f"joint_{i}" for i in range(1, 7)]
 MJ_STEP_DT = 0.002  # sim seconds per recorded frame
@@ -253,7 +255,11 @@ def cmd_timing(args) -> None:
     """Check 1: episode sim time 5-7 s, average EEF speed 12-15 cm/s."""
     for dt in args.dt:
         for seed in args.seeds:
-            tr = run_episode(seed, dt, args.max_steps, max_update_norm=args.max_update_norm)
+            tr = run_episode(
+                seed, dt, args.max_steps,
+                max_update_norm=args.max_update_norm,
+                gripper_pos=GRIPPER_FULL_CLOSE if args.full_close else None,
+            )
             if tr is None:
                 print(f"dt={dt} seed={seed}: FAILED (raise --max-steps?)", flush=True)
                 continue
@@ -521,6 +527,11 @@ def main() -> None:
 
     p = common(sub.add_parser("timing", help="sim time / EEF speed (check 1)"), multi_dt=True)
     p.add_argument("--max-update-norm", type=float, default=None)
+    # Defaults to collection's own setting (CollectConfig.full_close_grasp), so
+    # lock_engaged here reports what a collection run would actually get.
+    p.add_argument("--width-derived-close", dest="full_close", action="store_false",
+                   default=True,
+                   help="close to the width-derived target instead of full close")
     p.set_defaults(func=cmd_timing)
 
     p = common(sub.add_parser("deltas", help="delta distribution vs skip (checks 2, 3)"))

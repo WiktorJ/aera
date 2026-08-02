@@ -25,6 +25,13 @@ import mujoco
 GRIPPER_JAW_QPOS_MIN = -0.014
 GRIPPER_JAW_QPOS_MAX = 0.0
 
+# The command a grasp should actually use: close all the way and let the block
+# stop the jaws. A width-dependent target buys nothing (the kinematic lock, and
+# a current-limited real gripper, make full close safe on any block) and costs
+# a lot — it makes the recorded action a function of block width, so the policy
+# has to regress half-width from pixels to know how far to close.
+GRIPPER_FULL_CLOSE = GRIPPER_JAW_QPOS_MAX
+
 # How far past first contact a close must go to produce a registerable pinch.
 # Measured on a 24 mm block: first contact at -11.6 mm, but the lock only
 # engages for commands >= -11.0 mm, because the close is tolerance-limited and

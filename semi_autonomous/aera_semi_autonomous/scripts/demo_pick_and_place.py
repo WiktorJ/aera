@@ -27,6 +27,7 @@ from aera.autonomous.envs.ar4_mk3_config import (
     MaterialConfig,
 )
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera.autonomous.envs.jaw_geometry import GRIPPER_FULL_CLOSE
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
 )
@@ -74,6 +75,10 @@ class DemoConfig:
     # joint friction / inertia (the "movement" DR axis).
     randomize_arm_dynamics: bool = True
     use_geometric_lookat: bool = True
+    # Mirrors CollectConfig.full_close_grasp so this tool demonstrates the close
+    # collection actually performs. Off = the old width-derived target, which
+    # stops short of the block and never engages the lock.
+    full_close_grasp: bool = True
     show_gripper_view: bool = True
     show_grip_overlay: bool = False
     initial_window_size: int = 640
@@ -256,12 +261,11 @@ def main():
 
         # Step 3: Pick up the object
         logger.info("Attempting to pick up object...")
-        gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
-        logger.info(f"Computed grasp gripper_pos: {gripper_pos:.4f}")
 
         # Recovery / grasp-time failure injection so the demo can visualize the
         # recovery the collector bakes into training data. Neither mode presses
         # the object; partial_grasp drops it, so re-detect before the real grasp.
+        # Keeps the width-derived target — a marginal grip is its whole point.
         # No-op unless --perturbation.perturb-recovery.
         if cfg.perturbation.perturb_recovery:
             rec = cfg.perturbation.recovery
@@ -269,9 +273,18 @@ def main():
                 inject_wrong_approach(robot, object_pose, rec, logger)
             if rec.partial_grasp:
                 object_pose = inject_partial_grasp(
-                    robot, env, object_pose, gripper_pos, rec, logger
+                    robot, env, object_pose,
+                    get_object_grasp_gripper_pos(env, logger=logger), rec, logger,
                 )
-                gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
+
+        # Mirrors collection (CollectConfig.full_close_grasp), so the tool used
+        # to eyeball demos shows the close that collection actually records.
+        gripper_pos = (
+            GRIPPER_FULL_CLOSE
+            if cfg.full_close_grasp
+            else get_object_grasp_gripper_pos(env, logger=logger)
+        )
+        logger.info(f"Grasp gripper_pos: {gripper_pos:.4f}")
 
         if cfg.perturbation.perturb_pick:
             for wp in generate_waypoints(object_pose, cfg.perturbation):

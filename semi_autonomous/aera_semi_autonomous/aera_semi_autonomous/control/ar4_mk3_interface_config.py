@@ -64,7 +64,11 @@ class Ar4Mk3InterfaceConfig:
     gripper_action_steps: int = 50
     go_home_interpolation_steps: int = 100
     home_qpos_error_tolerance: float = 1e-3
-    gripper_pos_tolerance: float = 1e-3
+    # Must stay BELOW the grasp squeeze it is supposed to deliver (0.6 mm), or
+    # the close converges and exits before the jaws reach the block. At the old
+    # 1 mm it was 10x the residual preload, which is the second of the two
+    # stacked errors that left every scripted close short of first contact.
+    gripper_pos_tolerance: float = 1e-4
     render_steps: bool = False
     ik: IKConfig = field(default_factory=IKConfig)
     actuation: ActuationConfig = field(default_factory=ActuationConfig)

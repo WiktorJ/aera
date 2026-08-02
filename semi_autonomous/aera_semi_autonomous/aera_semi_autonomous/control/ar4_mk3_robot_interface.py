@@ -370,9 +370,13 @@ class Ar4Mk3RobotInterface(RobotInterface):
                     f"Gripper interpolation may not have reached target."
                     f"Final error: {final_error:.4f}"
                 )
-                # TODO: Because we are closing on giving the gripper 0.0 pos, this will always happen if there is object in the gripper.
-                #   Eventually we should pass the object dims and then we can return false from here.
-                # return False
+                # EXPECTED, do not "fix": a full-close command (0.0) with a
+                # block in the jaws can never reach its target, so the loop is
+                # SUPPOSED to run its whole budget instead of converging. That
+                # is exactly what drives the jaws into the block and produces
+                # the pinch contact the kinematic lock gates on. Early-exiting
+                # here is what used to stop the close ~0.15 mm short of the
+                # block. Re-check the lock still engages before changing this.
             return True
         except Exception as e:
             self.logger.error(f"Failed to interpolate gripper: {e}", exc_info=True)

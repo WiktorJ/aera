@@ -14,6 +14,7 @@ from geometry_msgs.msg import Pose, Point, Quaternion
 
 from aera.autonomous.envs.ar4_mk3_config import Ar4Mk3EnvConfig
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
+from aera.autonomous.envs.jaw_geometry import GRIPPER_FULL_CLOSE
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     Ar4Mk3InterfaceConfig,
 )
@@ -68,6 +69,12 @@ class CollectConfig:
     # Spawn the blocks at a random yaw so the gripper practices grasping at
     # orientations other than parallel (the grasp aligns to the block yaw).
     randomize_object_yaw: bool = False
+    # Command a full close (0.0) for the real grasp instead of a width-derived
+    # target. Load-bearing: with the width-derived target the jaws stop short of
+    # the block, no pad contact registers, and the kinematic lock never engages
+    # — a whole batch lifts blocks by friction alone and is worthless as data.
+    # Kept as a flag rather than deleting the old path so it stays A/B-able.
+    full_close_grasp: bool = True
     perturbation: PerturbationConfig = field(default_factory=PerturbationConfig)
     interface: Ar4Mk3InterfaceConfig = field(default_factory=Ar4Mk3InterfaceConfig)
 
@@ -87,6 +94,7 @@ def run_pick_and_place_and_collect(
     object_color: str,
     target_color: str,
     perturbation_config: PerturbationConfig = PerturbationConfig(),
+    full_close_grasp: bool = True,
 ) -> bool:
     """Run a single pick and place task and collect data."""
     logger = robot.get_logger()
@@ -112,20 +120,27 @@ def run_pick_and_place_and_collect(
 
     # Pick up the object
     data_collector.record_current_prompt(f"pick {object_color} block")
-    grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
     # Recovery data (grasp-time failures) — recorded under the same "pick" prompt
     # so the policy learns to recover under the normal task instruction. Neither
     # mode ever presses the object. partial_grasp drops the object, so re-detect
     # before the real grasp. Soft by construction: never discards the demo.
+    # It keeps the width-derived target on purpose: a marginal, barely-touching
+    # grip is the whole point of that injection, whereas the real grasp below
+    # wants the opposite.
     if perturbation_config.perturb_recovery:
         rec = perturbation_config.recovery
         if rec.wrong_approach:
             inject_wrong_approach(robot, object_pose, rec, logger)
         if rec.partial_grasp:
             object_pose = inject_partial_grasp(
-                robot, env, object_pose, grasp_gripper_pos, rec, logger
+                robot, env, object_pose,
+                get_object_grasp_gripper_pos(env, logger=logger), rec, logger,
             )
-            grasp_gripper_pos = get_object_grasp_gripper_pos(env, logger=logger)
+    grasp_gripper_pos = (
+        GRIPPER_FULL_CLOSE
+        if full_close_grasp
+        else get_object_grasp_gripper_pos(env, logger=logger)
+    )
     if perturbation_config.perturb_pick:
         for wp in generate_waypoints(object_pose, perturbation_config):
             robot.move_to(wp)
@@ -260,6 +275,7 @@ def main():
             success = run_pick_and_place_and_collect(
                 robot, data_collector, object_color, target_color,
                 perturbation_config=cfg.perturbation,
+                full_close_grasp=cfg.full_close_grasp,
             )
             successful_collections += int(success)
 

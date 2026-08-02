@@ -8,19 +8,21 @@ import numpy as np
 from geometry_msgs.msg import Point, Pose, Quaternion
 from scipy.spatial.transform import Rotation
 
+from aera.autonomous.envs.jaw_geometry import (
+    DEFAULT_GRASP_SQUEEZE,
+    GRIPPER_JAW_QPOS_MAX,
+    GRIPPER_JAW_QPOS_MIN,
+    engage_qpos,
+)
 from aera_semi_autonomous.data.trajectory_perturbation import (
     RecoveryPerturbation,
     sample_wrong_approach_poses,
 )
 
-# Gripper jaw kinematics (see ar4_mk3.xml: gripper_jaw{1,2}_joint range="-0.014 0").
-# Each jaw is a symmetric slide joint: qpos=0 -> fully closed, qpos=-0.014 -> fully open.
-# Pinch gap between pads ≈ 2 * |qpos|, so to land on an object of half-width h
-# the symmetric jaw qpos target is -h. A small positive preload pushes slightly
-# past the surface so contact force is bounded and non-zero rather than zero.
-GRIPPER_JAW_QPOS_MIN = -0.014
-GRIPPER_JAW_QPOS_MAX = 0.0
-DEFAULT_GRASP_PRELOAD = 0.0005  # 0.5 mm — just enough to keep the jaws visually touching the object; the kinematic lock prevents this preload from causing any penetration.
+# Jaw kinematics live in aera.autonomous.envs.jaw_geometry — the same module the
+# eval-side close-depth gates read, so the demonstrated close and the gate that
+# judges it can't drift apart. See there for the sign convention.
+DEFAULT_GRASP_PRELOAD = DEFAULT_GRASP_SQUEEZE
 
 # get_object_pose reports z as 2*object_center (the block top surface). A
 # graspable block (half-height <= 0.012) rests at top <= 0.024 m, so anything
@@ -207,12 +209,19 @@ def get_object_grasp_gripper_pos(
     preload: float = DEFAULT_GRASP_PRELOAD,
     logger: Optional[logging.Logger] = None,
 ) -> float:
-    """Compute a gripper_pos target that lands the jaws on the object surface.
+    """Compute a gripper_pos target that closes the jaws onto the object.
 
     Reads object0's box half-extents and picks the pinch dimension (the shorter
     of the two horizontal half-widths) — this matches the yaw-alignment logic
     in `get_object_pose`, which rotates the gripper so the jaws close across
     the narrower side.
+
+    ``preload`` is a **squeeze past first pad contact**, not a fudge against the
+    half-width: `jaw_geometry` locates first contact from the pad geometry, and
+    this pushes that much further so a tolerance-limited close still ends up
+    touching. (It used to be subtracted from the half-width directly, which
+    assumed contact at ``-half_width`` and therefore stopped 0.4 mm shy of the
+    block — more than the preload itself, so no scripted close ever touched.)
 
     Falls back to a safe partially-closed target if the object can't be located.
     """
@@ -230,7 +239,7 @@ def get_object_grasp_gripper_pos(
 
         geom_size = env.model.geom_size[geom_id]
         pinch_half_width = float(min(geom_size[0], geom_size[1]))
-        target = -(pinch_half_width - preload)
+        target = engage_qpos(env.model, pinch_half_width, squeeze=preload)
         clamped = float(np.clip(target, GRIPPER_JAW_QPOS_MIN, GRIPPER_JAW_QPOS_MAX))
         if clamped != target:
             _log.warning(

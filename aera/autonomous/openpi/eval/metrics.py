@@ -61,6 +61,7 @@ from typing import Any
 import mujoco
 import numpy as np
 
+from aera.autonomous.envs.jaw_geometry import engage_qpos
 from aera.autonomous.envs.kinematic_grasp import GraspEngageConfig
 
 # Default stage thresholds (metres). reach is taken from the grasp lock's coarse
@@ -501,8 +502,11 @@ class EpisodeTracker:
                 reasons.append("finger")
             if abs(att["height"]) > cfg.height_tol:
                 reasons.append("height")
-        if self._pinch_half_width is not None and att["close_cmd"] < -(
-            self._pinch_half_width + cfg.close_depth_tol
+        # Same threshold the lock's own close-depth gate uses, from the shared
+        # jaw geometry — so "commanded a gripper still too open" means exactly
+        # "would have failed that gate", with no dead band between them.
+        if self._pinch_half_width is not None and att["close_cmd"] < engage_qpos(
+            self.env.model, self._pinch_half_width, squeeze=cfg.close_squeeze
         ):
             reasons.append("close_shallow")
         if not reasons and not att.get("pinched", True):

@@ -246,14 +246,14 @@ class Ar4Mk3Env(BaseEnv):
     # to infer engage/release from the policy's gripper command. Engage is
     # two-staged: this floor ("clearly inside full-open", kept above the release
     # threshold for hysteresis) plus the lock's per-object close-depth gate,
-    # which requires the command to reach the candidate block's own surface
-    # (collection closes to -(half_width - 0.5mm), so grasp depth scales with
-    # block size: -0.009 for the 19 mm preset down to -0.0125 for the 24 mm
-    # graspable max). A policy sweeping past a block with a barely-closing
-    # command welds nothing. The grasp target is always <= 24 mm
-    # (_GRASPABLE_BLOCK_PRESETS), so the floor only binds for wrong-object
-    # grabs of the larger distractor-only presets (27/30 mm), whose deeper
-    # close commands sit at or below it — those cannot weld, which is fine.
+    # which requires the command to close past the candidate block's own first
+    # pad contact (jaw_geometry.engage_qpos: -0.0092 for the 19 mm preset down
+    # to -0.0110 for the 24 mm graspable max). A policy sweeping past a block
+    # with a barely-closing command welds nothing. The grasp target is always
+    # <= 24 mm (_GRASPABLE_BLOCK_PRESETS), so the floor only binds for
+    # wrong-object grabs of the larger distractor-only presets (27/30 mm),
+    # whose deeper close commands sit at or below it — those cannot weld,
+    # which is fine.
     _GRASP_ENGAGE_CTRL = -0.013
     _GRASP_RELEASE_CTRL = -0.0135
 

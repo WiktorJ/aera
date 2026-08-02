@@ -13,10 +13,22 @@ class IKConfig:
     regularization_threshold: float = 1e-5
     regularization_strength: float = 1e-4
     max_update_norm: float = 1.5
-    integration_dt: float = 0.15
+    # The demonstrated arm's timescale. 0.15 ran the whole pick-and-place in
+    # ~0.7 s at ~104 cm/s EEF — 5-20x a realistic collaborative arm — which left
+    # the grasp descent commanding ~5% of the model's normalized output range.
+    # 0.005 lands at 4.8-6.6 s / 12-15 cm/s. The response is strongly sublinear
+    # (integration_dt only rate-limits while the max_update_norm clamp binds),
+    # so this is ~30x the parameter for ~8x the time; measure, don't
+    # extrapolate. EEF path length is unchanged, so only the timing shifts.
+    integration_dt: float = 0.005
     pos_gain: float = 0.95
     orientation_gain: float = 1.1
-    max_steps: int = 700
+    # Must scale with the slower dt or every episode aborts ("could not move
+    # above target"). 3000 measured sufficient at dt=0.005 (3/3 seeds, no
+    # aborts). Note perturb_recovery's ik perturbation scales integration_dt by
+    # +/-10% WITHOUT scaling this, so the worst perturbed case has proportionally
+    # less budget than the unperturbed path verified here.
+    max_steps: int = 3000
     min_height: float = 0.005
     include_rotation_in_target_error_measure: bool = False
     joints_update_scaling: typing.List[float] = field(
@@ -70,6 +82,10 @@ class Ar4Mk3InterfaceConfig:
     # stacked errors that left every scripted close short of first contact.
     gripper_pos_tolerance: float = 1e-4
     render_steps: bool = False
+    # Record the depth cameras alongside RGB. Off: nothing downstream consumes
+    # depth, and it is half the per-frame render cost plus a ~1.2 GB/episode RAM
+    # spike at the slow arm's frame counts. See _record_step.
+    record_depth: bool = False
     ik: IKConfig = field(default_factory=IKConfig)
     actuation: ActuationConfig = field(default_factory=ActuationConfig)
     # Gate for the kinematic grasp lock. Default permissive (old 5cm snap); the

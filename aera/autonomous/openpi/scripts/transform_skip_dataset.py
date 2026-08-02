@@ -104,14 +104,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--gripper-eps",
         type=float,
-        default=0.001,
+        default=0.0002,
         help=(
-            "Gripper guard for --min-action-delta: a frame whose gripper dims "
-            "moved more than this (max abs change vs the last written frame) is "
-            "always kept, even when the arm joints are static. Prevents the idle "
-            "filter from deleting grasp/release transitions where only the "
-            "gripper moves. Set relative to gripper travel and above the hold "
-            "jitter floor (default 0.001). Ignored if there are no gripper dims."
+            "Gripper guard for --min-action-delta: a frame whose jaw STATE moved "
+            "more than this (max abs change vs the last written frame) is always "
+            "kept, even when the arm joints are static. Prevents the idle filter "
+            "from deleting grasp/release transitions, where the interface parks "
+            "the arm and only the jaws move. Sizing is tight: a close ramp "
+            "travels ~0.15 mm/frame at skip3 and ~0.35 mm at skip10, while an "
+            "open jaw jitters ~0.1-0.2 mm/frame against its limit stop, so the "
+            "signal and the noise floor nearly overlap. The old 0.001 default "
+            "was 3-7x the ramp travel and silently decimated the grasp window; "
+            "if you need the idle filter at all, verify the surviving window "
+            "with check_dataset_health (check 5)."
         ),
     )
     parser.add_argument(
@@ -264,6 +269,32 @@ def _extract_string_features(source_dataset: LeRobotDataset) -> dict:
     return string_features
 
 
+def _gripper_moved(
+    state_now,
+    state_prev,
+    action_now,
+    action_prev,
+    num_joint_dims: int,
+    gripper_eps: float,
+) -> bool:
+    """Did the jaws physically move since the last written frame?
+
+    Measured on the STATE, not the action. The filter's question is "did
+    anything happen in the world", and the action is only a label for it — with
+    --binarize-gripper the action is deliberately constant across the entire
+    close ramp, so an action-based guard would report "nothing moved" for every
+    frame of a grasp while the jaws are visibly closing in the images, and the
+    arm-static test would then delete the whole grasp window.
+
+    Falls back to the action channel for datasets with no state field.
+    """
+    if state_now is not None and state_prev is not None:
+        now, prev = state_now[num_joint_dims:], state_prev[num_joint_dims:]
+    else:
+        now, prev = action_now[num_joint_dims:], action_prev[num_joint_dims:]
+    return now.size > 0 and float(np.abs(now - prev).max()) > gripper_eps
+
+
 def _get_episode_index(sample: dict) -> int:
     """Extract the episode index from a dataset sample."""
     val = sample["episode_index"]
@@ -351,6 +382,7 @@ def transform_dataset(
     frames_skipped_short_episode = 0
     episodes_written = 0
     last_action_for_episode: np.ndarray | None = None
+    last_state_for_episode: np.ndarray | None = None
     episodes_seen: set[int] = set()
     excluded_episodes = excluded_episodes or set()
 
@@ -425,6 +457,7 @@ def transform_dataset(
                 f"Saved episode {current_episode} (total episodes: {episodes_written})"
             )
             last_action_for_episode = None
+            last_state_for_episode = None
 
         current_episode = episode_t
 
@@ -473,6 +506,11 @@ def transform_dataset(
             state_t = _to_numpy(sample_t["state"]).astype(np.float32)
             frame["state"] = state_t
 
+        # The un-augmented state drives the static filter's gripper guard: the
+        # guard asks "did the world change", so it must not be answered by
+        # injected sensor noise.
+        state_clean = None if state_t is None else state_t.copy()
+
         # State (proprioception) noise on the INPUT only. Applied to state_t
         # before it is both stored and used as the delta-action reference, so
         # delta = action_future - noisy_state stays self-consistent.
@@ -497,19 +535,19 @@ def transform_dataset(
 
             # Drop frames where the action barely moved relative to the last
             # written frame in this episode (filters static/idle pauses). The
-            # gripper is guarded separately: a frame whose gripper dims moved
-            # by more than gripper_eps is always kept, even when the arm joints
-            # are static, so grasp/release transitions (joints held, only the
-            # gripper moving) are never filtered out.
+            # gripper is guarded separately so grasp/release transitions (arm
+            # held, only the jaws moving) are never filtered out.
             if min_action_delta is not None and last_action_for_episode is not None:
                 joint_now = action_future[:num_joint_dims]
                 joint_prev = last_action_for_episode[:num_joint_dims]
                 dist = float(np.linalg.norm(joint_now - joint_prev))
-                gripper_now = action_future[num_joint_dims:]
-                gripper_prev = last_action_for_episode[num_joint_dims:]
-                gripper_moved = (
-                    gripper_now.size > 0
-                    and float(np.abs(gripper_now - gripper_prev).max()) > gripper_eps
+                gripper_moved = _gripper_moved(
+                    state_clean,
+                    last_state_for_episode,
+                    action_future,
+                    last_action_for_episode,
+                    num_joint_dims,
+                    gripper_eps,
                 )
                 if dist < min_action_delta and not gripper_moved:
                     frames_skipped_static += 1
@@ -544,6 +582,7 @@ def transform_dataset(
         frames_written += 1
         if action_future is not None:
             last_action_for_episode = action_future
+            last_state_for_episode = state_clean
 
     # Save the last episode
     if frames_written > 0 and current_episode is not None:

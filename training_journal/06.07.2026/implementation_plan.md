@@ -308,6 +308,39 @@ Deviations from the plan as written, all deliberate:
 * **`measure_scripted_arm timing` gained `--width-derived-close`** and now defaults to collection's full close, so `lock_engaged` reports what a collection run actually gets.
 * **`check_camera_parameterization` now reads the live configs** and exits non-zero on disagreement, instead of statically demonstrating the old divergence. `--show-legacy` keeps the original numbers visible.
 
+### Follow-up found by manual demo (03.08.2026): the jaws were crushing the block
+
+Watching a demo after C4 landed showed the pads visibly sinking into the block
+and trembling against it. Measured, and it is a real defect the plan did not
+cost: **`act8`/`act9` had no `forcerange` at all** — the only actuators in the
+model without one (the arm has 330/150/56 N, and an unused `size1` default
+class carrying `ctrlrange="-0.014 0"` was evidently meant for them). A full
+close leaves a ~10 mm position error against `kp=10000`:
+
+| jaw forcerange | actuator force | contact force | penetration | jaw jitter | 19 mm block |
+|---|---|---|---|---|---|
+| **unlimited (was)** | **102 N** | **203 N** | **0.70 mm** | **310 µm** | ok |
+| ±20 N | 20 N | 45 N | 0.51 mm | 428 µm | ok |
+| **±10 N (now)** | **10 N** | **20 N** | **0.23 mm** | **0.7 µm** | ok |
+| ±7 N | 7 N | 12 N | 0.11 mm | 118 µm | ok, but opening slows 53 → 72 steps |
+| ±5 N | — | — | — | — | **fails: never completes the travel** |
+
+±10 N is the window: an order of magnitude less squeeze, essentially no jitter,
+all three graspable presets still reach both pads and engage the lock, and the
+opening ramp is unaffected (53 steps, same as unlimited). Below that,
+`frictionloss=2` on the jaw joints starts to dominate.
+
+This is also the fix for the plan's own deferred real-hardware caveat: the sim
+gripper is now current-limited the way a real one must be, rather than relying
+on the kinematic lock to hide an unphysical 200 N pinch. Note the doc's claim
+that full close is "fine in sim (lock)" was wrong — the lock pins the jaws only
+*after* engage, so the whole close ramp, and any eval close that doesn't engage,
+ran at full force.
+
+Knock-on: the held-jaw state values shift slightly (−0.0083/−0.0102 →
+−0.0088/−0.0112), still well separated per width and still far from the −0.013
+binarization threshold.
+
 ### Expected side effects to keep in mind when reading the batch
 * **Episodes got ~17% longer at a given `dt`** (0.69–0.75 s → 0.81–0.87 s at dt=0.15). C5's tighter tolerance means every close now runs its full ramp instead of exiting early — this is the intended mechanism, not drift.
 * **`max_episode_steps` and `replan_steps` are starting points, not measurements.** Confirm with the 1–5 `replan_steps` sweep on the first checkpoint.

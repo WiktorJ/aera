@@ -127,3 +127,19 @@ def test_asymmetric_or_missing_pads_fail_loudly(model):
             pad_inner_offset(skewed)
     finally:
         skewed.geom_pos[gid][0] = original
+
+
+def test_jaw_actuators_are_force_limited(model):
+    # A full-close command leaves a ~10 mm position error against kp=10000, so
+    # without a force limit the jaws drive ~102 N into the block: 0.7 mm of
+    # visible interpenetration and a buzzing contact. Every other actuator in
+    # the model has a forcerange; these were the only ones that didn't.
+    for name in ("act8", "act9"):
+        act_id = model.actuator(name).id
+        assert model.actuator_forcelimited[act_id], f"{name} must be force-limited"
+        lo, hi = model.actuator_forcerange[act_id]
+        assert hi == pytest.approx(-lo), f"{name} force limit should be symmetric"
+        # Lower bound: the jaw joints carry frictionloss=2, and at +/-5 N the
+        # jaws no longer complete the travel onto the smallest block at all.
+        # Upper bound: past ~15 N the pads visibly press into the block.
+        assert 7.0 <= hi <= 15.0, f"{name} forcerange {hi} N outside the measured window"

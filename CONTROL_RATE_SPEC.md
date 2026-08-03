@@ -88,11 +88,16 @@ With `--delta-actions` (`num_joint_dims=6`):
 - **Gripper is binarized** (`transform_skip_dataset --binarize-gripper`): the
   action takes **exactly two values, `-0.014` and `0`**, nothing between, so a
   deployed policy commands full-open or full-close and never a partial close.
-  The **state** channel stays continuous (holding a block reads ≈ −0.0095 /
-  −0.011 / −0.012 for the 19/22/24 mm blocks) and is input only. On real
-  hardware, confirm the gripper is current/torque-limited before commanding a
-  full close onto a rigid block — a position-controlled servo would stall at
-  max current.
+  The **state** channel stays continuous (holding a block reads ≈ −0.0088 /
+  −0.0102 / −0.0112 for the 19/22/24 mm blocks) and is input only.
+- **The jaw actuators are force-limited to ±10 N** (`act8`/`act9`
+  `forcerange`), which is what makes "just close all the way" safe. A full
+  close leaves a ~10 mm position error against `kp=10000`, so unlimited it
+  applies ~102 N per jaw — measured, that pressed the pads 0.7 mm into a 24 mm
+  block and made them buzz against it. **The real gripper must be
+  current/torque-limited to roughly this level**, or the same command will
+  stall a position-controlled servo at max current against a rigid block.
+  This is now a sim/real parity requirement, not just a caveat.
 - **Episodes start with the jaws OPEN** (both `qpos` and the `act8`/`act9`
   `ctrl` seed). A deploy loop must not begin by commanding them shut.
 - **Env interpretation** (`ar4_mk3_base._set_action`, `absolute_state_actions=

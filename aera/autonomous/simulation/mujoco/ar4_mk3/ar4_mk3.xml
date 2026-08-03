@@ -356,8 +356,18 @@
         <position class="position" name="act4" joint="joint_4" ctrlrange="-2.87979 2.87979"/>
         <position class="position3" name="act5" joint="joint_5" ctrlrange="-1.8326 1.8326"/>
         <position class="position3" name="act6" joint="joint_6" ctrlrange="-2.70526 2.70526"/>
-        <position name="act8" joint="gripper_jaw1_joint" kp="10000" ctrlrange="-0.014 0"/>
-        <position name="act9" joint="gripper_jaw2_joint" kp="10000" ctrlrange="-0.014 0"/>
+        <!-- forcerange makes these current-limited, like a real servo gripper.
+             Without it a full-close command (ctrl=0) with a block in the jaws
+             leaves a ~10 mm position error against kp=10000, i.e. ~102 N per
+             jaw / 203 N of contact — more than joints 4-6 are allowed in total.
+             Measured, that drove the pads 0.7 mm INTO a 24 mm block and made
+             them buzz against it (310 um of jaw jitter). At +/-10 N: 0.22 mm
+             penetration and 0.7 um jitter, still reaching both pads on every
+             graspable preset. Do not lower much further — the jaw joints carry
+             frictionloss=2, and at +/-5 N the jaws no longer complete the
+             longer travel onto the smallest (19 mm) block at all. -->
+        <position name="act8" joint="gripper_jaw1_joint" kp="10000" ctrlrange="-0.014 0" forcerange="-10 10"/>
+        <position name="act9" joint="gripper_jaw2_joint" kp="10000" ctrlrange="-0.014 0" forcerange="-10 10"/>
     </actuator>
 
 

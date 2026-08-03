@@ -59,7 +59,7 @@ Doc item 12 forbids inheriting the old values. **Decided: `replan_steps=4`** (at
 
 ## F. Shared foundations (do these first)
 
-### F1. One jaw-geometry module — the single source of truth for close depth
+### F1. ✅ LANDED (`2a6c621`) — one jaw-geometry module, the single source of truth for close depth
 **Problem** (doc items 4 + 13): three places independently model "where do the pads touch", and all three are wrong by the same +0.4 mm:
 * `get_object_grasp_gripper_pos` — `pick_and_place_helpers.py:233` (`target = -(pinch_half_width - preload)`)
 * the lock's close-depth gate — `kinematic_grasp.py:293-298` (`close_ctrl_target >= -(half_width + close_depth_tol)`)
@@ -77,7 +77,7 @@ Derive `pad_inner_offset` **from the model**, not a constant: `gripper_jaw{1,2}_
 
 **Done when**: all three call sites import from this module and no expression of the form `-(half_width ± tol)` remains.
 
-### F2. Shared env-config factory consumed by collection and eval
+### F2. ✅ LANDED (`95099fb`) — shared env-config factory consumed by collection and eval
 **Problem** (doc item 11, "Rule going forward: eval env config == collection env config"): `collect_trajectories.py:213-224` and `run_policy_on_env._build_env` (`run_policy_on_env.py:170-184`) build `Ar4Mk3EnvConfig` independently. Four mismatches were found by hand (cameras, geometric lookat, object yaw, prompt); nothing prevents a fifth.
 
 **Change**: new factory (e.g. `aera/autonomous/envs/task_env_factory.py`):
@@ -94,7 +94,7 @@ holding the *collection* values as the single definition: `reward_type="sparse"`
 
 ## C. Collection
 
-### C1. Slow the scripted arm (doc item 1)
+### C1. ✅ LANDED (`59f4577`) — slow the scripted arm (doc item 1)
 * `ar4_mk3_interface_config.py:16` — `integration_dt: 0.15 → 0.005` (default change, per X2)
 * `ar4_mk3_interface_config.py:19` — `max_steps: 700 → 3000` (measured sufficient: 3/3 seeds complete, 4.81–6.61 s, 12.1–14.9 cm/s)
 
@@ -105,17 +105,17 @@ holding the *collection* values as the single definition: `reward_type="sparse"`
 
 **Done when**: ✅ headless episodes report 4.8–6.6 s / 12–15 cm/s (verified), and a 10-episode *perturbed* collection log has zero `Max steps ... reached` / `could not move above target`.
 
-### C2. Also scale `gripper_action_steps`? — decide explicitly (no code change by default)
+### C2. ✅ DECIDED — no code change (leave `gripper_action_steps=50` for run 1)
 `gripper_action_steps=50` (`ar4_mk3_interface_config.py:64`) is what produces the doc's "grasp window dilutes to ~3% of the episode". Note it is *already* speed-perturbed (`trajectory_perturbation.py:543-545`, `/s` ⇒ 36–71 mj-steps). Leave as-is for run 1 — verification check V-5 measures whether the resulting grasp window is degenerate, and the doc's chosen remedy is a transform-time fix (T2), not a collection change.
 
-### C3. Drop recovery injection (doc item 2)
+### C3. ✅ LANDED (`dc06e77`) — drop recovery injection (doc item 2)
 * `collect_mixed.sh` — delete segment `[2/3]` (`ik_noise + recovery`) and re-weight to 90% `ik_noise` / 10% `offset_approach` (update the header comment and the echo block).
 * Keep `inject_partial_grasp` / `inject_wrong_approach` (`pick_and_place_helpers.py`) and `perturb_recovery` (default already `False`, `trajectory_perturbation.py:308`) — they are the DAgger substrate for the round after this one.
 * Optional guard: log a loud warning in `collect_trajectories.main` when `perturb_recovery` is on, so a stale script can't silently reintroduce it.
 
 **Done when**: `grep -c perturb-recovery collect_mixed.sh` returns only the `--perturbation.no-perturb-recovery` occurrences.
 
-### C4. Full-close command at collection (doc item 3 — load-bearing)
+### C4. ✅ LANDED (`5fd58fd`) — full-close command at collection (doc item 3 — load-bearing)
 `collect_trajectories.py:115` computes `grasp_gripper_pos` from the (broken) formula and passes it to `robot.grasp_at` at line 132; line 128 recomputes it after `inject_partial_grasp`.
 * Command `0.0` for the real grasp. Implementation: a `GRIPPER_FULL_CLOSE = 0.0` constant + a `CollectConfig.full_close_grasp: bool = True` flag so the old behaviour is still reachable for A/B, rather than deleting the code path.
 * Mirror the same change in `demo_pick_and_place.py` so the demo tool shows what collection now does.
@@ -123,19 +123,19 @@ holding the *collection* values as the single definition: `reward_type="sparse"`
 
 **Done when**: 3/3 seeds log `Grasp locked: object0` (`ar4_mk3_robot_interface.py:164`) and never `Grasp not locked`.
 
-### C5. Fix the depth model + convergence tolerance (doc item 4)
+### C5. ✅ LANDED (`5fd58fd`) — fix the depth model + convergence tolerance (doc item 4)
 * `get_object_grasp_gripper_pos` (`pick_and_place_helpers.py:212-245`) — replace `target = -(pinch_half_width - preload)` with `jaw_geometry.engage_qpos(model, pinch_half_width, squeeze=preload)` from F1. Update `DEFAULT_GRASP_PRELOAD`'s docstring: it is now a **squeeze past first contact**, not a fudge against half-width.
 * `gripper_pos_tolerance` (`ar4_mk3_interface_config.py:67`) — `1e-3 → 1e-4` (below the preload it is supposed to deliver). Two call sites in `_interpolate_gripper` (`ar4_mk3_robot_interface.py:352-358` early exit, `:368` final-error log).
 * **Do not "fix" the non-convergence TODO at `ar4_mk3_robot_interface.py:373`** — with a full-close target and a block in the jaws the loop is *supposed* to run its full `2 × gripper_action_steps` budget. That is what drives the jaws into the block. Add a comment saying so.
 * Side effect to expect: with C4 + tighter tolerance, every close now runs the full ramp (≈100 mj-steps) instead of exiting early — this is the grasp-window frame count V-5 measures.
 
-### C6. Jaws start closed — kill the spurious leading "closed" frames (doc verify item 6)
+### C6. ✅ LANDED (`5105bf1`) — jaws start closed, kill the spurious leading "closed" frames (doc verify item 6)
 `m.qpos0` for both jaw joints is `[0, 0]` and `_reset_sim` restores `self.initial_qpos` verbatim (`ar4_mk3_base.py:1150`), so every episode opens with a 0 → −14 mm ramp that binarizes to "commanded closed" while nothing is held (measured: 8 leading frames normal, 57 in recovery episodes).
 * **Decided: the env-level fix** — open the jaws in the initial state — set `gripper_jaw{1,2}_joint` to `-0.014` in `_env_setup` / the captured `initial_qpos`, and seed `data.ctrl` for `act8/act9` to `-0.014` so the first step doesn't command them shut again.
 * **This is shared with eval**, which is the point — but it forces a paired change: `run_policy_on_env._build_warmup_action` (`run_policy_on_env.py:236-241`, `GRIPPER_CLOSED_ACTION = -1.0` at `:49`) currently holds the gripper **closed** through the settle window. Change the warmup to command **open**, or the eval env immediately re-closes jaws the training data now shows open. Land both together.
 * The transform workaround (drop leading frames before the first open, T1 sub-flag) is **not** the primary fix — it would leave eval and collection inconsistent at t=0, which is exactly the class of mismatch F2/E2 exist to eliminate. Keep the flag anyway for re-processing datasets collected before this lands.
 
-### C7. Depth recording off (per X1)
+### C7. ✅ LANDED (`59f4577`) — depth recording off (per X1)
 * `record_depth: bool = False` in `Ar4Mk3InterfaceConfig`, gating `ar4_mk3_robot_interface.py:241-245`. Halves the per-frame render calls and removes the ~1 GB/episode RAM spike; downstream is unaffected (`convert_data_to_lerobot.py:213-215` already ignores depth).
 * `record_every` decimation is **not** implemented now. If the 10-episode batch shows the wall-clock or disk is untenable, add `record_every: int = 1` to the same config plus a counter in `_record_step`, record it in the episode metadata, and propagate the `n_substeps = record_every × skip` invariant to the transform log and `CONTROL_RATE_SPEC.md`.
 
@@ -143,7 +143,7 @@ holding the *collection* values as the single definition: `reward_type="sparse"`
 
 ## T. Transform (`transform_skip_dataset.py`)
 
-### T1. `--binarize-gripper` (doc item 8 — load-bearing)
+### T1. ✅ LANDED (`39725ea`) — `--binarize-gripper` (doc item 8 — load-bearing)
 New flag mapping the **action** gripper dims to `{-0.014 open, 0 closed}` with `--gripper-binarize-threshold` (default `-0.013`: `> threshold → 0`, else `-0.014`). Constants should come from one place shared with `_denormalize_gripper` (`run_policy_on_env.py:271-276`), which already hardcodes `-0.014`.
 * **State gripper channel untouched** (doc: it is a useful proprioceptive cue, and width-invariance is only wanted on the command side).
 * **Ordering inside `transform_dataset`**: binarize `action_future` immediately after it is read (`transform_skip_dataset.py:490-494`), i.e. before `last_action_for_episode` is updated. ~~Then the `--gripper-eps` guard sees the 0.014 jump at transitions and nothing in between — strictly better behaved than today.~~ **That was wrong** (corrected 03.08.2026): with the static filter active, binarizing before it *deletes* the whole close ramp, whereas binarizing after it merely decimates. The ordering is now moot because T3 both drops the filter for this run and moves its guard onto the state channel — but the reasoning is recorded so it isn't re-derived incorrectly.
@@ -171,34 +171,34 @@ Measured on `16_06` (episode 0, hand-traced): the close ramp survives as jaw qpo
 
 Note the sizing is genuinely tight: a close ramp travels ~0.15 mm/frame at skip3 and ~0.35 mm at skip10, while an open jaw jitters ~0.1–0.2 mm/frame against its limit stop — signal and noise floor nearly overlap. Another reason (a) is the right call for this run, with (b) as the correct behaviour whenever the filter *is* used.
 
-### T2. Transform invocation (doc items 7 + 9 — no code change)
+### T2. ✅ PINNED in the runbook (no code change)
 `--skip 10`, `--binarize-gripper`, **no `--min-action-delta`** (see T3), no `--image-aug` / `--state-aug` (doc item 6). Grasp-window duplication/weighting is **contingent on check 5 failing** — do not build it up front.
 
 ---
 
 ## E. Eval
 
-### E1. Delete the noDR arm from the suite (doc item 10)
+### E1. ✅ LANDED (`6dabd29`) — delete the noDR arm from the suite (doc item 10)
 `suite.py`: remove `n_seeds` / `seed_start` (`:66,70`), `_nodr_seeds` (`:200`), the `(False, _nodr_seeds(cfg))` leg of `run_suite` (`:183-186`), the `no_domain_rand` group in `summarize` (`:265-266`), the `nodr` prefix in `flatten_for_mlflow` (`:277`), and the noDR branch of `log_summary` (`:307-310`). `EpisodeRecord.domain_rand` (`:88`) and the `dr`/`nodr` video tag (`:149`) become dead — drop them.
 * Consumers to update in the same commit: `eval_worker.py:85,88` (`n_seeds`, `seed_start` flags) and its summary log line `:212-217` (`eval/nodr/success_rate`); `eval_variance.py:59,62,111`.
 * `n_dr_seeds: 15 → 20` (`suite.py:65`), `k_repeats` stays **2** ⇒ 40 episodes per checkpoint (X3).
 * **Backwards-compat note**: `eval/nodr/*` and `eval/dr/*` mlflow series stop here. Since `eval/...` (overall) now *is* the DR number, the headline curves stay continuous; note the break in `NOTES.md`.
 
-### E2. Make the DR-on path genuinely in-distribution (doc item 11)
+### E2. ✅ LANDED (`95099fb`) — make the DR-on path genuinely in-distribution (doc item 11)
 Delivered by **F2** — but check each of the four explicitly, since they are the regression tests for the factory:
 1. `randomize_cameras=True` **and** `use_geometric_lookat=True` **together** (either alone is worse than neither: `_apply_camera_offset` adds collection-calibrated offsets to a differently-parameterized base — measured, the camera lands on the other side of the scene).
 2. `randomize_object_yaw=True`.
 3. Prompt string exactly `"pick the {obj} block and place it on the {tgt} target"`.
 4. `randomize_arm_dynamics=True` (already matching; pin it with the test so it stays).
 
-### E3. Deploy at the faithful rate (doc item 12)
+### E3. ✅ LANDED (`6dabd29`) — deploy at the faithful rate (doc item 12)
 * `SuiteConfig.n_substeps: 3 → 10` (`suite.py:78`) — must equal the dataset skip (× `record_every` per X1).
 * `replan_steps: 10 → 4` (`suite.py:77`, X4) — 80 ms between inferences at `n_substeps=10`. Confirm (don't discover) with a 1–5 sweep via `eval_variance.py --replan-steps` on the first checkpoint. Note the coincidence with the old ablation's `replan=4` is not inheritance: that value was found at `n_substeps=20` on skip3 data, i.e. a 4× rate mismatch, so it means something different here.
 * `max_episode_steps: 1000` (`suite.py:75`) — keep; ≈3× the demo length (250–330 env steps at `n_substeps=10`, from the measured 2407–3306 raw frames/episode). Re-check against V-1 on the perturbed batch.
 * `run_policy_on_env.Args` defaults (`:66,68,85`) drift from `SuiteConfig` (`replan_steps=5`, `max_episode_steps=400`, `n_substeps=20`). Point them at `SuiteConfig` or delete the duplication.
 * Update `CONTROL_RATE_SPEC.md` with the new skip/n_substeps pair (and the `record_every` invariant if X1(b) is taken).
 
-### E4. Recalibrate the close-depth thresholds (doc item 13)
+### E4. ✅ LANDED (`2a6c621`, folded into F1) — recalibrate the close-depth thresholds (doc item 13)
 Consumers of F1:
 * `kinematic_grasp.engage` (`:293-298`) — gate becomes `close_ctrl_target >= engage_qpos(model, half_width)`.
 * `metrics._classify_miss` (`:504-507`) — `close_shallow` fires below the same threshold. This closes the measured **[−12.5, −11.0) mm dead band** where an attempt physically cannot pinch but is reported as `no_pinch`/`unknown`.
@@ -206,10 +206,10 @@ Consumers of F1:
 * Note the gate is **eval-only**: collection passes `close_ctrl_target=None` (`ar4_mk3_robot_interface.py:157` → `engage(max_distance)`), so this cannot regress collection.
 * With T1 landed, a binarized policy commands `0` ⇒ the gate always passes ⇒ `close_shallow` should collapse to ~0 by construction. That is the doc's predicted, testable effect — make sure the metric is still *computed* so its collapse is visible rather than absent.
 
-### E5. Keep `--domain_rand=False` as a dev tool (doc item 14)
+### E5. ✅ LANDED (`95099fb`) — keep `--domain_rand=False` as a dev tool (doc item 14)
 No removal. Just confirm `_resolve_prompts`'s non-DR branch (`run_policy_on_env.py:151-153,165`) still returns a sane prompt after E2's template change, and add a comment that this path is for visualization only, never a scored number.
 
-### E6. Warmup gripper action (paired with C6)
+### E6. ✅ LANDED (`5105bf1`) — warmup gripper action (paired with C6)
 See C6 — `_build_warmup_action` must open, not close, once the env starts with open jaws.
 
 ---
@@ -279,22 +279,39 @@ Two things it pins that are easy to get wrong from memory: `convert_data_to_lero
 
 ---
 
-## Suggested commit sequence
+## Suggested commit sequence — ✅ ALL LANDED (03.08.2026)
 
-0. ~~**V1** measurement harness~~ — ✅ landed, and it is the acceptance test for steps 1–4.
-1. **F1** jaw geometry module + tests (no behaviour change beyond the three call sites).
-2. **C5 + C4** gripper close fixes (+ `demo_pick_and_place` parity) — acceptance: `measure_scripted_arm close-sweep` shows `lock=True` at the scripted target, and `timing` flips `lock_engaged` to True.
-3. **C6 + E6** jaws-open initial state, collection and eval together.
-4. **C1 + C7** slow arm, depth recording off — acceptance: `timing --dt 0.005 --max-steps 3000` (already green on the unperturbed path).
-5. **C3** drop the recovery segment.
-6. **T1 + T3** `--binarize-gripper` + tests, and drop `--min-action-delta` from the transform invocation (T3 is a prerequisite for T1 not to erase the grasp window).
-7. **F2 + E2** shared env-config factory — acceptance: `check_camera_parameterization` shows collection and eval agreeing under DR offsets.
-8. **E1** drop the noDR arm (touches suite + both consumers).
-9. **E4** close-depth recalibration (`close_squeeze` rename).
-10. **E3** rate defaults (`n_substeps=10`, `replan_steps=4`) + `CONTROL_RATE_SPEC.md`.
-11. ~~**V2/V3** dataset health checks + the gate runbook~~ — ✅ landed; V2 calibrated on `16_06`.
+Every code item is in. The next action is the **10-episode verification batch**
+([verification_gate.md](./verification_gate.md)), not more implementation.
 
-Steps 1–5 must land before the 10-episode verification batch; 6–11 before the full collect/train.
+| # | item | commit | acceptance |
+|---|---|---|---|
+| 0 | ~~V1 harness~~ | (earlier) | ✅ |
+| 1 | **F1** jaw geometry module + tests | `2a6c621` | ✅ 10 tests; a test drives the real model and confirms `gap = 0.8mm − 2·qpos` |
+| 2 | **C5 + C4** gripper close fixes | `5fd58fd` | ✅ `timing` flips `lock_engaged` **False → True, 3/3 seeds**, both close targets |
+| 3 | **C6 + E6** jaws-open initial state | `5105bf1` | ✅ jaws open at reset and stay open; verified the OLD warmup drove them to 0.0 |
+| 4 | **C1 + C7** slow arm, depth off | `59f4577` | ✅ **4.94–6.73 s / 11.9–14.5 cm/s**, lock 3/3, EEF path unchanged |
+| 5 | **C3** drop the recovery segment | `dc06e77` | ✅ `grep -c perturb-recovery` = 2, both `--no-perturb-recovery` |
+| 6 | **T1 + T3** `--binarize-gripper` | `39725ea` | ✅ 10 tests incl. the constant-label / moving-state interaction |
+| 7 | **F2 + E2** env-config factory | `95099fb` | ✅ `check_camera_parameterization`: **4/4 poses agree** (exits 1 on drift) |
+| 8 | **E1** drop the noDR arm | `6dabd29` | ✅ 40 episodes/checkpoint; summarize/flatten/log round-tripped |
+| 9 | **E4** close-depth recalibration | `2a6c621` | ✅ folded into F1 — same lines; no stale `GraspEngageConfig` anywhere |
+| 10 | **E3** rate defaults + spec | `6dabd29` | ✅ suite and `run_policy_on_env` now **MATCH** on all three |
+| 11 | ~~V2/V3 health checks + runbook~~ | (earlier) | ✅ |
+
+Deviations from the plan as written, all deliberate:
+* **E4 landed inside F1**, because the rename and the `engage_qpos` rewiring are the same four lines; splitting them would have meant editing them twice.
+* **A fourth wrong-depth site** the plan did not list: a comment at `ar4_mk3_base.py:250` documenting the gate in the old `-(half_width − 0.5mm)` terms. Corrected.
+* **`is_pinchable` needed both bounds, not just the squeeze end.** The 30 mm preset's `engage_qpos` is exactly `−0.0140`, i.e. *at* the limit, so checking only that end would call it pinchable. The binding constraint is the open end: the pad gap at full open is 28.8 mm, narrower than the block, so the jaws cannot straddle it at all.
+* **`collect_trajectories` held its own duplicate copy of the `T`/`Q` camera extrinsics** (identical values, verified before removing).
+* **`E3`'s "point `Args` at `SuiteConfig`" was not possible as stated** — `suite.py` imports `run_policy_on_env`, so that direction is circular. Both now read shared constants in `task_env_factory`.
+* **`measure_scripted_arm timing` gained `--width-derived-close`** and now defaults to collection's full close, so `lock_engaged` reports what a collection run actually gets.
+* **`check_camera_parameterization` now reads the live configs** and exits non-zero on disagreement, instead of statically demonstrating the old divergence. `--show-legacy` keeps the original numbers visible.
+
+### Expected side effects to keep in mind when reading the batch
+* **Episodes got ~17% longer at a given `dt`** (0.69–0.75 s → 0.81–0.87 s at dt=0.15). C5's tighter tolerance means every close now runs its full ramp instead of exiting early — this is the intended mechanism, not drift.
+* **`max_episode_steps` and `replan_steps` are starting points, not measurements.** Confirm with the 1–5 `replan_steps` sweep on the first checkpoint.
+* The unperturbed path is verified; the **perturbed worst case** (`s=0.7` × −10% dt against unscaled `max_steps`) is still only covered by the 10-episode batch.
 
 ---
 

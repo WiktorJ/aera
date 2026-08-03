@@ -56,10 +56,8 @@ class Args:
 
     # --- Seed suite (defaults shared with eval_worker via SuiteConfig) ---
     n_dr_seeds: int = _suite.SuiteConfig.n_dr_seeds
-    n_seeds: int = _suite.SuiteConfig.n_seeds
     k_repeats: int = _suite.SuiteConfig.k_repeats
     dr_seed_start: int = _suite.SuiteConfig.dr_seed_start
-    seed_start: int = _suite.SuiteConfig.seed_start
 
     # --- Rollout parameters ---
     prompt: str = _suite.SuiteConfig.prompt
@@ -108,7 +106,6 @@ def run_eval(args: Args) -> dict:
         "step": step,
         "config": args.config,
         "n_dr_seeds": args.n_dr_seeds,
-        "n_seeds": args.n_seeds,
         "k_repeats": args.k_repeats,
         "elapsed_s": elapsed,
         **summary,

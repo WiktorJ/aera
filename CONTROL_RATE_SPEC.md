@@ -10,11 +10,23 @@ re-verify if the pipeline changes.
 
 ## Timing
 
+**Current pair: `--skip 10` / `n_substeps = 10` ⇒ 50 Hz.** These are defined
+once in `aera/autonomous/envs/task_env_factory.py` (`DATASET_SKIP`,
+`DEPLOY_N_SUBSTEPS`, `DEPLOY_REPLAN_STEPS`, `DEPLOY_MAX_EPISODE_STEPS`) and
+consumed by both `SuiteConfig` and `run_policy_on_env.Args`, which previously
+kept separate copies and drifted (`n_substeps` 3 vs 20).
+
 | quantity | value | source |
 |---|---|---|
 | sim timestep | `0.002 s` | `aera/.../ar4_mk3/ar4_mk3.xml` (`<option timestep="0.002">`) |
-| `n_substeps` | configurable (default `20`) | `ar4_mk3_config.py` (`n_substeps: int = 20`); overridable per run |
-| **env step** | **`n_substeps × 0.002 s`** (default `0.04 s` = 25 Hz) | one action is held for all `n_substeps` substeps |
+| dataset `--skip` | `10` | `DATASET_SKIP`; the transform invocation |
+| `n_substeps` | `10` at deploy | `DEPLOY_N_SUBSTEPS`; env default is still 20, always set it |
+| `replan_steps` | `4` (= 80 ms between inferences) | `DEPLOY_REPLAN_STEPS` |
+| **env step** | **`n_substeps × 0.002 s`** = `0.02 s` = **50 Hz** | one action is held for all `n_substeps` substeps |
+
+> If per-frame recording decimation (`record_every`) is ever enabled at
+> collection, the invariant becomes **`n_substeps = record_every × skip`**. It
+> is deliberately not implemented today, so `record_every = 1` throughout.
 
 - **Eval / deploy** (`run_policy_on_env.py`) applies **one policy action per
   `env.step`** (action chunk, `replan_steps` applied one-per-step). `n_substeps`
@@ -47,6 +59,9 @@ deploy decision interval  ==  skip × 0.002 s
           e.g. skip=20 → 25 Hz, skip=10 → 50 Hz, skip=3 → 167 Hz
 ```
 
+Note skip=3 (the old datasets) implies a **167 Hz** faithful deploy, which is
+not achievable on hardware — one of the reasons the current pair is skip=10.
+
 So train with whatever skip learns best, then set sim `n_substeps` (and the real
 loop rate) to match it. **Record the skip alongside the dataset** (e.g. in the
 repo name) so the deploy side knows what to match. If you're targeting hardware,
@@ -68,7 +83,18 @@ With `--delta-actions` (`num_joint_dims=6`):
 - **Joint order**: `joint_1 … joint_6` (the env's `arm_joint_names` order).
 - **Gripper convention**: policy raw output is **−0.014 = open, 0 = closed**;
   `run_policy_on_env._denormalize_gripper` maps it to the env's normalized
-  `[-1 = closed, +1 = open]` (`GRIPPER_CLOSED_ACTION = -1.0`).
+  `[-1 = closed, +1 = open]`. Constants live in
+  `aera/autonomous/envs/jaw_geometry.py`.
+- **Gripper is binarized** (`transform_skip_dataset --binarize-gripper`): the
+  action takes **exactly two values, `-0.014` and `0`**, nothing between, so a
+  deployed policy commands full-open or full-close and never a partial close.
+  The **state** channel stays continuous (holding a block reads ≈ −0.0095 /
+  −0.011 / −0.012 for the 19/22/24 mm blocks) and is input only. On real
+  hardware, confirm the gripper is current/torque-limited before commanding a
+  full close onto a rigid block — a position-controlled servo would stall at
+  max current.
+- **Episodes start with the jaws OPEN** (both `qpos` and the `act8`/`act9`
+  `ctrl` seed). A deploy loop must not begin by commanding them shut.
 - **Env interpretation** (`ar4_mk3_base._set_action`, `absolute_state_actions=
   False`): `arm_target = current_qpos + action[:6] * relative_action_scale`;
   gripper `ctrl = -0.014 * (action[6] + 1) / 2` (so `+1 → -0.014` open,

@@ -37,6 +37,11 @@ import pathlib
 
 import numpy as np
 
+from aera.autonomous.envs.task_env_factory import (
+    DEPLOY_MAX_EPISODE_STEPS,
+    DEPLOY_N_SUBSTEPS,
+    DEPLOY_REPLAN_STEPS,
+)
 from aera.autonomous.openpi.eval import metrics as _metrics
 from aera.autonomous.openpi.scripts.run_policy_on_env import (
     Args as RolloutArgs,
@@ -55,26 +60,41 @@ class SuiteConfig:
     """Suite shape + rollout parameters, shared by all eval consumers.
 
     Defaults are the ONE canonical suite both the training-time worker and the
-    offline eval_variance CLI run: 15 DR seeds x 2 + 10 no-DR seeds x 2 = 50
-    episodes. Seed starts sit at 1000, deliberately separate from training
-    seeds. Keep the two consumers' defaults identical (both mirror these) so
-    their numbers stay directly comparable; scale via flags for deep dives.
+    offline eval_variance CLI run: 20 DR seeds x 2 = 40 episodes. The seed start
+    sits at 1000, deliberately separate from training seeds. Keep the two
+    consumers' defaults identical (both mirror these) so their numbers stay
+    directly comparable; scale via flags for deep dives.
+
+    Every episode is full-DR, drawn from the same generator as collection.
+    There is no no-DR arm: collection produces zero clean episodes, so a no-DR
+    scene differs from EVERY training episode on EVERY visual axis at once —
+    the exact centre the DR distribution deliberately never samples. It is the
+    most OOD point in appearance space, not a baseline that "should" be easier,
+    and reporting it as one read ordinary OOD degradation backwards as "DR is
+    hard". It also isn't the deployment target, which will bring its own OOD
+    elements. What we need first is one honest in-distribution number.
     """
 
     # --- Suite shape ---
-    n_dr_seeds: int = 15  # seeds evaluated with domain_rand on
-    n_seeds: int = 10  # seeds evaluated with domain_rand off
+    n_dr_seeds: int = 20  # every seed is domain_rand on
     k_repeats: int = 2  # rollouts per seed (isolates policy/inference variance)
     dr_seed_start: int = 1000
-    seed_start: int = 1000
 
     # --- Rollout parameters ---
     prompt: str = "pick the yellow block and place it on the red target"
-    max_episode_steps: int = 1000
-    replan_steps: int = 10
+    # Rate defaults come from task_env_factory so this and run_policy_on_env
+    # cannot drift again. ~3x the demonstrated episode length, leaving room for
+    # retries without letting a stuck policy burn the whole budget.
+    max_episode_steps: int = DEPLOY_MAX_EPISODE_STEPS
+    # NOT inherited from the old ablation's replan=4: that was found at
+    # n_substeps=20 on skip3 data, i.e. under a 4x rate mismatch, so the number
+    # means something different here and the coincidence is not evidence.
+    # Confirm with a 1-5 sweep (eval_variance --replan-steps) on the first
+    # checkpoint.
+    replan_steps: int = DEPLOY_REPLAN_STEPS
     # mj-steps per env.step. MUST match the dataset `--skip` the checkpoint was
-    # trained on (see run_policy_on_env.Args.n_substeps).
-    n_substeps: int = 3
+    # trained on — see the invariant in task_env_factory.
+    n_substeps: int = DEPLOY_N_SUBSTEPS
     kinematic_grasp: bool = True
 
     # --- Videos ---
@@ -86,25 +106,23 @@ class SuiteConfig:
 class EpisodeRecord:
     seed: int
     repeat: int
-    domain_rand: bool
     metrics: _metrics.EpisodeMetrics
 
     def to_dict(self) -> dict:
         return {
             "seed": self.seed,
             "repeat": self.repeat,
-            "domain_rand": self.domain_rand,
             **self.metrics.to_dict(),
         }
 
 
-def _rollout_args(cfg: SuiteConfig, *, domain_rand: bool, seed: int) -> RolloutArgs:
+def _rollout_args(cfg: SuiteConfig, *, seed: int) -> RolloutArgs:
     return RolloutArgs(
         prompt=cfg.prompt,
         replan_steps=cfg.replan_steps,
         num_episodes=1,
         max_episode_steps=cfg.max_episode_steps,
-        domain_rand=domain_rand,
+        domain_rand=True,
         headless=True,
         kinematic_grasp=cfg.kinematic_grasp,
         n_substeps=cfg.n_substeps,
@@ -119,7 +137,6 @@ def _run_seed_repeats(
     policy,
     model_path: str,
     seed: int,
-    domain_rand: bool,
 ) -> list[EpisodeRecord]:
     """Build one env for `seed` (baking in its DR config if enabled) and roll it
     out `k_repeats` times, resetting to the *same* seed every time so the K
@@ -128,7 +145,7 @@ def _run_seed_repeats(
     # domain-rand visual config (materials/lighting/props/colors) reproducible
     # per seed, since DR is baked in at env construction, not per-reset.
     np.random.seed(seed)
-    rollout_args = _rollout_args(cfg, domain_rand=domain_rand, seed=seed)
+    rollout_args = _rollout_args(cfg, seed=seed)
     pick_prompt, place_prompt, dr_config = _resolve_prompts(rollout_args)
     env = _build_env(rollout_args, model_path, dr_config)
 
@@ -140,26 +157,20 @@ def _run_seed_repeats(
             ep, replay_images, final_prompt = _run_episode(
                 rollout_args, env, policy, pick_prompt, place_prompt, 0, None
             )
-            records.append(
-                EpisodeRecord(
-                    seed=seed, repeat=repeat, domain_rand=domain_rand, metrics=ep
-                )
-            )
+            records.append(EpisodeRecord(seed=seed, repeat=repeat, metrics=ep))
             if cfg.save_videos:
-                tag = "dr" if domain_rand else "nodr"
                 # Failure mode in the filename so reviewing a specific mode
                 # (e.g. all grasp_missed episodes) is a glob, not a full watch.
                 _save_episode_video(
                     replay_images,
                     cfg.video_out_path,
-                    episode_idx=f"{tag}_seed{seed}_rep{repeat}_{ep.failure_mode}",
+                    episode_idx=f"seed{seed}_rep{repeat}_{ep.failure_mode}",
                     prompt=final_prompt,
                     success=ep.placed,
                 )
             logging.info(
-                "  [%s seed=%d rep=%d/%d] reached=%s grasped=%s transported=%s "
+                "  [seed=%d rep=%d/%d] reached=%s grasped=%s transported=%s "
                 "placed=%s mode=%s",
-                "dr" if domain_rand else "nodr",
                 seed,
                 repeat + 1,
                 cfg.k_repeats,
@@ -175,30 +186,20 @@ def _run_seed_repeats(
 
 
 def run_suite(cfg: SuiteConfig, policy, model_path: str) -> list[EpisodeRecord]:
-    """Run the full {DR on, DR off} x seeds x repeats grid. Returns all episode
-    records; split/summarize with :func:`summarize`."""
+    """Run the seeds x repeats grid, every episode full-DR. Returns all episode
+    records; summarize with :func:`summarize`."""
     if cfg.save_videos:
         pathlib.Path(cfg.video_out_path).mkdir(parents=True, exist_ok=True)
     records: list[EpisodeRecord] = []
-    for domain_rand, seeds in (
-        (True, _dr_seeds(cfg)),
-        (False, _nodr_seeds(cfg)),
-    ):
-        label = "domain_rand=on" if domain_rand else "domain_rand=off"
-        for i, seed in enumerate(seeds):
-            logging.info("[%s] seed %d (%d/%d)", label, seed, i + 1, len(seeds))
-            records.extend(
-                _run_seed_repeats(cfg, policy, model_path, seed, domain_rand)
-            )
+    seeds = _dr_seeds(cfg)
+    for i, seed in enumerate(seeds):
+        logging.info("seed %d (%d/%d)", seed, i + 1, len(seeds))
+        records.extend(_run_seed_repeats(cfg, policy, model_path, seed))
     return records
 
 
 def _dr_seeds(cfg: SuiteConfig) -> range:
     return range(cfg.dr_seed_start, cfg.dr_seed_start + cfg.n_dr_seeds)
-
-
-def _nodr_seeds(cfg: SuiteConfig) -> range:
-    return range(cfg.seed_start, cfg.seed_start + cfg.n_seeds)
 
 
 def _per_seed_stats(episodes: list[_metrics.EpisodeMetrics], seed: int) -> dict:
@@ -217,7 +218,7 @@ def _per_seed_stats(episodes: list[_metrics.EpisodeMetrics], seed: int) -> dict:
     return out
 
 
-def _group_summary(records: list[EpisodeRecord], seeds: range) -> dict:
+def _summary_block(records: list[EpisodeRecord], seeds: range) -> dict:
     episodes = [r.metrics for r in records]
     per_seed = [
         _per_seed_stats([r.metrics for r in records if r.seed == s], s) for s in seeds
@@ -244,114 +245,79 @@ def _group_summary(records: list[EpisodeRecord], seeds: range) -> dict:
 
 
 def summarize(records: list[EpisodeRecord], cfg: SuiteConfig) -> dict:
-    """Overall summary over all episodes, plus per-group (DR on/off) summaries
-    keyed like eval_variance's summary.json always was. The overall block is
-    the primary read (one number set to reason about); the groups are the
-    breakdown. Seed-variance decomposition stays per-group only, since pooling
-    DR and no-DR seeds would mix two different scenario distributions."""
-    all_episodes = [r.metrics for r in records]
-    out: dict = {
-        "overall": {
-            "aggregate": _metrics.aggregate(all_episodes),
-            "failure_modes": _metrics.failure_mode_counts(all_episodes),
-        }
-    }
-    if cfg.n_dr_seeds:
-        out["domain_rand"] = _group_summary(
-            [r for r in records if r.domain_rand], _dr_seeds(cfg)
-        )
-    if cfg.n_seeds:
-        out["no_domain_rand"] = _group_summary(
-            [r for r in records if not r.domain_rand], _nodr_seeds(cfg)
-        )
-    return out
+    """Summary over all episodes, with the seed-variance decomposition.
+
+    There is one block now ("overall"). With the no-DR arm gone every episode
+    is drawn from the same in-distribution scenario distribution, so the old
+    per-group split would just be the overall block repeated. Note the
+    ``domain_rand`` / ``no_domain_rand`` keys that eval_variance's summary.json
+    used to carry are gone with it.
+    """
+    return {"overall": _summary_block(records, _dr_seeds(cfg))}
 
 
 def flatten_for_mlflow(summary: dict) -> dict[str, float]:
-    """Flatten to scalar metrics. The overall aggregate keeps its plain
-    ``eval/...`` names (so `eval/success_rate`, `eval/funnel/...` etc. are the
-    headline curves, continuous with the pre-suite worker's naming); each
-    group's aggregate is repeated under ``eval/dr/...`` / ``eval/nodr/...`` as
-    the breakdown, plus the per-group seed-variance decomposition."""
+    """Flatten to scalar metrics under the plain ``eval/...`` names, so
+    `eval/success_rate`, `eval/funnel/...` etc. stay the headline curves and
+    remain continuous with the pre-suite worker's naming.
+
+    The ``eval/dr/*`` and ``eval/nodr/*`` breakdown series STOP here: with a
+    single in-distribution arm, ``eval/...`` now IS the DR number. Historical
+    runs keep their old series; new runs simply don't extend them.
+    """
     out: dict[str, float] = dict(summary["overall"]["aggregate"])
-    for group_key, prefix in (("domain_rand", "dr"), ("no_domain_rand", "nodr")):
-        group = summary.get(group_key)
-        if group is None:
-            continue
-        for key, value in group["aggregate"].items():
-            out[key.replace("eval/", f"eval/{prefix}/", 1)] = value
-        for stage, value in group["between_seed_std"].items():
-            out[f"eval/{prefix}/between_seed_std/{stage}"] = value
-        for stage, value in group["within_seed_std_mean"].items():
-            out[f"eval/{prefix}/within_seed_std/{stage}"] = value
+    for stage, value in summary["overall"]["between_seed_std"].items():
+        out[f"eval/between_seed_std/{stage}"] = value
+    for stage, value in summary["overall"]["within_seed_std_mean"].items():
+        out[f"eval/within_seed_std/{stage}"] = value
     return out
 
 
 def log_summary(summary: dict, cfg: SuiteConfig) -> None:
-    """Pretty-print the overall funnel + failure modes, then each group's
-    funnel, seed-variance spread, failure-mode distribution, and missed-grasp
-    anatomy."""
-    overall = summary["overall"]["aggregate"]
-    n_total = int(overall.get("eval/num_episodes", 0))
+    """Pretty-print the funnel, seed-variance spread, failure-mode distribution
+    and missed-grasp anatomy. One block: every episode is in-distribution."""
+    block = summary["overall"]
+    agg = block["aggregate"]
+    n = int(agg.get("eval/num_episodes", 0))
     funnel = " / ".join(
-        f"{stage}={overall.get(f'eval/funnel/{stage}_rate', 0.0) * 100:.0f}%"
+        f"{stage}={agg.get(f'eval/funnel/{stage}_rate', 0.0) * 100:.0f}%"
         for stage in FUNNEL_STAGES
     )
-    logging.info("overall (episodes=%d): %s", n_total, funnel)
+    logging.info(
+        "in-distribution (n_seeds=%d, k=%d, episodes=%d): %s",
+        cfg.n_dr_seeds, cfg.k_repeats, n, funnel,
+    )
+    between = " / ".join(
+        f"{stage}={block['between_seed_std'][stage] * 100:.0f}pp"
+        for stage in FUNNEL_STAGES
+    )
+    within = " / ".join(
+        f"{stage}={block['within_seed_std_mean'][stage] * 100:.0f}pp"
+        for stage in FUNNEL_STAGES
+    )
+    logging.info("  between-seed std: %s (scenario variance)", between)
+    logging.info("  within-seed  std: %s (repeat/policy variance)", within)
     modes = " / ".join(
-        f"{mode}={count / max(n_total, 1) * 100:.0f}%"
-        for mode, count in summary["overall"]["failure_modes"].items()
+        f"{mode}={count / max(n, 1) * 100:.0f}%"
+        for mode, count in block["failure_modes"].items()
     )
     logging.info("  failure modes: %s", modes)
-
-    for group_key, label, n_seeds in (
-        ("domain_rand", "domain_rand=on", cfg.n_dr_seeds),
-        ("no_domain_rand", "domain_rand=off", cfg.n_seeds),
-    ):
-        group = summary.get(group_key)
-        if group is None:
-            continue
-        agg = group["aggregate"]
-        n = int(agg.get("eval/num_episodes", 0))
-        funnel = " / ".join(
-            f"{stage}={agg.get(f'eval/funnel/{stage}_rate', 0.0) * 100:.0f}%"
-            for stage in FUNNEL_STAGES
+    miss_keys = [
+        ("side (pinch)", "eval/miss/pinch_rate"),
+        ("front/back (finger)", "eval/miss/finger_rate"),
+        ("too high (height)", "eval/miss/height_rate"),
+        ("shallow close", "eval/miss/close_shallow_rate"),
+        ("far", "eval/miss/coarse_far_rate"),
+    ]
+    if any(k in agg for _, k in miss_keys):
+        miss = " / ".join(
+            f"{lbl}={agg.get(key, 0.0) * 100:.0f}%" for lbl, key in miss_keys
         )
         logging.info(
-            "%s (n_seeds=%d, k=%d, episodes=%d): %s",
-            label, n_seeds, cfg.k_repeats, n, funnel,
+            "  missed-grasp anatomy (%d failed attempts): %s",
+            int(agg.get("eval/failed_grasp_attempts_mean", 0.0) * n),
+            miss,
         )
-        between = " / ".join(
-            f"{stage}={group['between_seed_std'][stage] * 100:.0f}pp"
-            for stage in FUNNEL_STAGES
-        )
-        within = " / ".join(
-            f"{stage}={group['within_seed_std_mean'][stage] * 100:.0f}pp"
-            for stage in FUNNEL_STAGES
-        )
-        logging.info("  between-seed std: %s", between)
-        logging.info("  within-seed  std: %s (repeat/policy variance)", within)
-        modes = " / ".join(
-            f"{mode}={count / max(n, 1) * 100:.0f}%"
-            for mode, count in group["failure_modes"].items()
-        )
-        logging.info("  failure modes: %s", modes)
-        miss_keys = [
-            ("side (pinch)", "eval/miss/pinch_rate"),
-            ("front/back (finger)", "eval/miss/finger_rate"),
-            ("too high (height)", "eval/miss/height_rate"),
-            ("shallow close", "eval/miss/close_shallow_rate"),
-            ("far", "eval/miss/coarse_far_rate"),
-        ]
-        if any(k in agg for _, k in miss_keys):
-            miss = " / ".join(
-                f"{lbl}={agg.get(key, 0.0) * 100:.0f}%" for lbl, key in miss_keys
-            )
-            logging.info(
-                "  missed-grasp anatomy (%d failed attempts): %s",
-                int(agg.get("eval/failed_grasp_attempts_mean", 0.0) * n),
-                miss,
-            )
 
 
 def write_episodes_jsonl(records: list[EpisodeRecord], path: pathlib.Path) -> None:

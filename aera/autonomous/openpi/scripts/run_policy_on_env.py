@@ -36,6 +36,9 @@ import tyro
 from aera.autonomous.envs.ar4_mk3_pick_and_place import Ar4Mk3PickAndPlaceEnv
 from aera.autonomous.envs.task_env_factory import (
     COLLECTION_DR_FLAGS,
+    DEPLOY_MAX_EPISODE_STEPS,
+    DEPLOY_N_SUBSTEPS,
+    DEPLOY_REPLAN_STEPS,
     build_phase_prompts,
     build_prompt,
     build_task_env_config,
@@ -68,9 +71,13 @@ class Args:
     prompt: str = "pick the yellow block and place it on the red target"
 
     # --- Evaluation parameters ---
-    replan_steps: int = 5
+    # Rate defaults are shared with SuiteConfig via task_env_factory. They used
+    # to be separate copies here and drifted badly (replan 5 vs 10,
+    # max_episode_steps 400 vs 1000, n_substeps 20 vs 3), so an ad-hoc run of
+    # this script silently evaluated at a different rate than the scored suite.
+    replan_steps: int = DEPLOY_REPLAN_STEPS
     num_episodes: int = 1
-    max_episode_steps: int = 400
+    max_episode_steps: int = DEPLOY_MAX_EPISODE_STEPS
     num_steps_wait: int = 10  # Number of steps to wait for objects to stabilize
     resize_size: int = 224
 
@@ -85,9 +92,9 @@ class Args:
     # `--skip` the trained dataset was built with: the action delta spans
     # `skip * 0.002 s` of motion, and one env.step integrates
     # `n_substeps * 0.002 s`, so they have to be equal for the arm to move at
-    # the rate the policy expects. (e.g. a skip=3 checkpoint → n_substeps=3.)
-    # Defaults to the env's 20.
-    n_substeps: int = 20
+    # the rate the policy expects. Override for an older checkpoint (e.g. a
+    # skip=3 one → n_substeps=3).
+    n_substeps: int = DEPLOY_N_SUBSTEPS
     # Scale applied to the policy's relative arm-joint action in the env. The
     # dataset stores joint deltas in radians (Unnormalize restores physical
     # units), so the policy output is applied directly at 1.0. Use a smaller

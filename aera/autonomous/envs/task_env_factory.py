@@ -40,6 +40,25 @@ COLLECTION_DR_FLAGS = {
     "randomize_arm_dynamics": True,
 }
 
+# --- Deploy rate ------------------------------------------------------------
+#
+# One definition, because SuiteConfig and run_policy_on_env.Args used to carry
+# separate copies that drifted (replan 10 vs 5, max_episode_steps 1000 vs 400,
+# n_substeps 3 vs 20). suite.py imports run_policy_on_env, so the duplication
+# could not be collapsed by pointing one at the other; they both point here.
+#
+# THE INVARIANT: n_substeps == the dataset's --skip. An action delta spans
+# skip * 2 ms of motion and one env.step integrates n_substeps * 2 ms, so they
+# must be equal or the arm executes each delta at the wrong speed. (If
+# record_every decimation is ever added at collection, the invariant becomes
+# n_substeps == record_every * skip.)
+DATASET_SKIP = 10
+DEPLOY_N_SUBSTEPS = DATASET_SKIP
+# Inference every 4 env steps = 80 ms at n_substeps=10.
+DEPLOY_REPLAN_STEPS = 4
+# ~3x the demonstrated episode length (250-330 env steps at n_substeps=10).
+DEPLOY_MAX_EPISODE_STEPS = 1000
+
 # Fields eval is allowed to differ on. Anything else diverging is a bug, and
 # test_task_env_factory asserts exactly that.
 EVAL_ONLY_FIELDS = frozenset(

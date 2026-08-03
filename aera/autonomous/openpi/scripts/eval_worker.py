@@ -16,7 +16,7 @@ offline run at defaults reproduces the training-time suite exactly). The
 trained `openpi` `Policy` object exposes the same
 `.infer(obs)["actions"]` interface as the websocket client, so it is passed
 straight into the suite's rollout. Per checkpoint, the flattened summary
-scalars go to mlflow metrics (eval/dr/... and eval/nodr/...) and the raw
+scalars go to mlflow metrics (eval/...) and the raw
 per-episode records (episodes.jsonl + summary.json) are attached as run
 artifacts under eval/<step>/.
 
@@ -82,10 +82,8 @@ class WorkerArgs:
     # meaningless. Always double check n_substeps against the checkpoint's
     # dataset `--skip`.
     n_dr_seeds: int = _suite.SuiteConfig.n_dr_seeds
-    n_seeds: int = _suite.SuiteConfig.n_seeds
     k_repeats: int = _suite.SuiteConfig.k_repeats
     dr_seed_start: int = _suite.SuiteConfig.dr_seed_start
-    seed_start: int = _suite.SuiteConfig.seed_start
     prompt: str = _suite.SuiteConfig.prompt
     max_episode_steps: int = _suite.SuiteConfig.max_episode_steps
     replan_steps: int = _suite.SuiteConfig.replan_steps
@@ -208,13 +206,10 @@ def _eval_checkpoint(
         client.log_artifacts(run_id, tmp, artifact_path=f"eval/{step}")
 
     logging.info(
-        "Logged step %d: success=%.1f%% grasped=%.1f%% "
-        "(dr success=%.1f%% | nodr success=%.1f%%)",
+        "Logged step %d: success=%.1f%% grasped=%.1f%%",
         step,
         flat.get("eval/success_rate", 0.0) * 100,
         flat.get("eval/funnel/grasped_rate", 0.0) * 100,
-        flat.get("eval/dr/success_rate", 0.0) * 100,
-        flat.get("eval/nodr/success_rate", 0.0) * 100,
     )
 
 

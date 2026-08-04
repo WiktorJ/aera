@@ -25,6 +25,10 @@ python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
 
 # camera parameterization: does eval draw from collection's distribution?  (needs F2)
 python semi_autonomous/aera_semi_autonomous/scripts/check_camera_parameterization.py
+
+# dead time: how much of the episode is the arm parked with nothing happening?
+python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
+    dwell --dt 0.005 --max-steps 3000 --seeds 0 1 2
 ```
 
 | expect | if not |
@@ -33,6 +37,46 @@ python semi_autonomous/aera_semi_autonomous/scripts/check_camera_parameterizatio
 | **`lock_engaged=True`** on every seed | C4/C5/F1 — the close never reaches the block. **This is the failure that produced the last run.** |
 | `close-sweep`: `pad_contacts > 0`, `pinching=True`, `lock=True` at the scripted target | F1 — the depth model still disagrees with the pad geometry |
 | collection and eval camera rows agree under DR offsets | F2/E2 — eval is sampling an OOD camera distribution |
+| `dwell`: `parked` ≤0.08, `parked_gripper_idle` ≤0.04 | see the dead-time note below — remedy is `gripper_action_steps` |
+
+### Gripper-close dead time — measure it, it doubled with C5 (added 04.08.2026)
+
+Noticed in a manual demo: after the jaws close there is a visible freeze before
+the arm lifts. It is expected, but it is worth watching because **C5 doubled it
+and nothing downstream flags it**.
+
+`_interpolate_gripper` parks the arm for the whole close (`data.ctrl[:6] =
+data.qpos[...]`, set once before the loop) and runs `gripper_action_steps * 2`
+= 100 mj-steps. It exits early only once the ramp finishes *and*
+`‖target − current‖ < gripper_pos_tolerance` — and with a full-close target of
+`0.0` and a block in the jaws that error is ~0.016, so it can never drop below
+the 1e-4 tolerance. The loop therefore always burns its full budget. That
+non-convergence is deliberate (it is what keeps driving the jaws in, see the
+comment at the end of `_interpolate_gripper`) — the dead time is its price.
+
+| | loop steps | sim time |
+|---|---|---|
+| before (target −11.5 mm, tol 1e-3) | 50 — converged right at ramp end | 0.10 s |
+| **now** (target 0.0, tol 1e-4) | **100 — never converges** | **0.20 s** |
+
+Measured on a 24 mm block, the jaws land within 50 µm of their resting position
+by **step 14** and travel only another 88 µm after the ramp ends at step 50 —
+so **86 of the 100 steps are visually static**, arm frozen and jaws already
+clamped. `dwell` on a full episode: `parked=0.06`, of which half
+(`parked_gripper_idle=0.03`, ~101 frames) is arm-parked *and* jaws-not-moving,
+i.e. ~2 full-budget calls per episode.
+
+Note the slow arm did **not** slow this: `gripper_action_steps` is a fixed
+mj-step count, unaffected by `integration_dt`. In sim-time *proportion* the
+close shrank (the intended dilution, ~20% of frames → ~3%), but in absolute
+terms it doubled, and it is now a hard freeze surrounded by smooth slow motion.
+
+**If it needs trimming, the lever is `gripper_action_steps` (or the `* 2` budget
+multiplier), NOT `gripper_pos_tolerance`.** Loosening the tolerance would
+restore the early exit that C5 removed on purpose, and the jaws would stop short
+of the block again — the exact failure that produced the last run. Dropping the
+multiplier from `2 ×` to ~`1.3 ×` cuts the dead half while still delivering the
+full ramp. Do not tune it before Stage 3 says it matters.
 
 Baseline for comparison, measured 02.08.2026 on unfixed code: `dt=0.15` → 0.69–0.75 s, 103–107 cm/s, **`lock_engaged=False`**; `dt=0.005` → 4.81–6.61 s, 12.1–14.9 cm/s, **`lock_engaged=False`**.
 
@@ -111,6 +155,29 @@ python -m aera.autonomous.openpi.scripts.measure_action_dynrange \
 **Check 4 is the headline gate.** It is the entire reason for the timescale change: if the descent still commands a small fraction of the normalized output span, the re-collect did not buy what it was for and the training should not start.
 
 Checks 2 and 3 pull in opposite directions — coarser skip raises the median toward the target but coarsens the descent. If they cannot be satisfied together, that is a real finding about the velocity profile, not a threshold to tune away.
+
+### Where the gripper-close dead time lands in the data
+
+Stage 0's `dwell` measures this on the raw sim stream; this is how to read it in
+the **built dataset**, which is what actually reaches training. There is no
+dedicated check for it — it shows up split across two existing ones, so neither
+on its own makes it obvious:
+
+* **Check 2's near-static fraction** is where the parked frames land (threshold
+  ≤10%). **If check 2 fails on near-static specifically, get the attribution
+  before touching skip** — `dwell` says whether it is gripper parking (remedy:
+  `gripper_action_steps`) or genuine arm creep (remedy: skip). Adjusting skip
+  cannot remove parked frames: the parking is long in *time*, so decimation
+  keeps it proportionally. This is the same trap as the fast arm's 40%
+  near-static, which was also gripper ramps rather than timescale.
+* **Check 5's grasp-window count** is the same frames from the other side. A
+  window at the high end of the expected 5–8 is partly this: ~86 of the 100
+  close steps are near-identical parked images, all labelled "closed" once
+  binarized. Duplicated-looking signal rather than a bug — but worth knowing
+  before concluding the grasp phase is well represented.
+
+Record both on the 10-episode batch **even when they pass**, so the full collect
+has a baseline to compare against.
 
 ---
 

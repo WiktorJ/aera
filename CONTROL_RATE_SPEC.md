@@ -10,36 +10,60 @@ re-verify if the pipeline changes.
 
 ## Timing
 
-**Current pair: `--skip 10` / `n_substeps = 10` ⇒ 50 Hz.** These are defined
-once in `aera/autonomous/envs/task_env_factory.py` (`DATASET_SKIP`,
-`DEPLOY_N_SUBSTEPS`, `DEPLOY_REPLAN_STEPS`, `DEPLOY_MAX_EPISODE_STEPS`) and
-consumed by both `SuiteConfig` and `run_policy_on_env.Args`, which previously
-kept separate copies and drifted (`n_substeps` 3 vs 20).
+**Current triple: `record_every 5` × `--skip 2` / `n_substeps = 10` ⇒ 50 Hz.**
+These are defined once in `aera/autonomous/envs/task_env_factory.py`
+(`COLLECTION_RECORD_EVERY`, `DATASET_SKIP`, `DEPLOY_N_SUBSTEPS`,
+`DEPLOY_REPLAN_STEPS`, `DEPLOY_MAX_EPISODE_STEPS`) and consumed by
+`Ar4Mk3InterfaceConfig`, `SuiteConfig` and `run_policy_on_env.Args` — the last
+two previously kept separate copies and drifted (`n_substeps` 3 vs 20).
 
 | quantity | value | source |
 |---|---|---|
 | sim timestep | `0.002 s` | `aera/.../ar4_mk3/ar4_mk3.xml` (`<option timestep="0.002">`) |
-| dataset `--skip` | `10` | `DATASET_SKIP`; the transform invocation |
+| collection `record_every` | `5` | `COLLECTION_RECORD_EVERY` → `Ar4Mk3InterfaceConfig.record_every` |
+| dataset `--skip` | `2` | `DATASET_SKIP`; the transform invocation |
 | `n_substeps` | `10` at deploy | `DEPLOY_N_SUBSTEPS`; env default is still 20, always set it |
 | `replan_steps` | `4` (= 80 ms between inferences) | `DEPLOY_REPLAN_STEPS` |
 | **env step** | **`n_substeps × 0.002 s`** = `0.02 s` = **50 Hz** | one action is held for all `n_substeps` substeps |
 
-> If per-frame recording decimation (`record_every`) is ever enabled at
-> collection, the invariant becomes **`n_substeps = record_every × skip`**. It
-> is deliberately not implemented today, so `record_every = 1` throughout.
+> **The invariant is `n_substeps = record_every × skip`, not `n_substeps =
+> skip`.** Decimation happens twice — once at collection (`record_every`
+> mj-steps per recorded frame) and once at transform (`--skip` recorded frames
+> per dataset frame) — and only the product is a rate. `--skip` alone has not
+> been the deploy rate since `record_every` landed.
+>
+> The two are exactly equivalent as data: the transform pairs `state[t]` with
+> `state[t + skip]` in *recorded* frames (`offset = skip - 1`, and the
+> collector's action is the next recorded state), so a delta spans
+> `record_every × skip` raw steps and the frame stride matches. `record_every=5,
+> skip=2` and `record_every=1, skip=10` produce the same dataset. The split is a
+> cost choice, not a learning choice: recording is ~99% of a collected frame's
+> wall clock (measured 13.7 ms of camera renders against 0.09 ms of physics, and
+> the renders are per-call, not per-pixel), so a larger `record_every` collects
+> proportionally faster, while a smaller one leaves room to re-transform at a
+> finer rate without re-collecting.
+>
+> `record_every` is written into each episode's metadata;
+> `convert_data_to_lerobot` echoes it and **refuses to build a dataset from
+> episodes recorded at mixed values**, since their deltas would span different
+> amounts of sim time with nothing left to distinguish them. Recordings from
+> before it landed have no key and are read as `1`.
 
 - **Eval / deploy** (`run_policy_on_env.py`) applies **one policy action per
   `env.step`** (action chunk, `replan_steps` applied one-per-step). `n_substeps`
   is exposed as `--n_substeps`, so the decision interval is whatever you set.
 - **Collection** (`Ar4Mk3RobotInterface`) records via `_record_step()` on
-  **every IK mj-step (~0.002 s sim), not throttled**, timestamped with
-  wall-clock `time.time()`.
+  **every `record_every`-th mj-step**, timestamped with wall-clock
+  `time.time()`. One counter serves all four call sites (IK loop, gripper ramp,
+  `_settle`, `go_to_qpos`) so the stride stays uniform across an episode.
 - The source LeRobot dataset `fps` is computed as
   `round(total_frames / total_wall_clock_duration)`
   (`convert_data_to_lerobot.py`) — **machine-dependent, not a clean sim
   rate**. Do not use it to time the real control loop.
-- `transform_skip_dataset.py` subsamples by **frame count** (`--skip`), so a
-  recorded action's true timescale is **`skip × 0.002 s` of sim time**.
+- `transform_skip_dataset.py` subsamples by **recorded** frame count (`--skip`),
+  so an action's true timescale is **`record_every × skip × 0.002 s` of sim
+  time**. It takes `--record-every` purely to print that rate; it transforms
+  nothing with it.
 
 ### ⇒ skip is a learning choice; matching is a deploy choice
 
@@ -53,10 +77,10 @@ The faithful-deploy invariant is satisfied **downstream**, by configuring the
 applier to one decision per training delta:
 
 ```
-deploy decision interval  ==  skip × 0.002 s
-   sim:   set env n_substeps = skip   (run_policy_on_env --n_substeps)
-   real:  run the driver loop at 1 / (skip × 0.002 s) Hz
-          e.g. skip=20 → 25 Hz, skip=10 → 50 Hz, skip=3 → 167 Hz
+deploy decision interval  ==  record_every × skip × 0.002 s
+   sim:   set env n_substeps = record_every × skip  (run_policy_on_env --n_substeps)
+   real:  run the driver loop at 1 / (record_every × skip × 0.002 s) Hz
+          e.g. product=20 → 25 Hz, product=10 → 50 Hz, product=3 → 167 Hz
 ```
 
 Note skip=3 (the old datasets) implies a **167 Hz** faithful deploy, which is
@@ -112,8 +136,10 @@ With `--delta-actions` (`num_joint_dims=6`):
 
 ## Verify against the real driver / trained checkpoint
 
-1. **`n_substeps == skip`** at deploy (sim) and **real loop rate == 1/(skip ×
-   0.002 s)** — match the rate to the skip the dataset was built with.
+1. **`n_substeps == record_every × skip`** at deploy (sim) and **real loop rate
+   == 1/(record_every × skip × 0.002 s)** — match the rate to the *product* the
+   dataset was built with. `convert_data_to_lerobot` prints the `record_every`
+   it found; `transform_skip_dataset` prints the resulting rate.
 2. **Arm delta units / scale.** Dataset deltas are *raw radians over `skip`
    steps*; apply them with `relative_action_scale = 1.0` (NOT `0.05`). Spot-check
    end-to-end against the checkpoint's norm stats.

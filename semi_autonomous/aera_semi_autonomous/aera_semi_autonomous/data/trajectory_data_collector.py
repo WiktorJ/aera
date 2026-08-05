@@ -110,6 +110,10 @@ class TrajectoryDataCollector:
                 "image_height": None,
                 "rgb_encoding": None,
                 "depth_encoding": None,
+                # How many mj-steps the recorder skipped between frames. The
+                # deploy invariant is n_substeps == record_every * skip, so a
+                # dataset is uninterpretable without it; see CONTROL_RATE_SPEC.
+                "record_every": None,
             },
         }
 
@@ -170,6 +174,20 @@ class TrajectoryDataCollector:
             )
         else:
             self.logger.info(f"Eposied data for episode: {self.episode_id} not saved")
+
+    def record_collection_metadata(self, **fields) -> None:
+        """Attach collection-time settings to the current episode's metadata.
+
+        For values the recorder knows but the trajectory does not carry — the
+        rate a dataset must be replayed at, above all. Idempotent per key, so
+        the caller can pass the same fields on every frame without checking.
+        """
+        if not self.is_collecting:
+            return
+        metadata = self.current_episode_data["metadata"]
+        for key, value in fields.items():
+            if metadata.get(key) is None:
+                metadata[key] = value
 
     def record_joint_state(self, joint_state: JointState) -> None:
         """

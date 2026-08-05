@@ -17,6 +17,21 @@ def test_build_output_repo_id_naming():
     assert _build_output_repo_id("org/name", 3, True, "custom") == "org/name_custom"
 
 
+def test_build_output_repo_id_names_the_net_decimation():
+    """The name carries record_every * skip, i.e. the deploy n_substeps.
+
+    Naming a record_every=5 / skip=2 dataset "skip2" would tell the deploy side
+    to replay a 50 Hz dataset at 250 Hz.
+    """
+    assert (
+        _build_output_repo_id("org/name", 2, True, None, 5) == "org/name_skip10_delta"
+    )
+    # The two ways of reaching net 10 are the same dataset, so the same name.
+    assert _build_output_repo_id("org/name", 2, True, None, 5) == _build_output_repo_id(
+        "org/name", 10, True, None, 1
+    )
+
+
 def test_parse_image_float_chw_to_uint8_hwc():
     # LeRobot stores float32 CHW; the pipeline (and obs-aug) needs uint8 HWC.
     chw = np.zeros((3, 2, 2), dtype=np.float32)

@@ -42,6 +42,14 @@ class Ar4Mk3RobotInterface(RobotInterface):
         self._latest_rgb_image: Dict[str, np.ndarray] = {}
         self._latest_depth_image: Dict[str, np.ndarray] = {}
 
+        # Counts every _record_step call so config.record_every can decimate
+        # them. One counter for the whole interface, shared by all four call
+        # sites (the IK loop, the gripper ramp, _settle, go_to_qpos), so the
+        # recorded stride stays uniform across an episode instead of re-phasing
+        # at every motion primitive. The collection script builds a fresh
+        # interface per trajectory, so this is already per-episode.
+        self._record_call_count = 0
+
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
@@ -221,8 +229,22 @@ class Ar4Mk3RobotInterface(RobotInterface):
         return img_msg
 
     def _record_step(self):
-        """Records a single step of simulation data if a data collector is set."""
+        """Records a single step of simulation data if a data collector is set.
+
+        Throttled by config.record_every: the two camera renders below are ~99%
+        of the cost of a collected frame, and the transform discards most of
+        them anyway. Counting before the collector check keeps the stride tied
+        to mj-steps rather than to when a collector happened to be attached.
+        """
+        step_index = self._record_call_count
+        self._record_call_count += 1
+        if step_index % self.config.record_every:
+            return
+
         if self.data_collector:
+            self.data_collector.record_collection_metadata(
+                record_every=self.config.record_every
+            )
             now = time.time()
             joint_state_msg = self._create_joint_state_msg(now)
             self.data_collector.record_joint_state(joint_state_msg)

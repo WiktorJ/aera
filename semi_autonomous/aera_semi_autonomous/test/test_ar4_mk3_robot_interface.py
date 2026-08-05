@@ -401,6 +401,78 @@ class TestAr4Mk3RobotInterface(unittest.TestCase):
         self.assertAlmostEqual(self.robot_interface.home_pose.position.y, 0.2)
         self.assertAlmostEqual(self.robot_interface.home_pose.position.z, 0.3)
 
+    def _record_only_interface(self, record_every):
+        """An interface whose _record_step does nothing but count."""
+        robot = Ar4Mk3RobotInterface(
+            self.mock_env, Ar4Mk3InterfaceConfig(record_every=record_every)
+        )
+        robot.data_collector = Mock()
+        robot._create_joint_state_msg = Mock(
+            return_value=Mock(header=Mock(stamp=Mock(sec=0, nanosec=0)))
+        )
+        robot.get_latest_rgb_image = Mock(return_value={})
+        robot.get_end_effector_pose = Mock(return_value=None)
+        return robot
+
+    def test_record_step_decimates_by_record_every(self):
+        """record_every=5 records the 1st of every 5 calls, not 5 of every 5.
+
+        The renders inside _record_step are ~99% of a collected frame's cost, so
+        this ratio is the whole reason the flag exists.
+        """
+        robot = self._record_only_interface(5)
+
+        for _ in range(20):
+            robot._record_step()
+
+        self.assertEqual(robot.data_collector.record_joint_state.call_count, 4)
+
+    def test_record_step_records_the_first_call(self):
+        """Frame 0 must be recorded, or every episode loses its opening state."""
+        robot = self._record_only_interface(5)
+
+        robot._record_step()
+
+        self.assertEqual(robot.data_collector.record_joint_state.call_count, 1)
+
+    def test_record_every_one_records_every_call(self):
+        """record_every=1 is the identity — the pre-decimation behaviour."""
+        robot = self._record_only_interface(1)
+
+        for _ in range(7):
+            robot._record_step()
+
+        self.assertEqual(robot.data_collector.record_joint_state.call_count, 7)
+
+    def test_record_step_counts_without_a_collector(self):
+        """The stride is tied to mj-steps, not to when a collector was attached.
+
+        Counting only while collecting would re-phase the stride at whatever
+        step set_data_collector happened to run on.
+        """
+        robot = self._record_only_interface(5)
+        collector = robot.data_collector
+        robot.data_collector = None
+
+        for _ in range(3):
+            robot._record_step()
+        robot.data_collector = collector
+        for _ in range(2):
+            robot._record_step()
+
+        # Calls 3 and 4 fall between multiples of 5, so nothing is recorded.
+        collector.record_joint_state.assert_not_called()
+
+    def test_record_step_reports_record_every_as_metadata(self):
+        """A dataset is uninterpretable without the stride it was recorded at."""
+        robot = self._record_only_interface(5)
+
+        robot._record_step()
+
+        robot.data_collector.record_collection_metadata.assert_called_once_with(
+            record_every=5
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

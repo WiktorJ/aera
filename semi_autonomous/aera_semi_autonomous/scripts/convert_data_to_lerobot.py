@@ -110,6 +110,7 @@ def main(
     width: int | None = None
     total_points = 0
     total_duration = 0.0
+    record_every_seen: set = set()
     for episode_dir in tqdm(episode_dirs, desc="Scanning episodes", unit="ep"):
         data = _load_episode(episode_dir)
         if data is None:
@@ -119,6 +120,8 @@ def main(
             metadata = data["metadata"]
             height = metadata["image_height"]
             width = metadata["image_width"]
+        # Pre-record_every recordings have no such key; they were all 1.
+        record_every_seen.add(data["metadata"].get("record_every") or 1)
         total_points += len(data["trajectory_data"])
         total_duration += data.get("duration", 0)
         valid_episode_dirs.append(episode_dir)
@@ -127,6 +130,23 @@ def main(
     if not valid_episode_dirs:
         print("No valid episodes found. Aborting.")
         return
+
+    # The deploy rate is n_substeps == record_every * skip, so mixing recording
+    # strides in one dataset produces frames whose deltas span different amounts
+    # of sim time with nothing left to tell them apart. Refuse rather than build
+    # a dataset that can only be deployed at the wrong rate for some of it.
+    if len(record_every_seen) > 1:
+        raise ValueError(
+            f"Episodes were recorded at mixed record_every values "
+            f"{sorted(record_every_seen)}. Their action deltas span different "
+            "amounts of sim time and cannot share one dataset — convert them "
+            "separately, or re-collect."
+        )
+    record_every = record_every_seen.pop()
+    print(
+        f"Collection record_every: {record_every} "
+        f"(deploy invariant: n_substeps = {record_every} * transform --skip)"
+    )
 
     fps = round(total_points / total_duration) if total_duration > 0 else 30
     print(f"Calculated average FPS: {fps}")

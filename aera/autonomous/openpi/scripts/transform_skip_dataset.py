@@ -39,6 +39,11 @@ from aera.autonomous.envs.jaw_geometry import (
     GRIPPER_FULL_CLOSE,
     GRIPPER_JAW_QPOS_MIN,
 )
+from aera.autonomous.envs.task_env_factory import (
+    COLLECTION_RECORD_EVERY,
+    DEPLOY_N_SUBSTEPS,
+    MJ_TIMESTEP_S,
+)
 from aera.autonomous.openpi.dataset_transforms import compute_smoothed_arrays
 
 
@@ -92,6 +97,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help="Suffix for the output repo ID. Defaults to 'skip{N}' or 'skip{N}_delta'.",
+    )
+    parser.add_argument(
+        "--record-every",
+        type=int,
+        default=COLLECTION_RECORD_EVERY,
+        help=(
+            "The mj-step stride collection recorded at (Ar4Mk3InterfaceConfig."
+            "record_every, echoed by convert_data_to_lerobot). Not used to "
+            "transform anything — it only makes this script able to report the "
+            "deploy rate the output must be replayed at, which is "
+            "record_every * skip substeps, not skip."
+        ),
     )
     parser.add_argument(
         "--min-action-delta",
@@ -254,13 +271,25 @@ def _to_numpy(value):
 
 
 def _build_output_repo_id(
-    source_repo_id: str, skip: int, delta: bool, suffix: str | None
+    source_repo_id: str,
+    skip: int,
+    delta: bool,
+    suffix: str | None,
+    record_every: int = 1,
 ) -> str:
-    """Build the output repo ID from the source repo ID and options."""
+    """Build the output repo ID from the source repo ID and options.
+
+    The skip in the name is the NET decimation (record_every * skip), i.e. the
+    n_substeps the dataset must be deployed at — that is what the name has always
+    meant, and what makes these names comparable across datasets collected at
+    different record_every. Naming it after --skip alone would tell a reader to
+    deploy a 50 Hz dataset at 5x the rate.
+    """
+    net_skip = record_every * skip
     if suffix is not None:
         tag = suffix
     else:
-        tag = f"skip{skip}_delta" if delta else f"skip{skip}"
+        tag = f"skip{net_skip}_delta" if delta else f"skip{net_skip}"
 
     org, name = source_repo_id.split("/", 1)
     return f"{org}/{name}_{tag}"
@@ -751,8 +780,29 @@ def main():
         f"gripper_binarize_threshold={args.gripper_binarize_threshold}"
     )
 
+    # Stated here because this is where --skip is chosen, and --skip alone is
+    # NOT the deploy rate once collection decimates. Getting this wrong looks
+    # like a bad policy rather than a rate bug; see CONTROL_RATE_SPEC.md.
+    deploy_n_substeps = args.record_every * args.skip
+    logging.info(
+        f"Deploy rate: n_substeps = record_every({args.record_every}) * "
+        f"skip({args.skip}) = {deploy_n_substeps} substeps "
+        f"= {deploy_n_substeps * MJ_TIMESTEP_S * 1000:.0f} ms "
+        f"= {1.0 / (deploy_n_substeps * MJ_TIMESTEP_S):.0f} Hz"
+    )
+    if deploy_n_substeps != DEPLOY_N_SUBSTEPS:
+        logging.warning(
+            f"This dataset deploys at n_substeps={deploy_n_substeps}, but "
+            f"DEPLOY_N_SUBSTEPS is {DEPLOY_N_SUBSTEPS}. Pass --n_substeps "
+            f"{deploy_n_substeps} at eval, or update task_env_factory."
+        )
+
     output_repo_id = _build_output_repo_id(
-        args.repo_id, args.skip, args.delta_actions, args.output_repo_suffix
+        args.repo_id,
+        args.skip,
+        args.delta_actions,
+        args.output_repo_suffix,
+        args.record_every,
     )
     logging.info(f"Output repo ID: {output_repo_id}")
 

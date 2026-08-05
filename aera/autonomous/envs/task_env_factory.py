@@ -47,13 +47,27 @@ COLLECTION_DR_FLAGS = {
 # n_substeps 3 vs 20). suite.py imports run_policy_on_env, so the duplication
 # could not be collapsed by pointing one at the other; they both point here.
 #
-# THE INVARIANT: n_substeps == the dataset's --skip. An action delta spans
-# skip * 2 ms of motion and one env.step integrates n_substeps * 2 ms, so they
-# must be equal or the arm executes each delta at the wrong speed. (If
-# record_every decimation is ever added at collection, the invariant becomes
-# n_substeps == record_every * skip.)
-DATASET_SKIP = 10
-DEPLOY_N_SUBSTEPS = DATASET_SKIP
+# THE INVARIANT: n_substeps == record_every * skip. An action delta spans
+# record_every * skip * 2 ms of motion and one env.step integrates
+# n_substeps * 2 ms, so they must be equal or the arm executes each delta at the
+# wrong speed.
+#
+# Collection records one frame every COLLECTION_RECORD_EVERY mj-steps rather
+# than every mj-step, because ~99% of a recorded frame's cost is the two camera
+# renders (measured: 13.7 ms of renders against 0.09 ms of physics) and the
+# transform then throws most of those frames away. Decimating at collection and
+# at transform are exactly equivalent — the transform pairs state[t] with
+# state[t + skip] in *recorded* frames, so the delta spans record_every * skip
+# raw steps and the frame stride matches — so only the product is a learning
+# choice. The split is a cost/flexibility choice: a smaller record_every costs
+# more to collect but leaves room to re-transform at a finer rate without
+# re-collecting.
+COLLECTION_RECORD_EVERY = 5
+DATASET_SKIP = 2
+DEPLOY_N_SUBSTEPS = COLLECTION_RECORD_EVERY * DATASET_SKIP
+# <option timestep="0.002"> in ar4_mk3.xml. Here so rate arithmetic reads as
+# rate arithmetic instead of a bare 0.002 at each call site.
+MJ_TIMESTEP_S = 0.002
 # Inference every 4 env steps = 80 ms at n_substeps=10.
 DEPLOY_REPLAN_STEPS = 4
 # ~3x the demonstrated episode length (250-330 env steps at n_substeps=10).

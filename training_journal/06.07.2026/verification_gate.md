@@ -6,7 +6,7 @@ Branched from [next_run_changes.md](./next_run_changes.md) (the "Verify on the f
 
 **Rule:** nothing proceeds to the next stage until the current one passes. Each failure below routes to either **transform** (cheap — re-run the transform) or **re-collect** (expensive — fix collection first).
 
-Thresholds throughout are the slow-arm / skip=10 targets. If the batch sends you to a different skip, pass the new expectations via `check_dataset_health`'s threshold flags rather than editing the tool.
+Thresholds throughout are the slow-arm / net-decimation-10 targets (`record_every=5` × `--skip 2`; see [CONTROL_RATE_SPEC.md](../../CONTROL_RATE_SPEC.md)). If the batch sends you to a different rate, pass the new expectations via `check_dataset_health`'s threshold flags rather than editing the tool.
 
 ---
 
@@ -101,7 +101,9 @@ grep    "Successfully collected"               /tmp/collect_verify.log   # want 
 | 8 — lock engaged | ≥95% of episodes, i.e. 0 `Grasp not locked` | **re-collect** (C4/C5/F1) |
 | 1 — IK budget | 0 `Max steps` / `could not move`, 10/10 collected | **re-collect** (C1 `max_steps`) |
 
-Also record, for the X1 decision: **wall-clock per episode** and **disk per episode** (`du -sh data/verify_batch`). If either is untenable at ×285 for the full run, revisit `record_every` decimation before collecting at scale.
+Also record **wall-clock per episode** and **disk per episode** (`du -sh data/verify_batch`), and sanity-check the recorded frame count: at `record_every=5` an episode should hold **~500** frames, not ~2500. If it holds ~2500 the decimation is not in effect and collection will run ~5× slower than it needs to.
+
+Expect ~8 s/episode and ~1000 jpeg sidecars per episode. That is the point of `record_every=5` — see the X1 note in [implementation_plan.md](./implementation_plan.md). If it comes in much higher, the profile to check first is the two camera renders in `_record_step`, which measured 13.7 ms against 0.09 ms of physics.
 
 ---
 
@@ -118,12 +120,18 @@ python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py \
 
 python -m aera.autonomous.openpi.scripts.transform_skip_dataset \
     --repo-id Purple69/aera_semi_pnp_dr_<DDMMYYYY>_verify \
-    --skip 10 --delta-actions --binarize-gripper \
+    --skip 2 --delta-actions --binarize-gripper \
     --output-repo-suffix skip10_delta_verify
 # -> Purple69/aera_semi_pnp_dr_<DDMMYYYY>_verify_skip10_delta_verify
 ```
 
-Two notes:
+Three notes:
+* **`--skip 2`, not 10.** Collection records every 5th mj-step
+  (`COLLECTION_RECORD_EVERY`), so the net decimation is `5 × 2 = 10` and the
+  deploy rate is unchanged at `n_substeps=10` / 50 Hz. The transform prints the
+  resulting rate; check that line reads `= 10 substeps = 20 ms = 50 Hz`. If
+  check 3 sends you to a finer rate, `--skip 1` gives net 5 without a
+  re-collect — that headroom is why `record_every` is 5 rather than 10.
 * **No `--min-action-delta`** (implementation plan T3 — with the arm parked during the ramp and a binarized gripper action, the idle filter deletes the grasp window).
 * `--binarize-gripper` landed with **T1**. It snaps only the **action** gripper dims to `{-0.014, 0}` (`--gripper-binarize-threshold`, default `-0.013`); the state channel stays continuous, which is what check 6 asserts. There is also `--drop-leading-closed`, which is **not** needed here — C6 removed the leading closed frames at the source. Use it only when re-processing a dataset collected before that landed.
 

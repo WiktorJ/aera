@@ -468,6 +468,37 @@ class TestTrajectoryDataCollector(unittest.TestCase):
         self.assertIn("joint_velocities", action)
         self.assertIn("cartesian_velocity", action)
 
+    def test_record_collection_metadata(self):
+        """Collection settings land in the episode's metadata."""
+        self.collector.start_episode("test metadata")
+
+        self.collector.record_collection_metadata(record_every=5)
+
+        self.assertEqual(
+            self.collector.current_episode_data["metadata"]["record_every"], 5
+        )
+
+    def test_record_collection_metadata_is_idempotent(self):
+        """The first value wins, so callers can pass it on every frame.
+
+        _record_step does exactly that rather than tracking whether it has
+        already reported.
+        """
+        self.collector.start_episode("test metadata idempotent")
+
+        self.collector.record_collection_metadata(record_every=5)
+        self.collector.record_collection_metadata(record_every=99)
+
+        self.assertEqual(
+            self.collector.current_episode_data["metadata"]["record_every"], 5
+        )
+
+    def test_record_collection_metadata_ignored_when_not_collecting(self):
+        """No episode in progress means there is no metadata to attach it to."""
+        self.collector.record_collection_metadata(record_every=5)
+
+        self.assertNotIn("record_every", self.collector.current_episode_data)
+
     def test_synchronize_all_data_missing_data(self):
         """Test synchronization with missing data."""
         self.collector.start_episode("test sync")

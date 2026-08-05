@@ -12,7 +12,7 @@ Ordering: F → C → (collect 10 eps) → V → T → E. F1/F2 first because se
 
 | # | Question | Decision |
 |---|---|---|
-| X1 | Recording cost at dt=0.005 | **Drop depth recording; accept the 8× raw-frame growth otherwise.** `record_every` decimation stays a deferred option, re-considered only if the 10-episode batch shows unacceptable wall-clock/disk. |
+| X1 | Recording cost at dt=0.005 | **Drop depth recording, AND decimate: `record_every=5` with `--skip 2`.** Revised 05.08.2026 — the deferred option was taken before the batch, because the cost was measured rather than guessed. See the X1 addendum below. |
 | X2 | Where the slow-arm IK values live | **Change the `IKConfig` defaults** — the slow arm is the definition of the demonstrated behaviour, so every consumer (demo, sweeps, DAgger) gets it. |
 | X3 | Seed budget after dropping the noDR arm | **40 episodes** — `n_dr_seeds=20`, `k_repeats=2`. Partial reallocation of the freed noDR budget: 5 more scenarios than today's DR arm, still 20% cheaper than the old 50-episode suite. |
 | X4 | `replan_steps` / `max_episode_steps` | **`replan_steps=4`.** `max_episode_steps` still derived from the measured demo length (below). The 1–5 sweep drops from blocking to confirmatory. |
@@ -45,6 +45,26 @@ Options (not mutually exclusive):
 * **(c) Accept the 8×.** Only viable if collection wall-clock and ~TB-scale disk are actually fine.
 
 **Decided: (a) + (c).** Depth goes off now; the raw stream stays at native 2 ms so the verification measurements are unambiguous. (b) is held in reserve for the full collect if the 10-episode batch shows the wall-clock or disk is untenable.
+
+#### X1 addendum (05.08.2026): (b) taken — `record_every=5`, `--skip 2`
+
+Collection came out **~10× slower** after the batched fixes landed, so the cost was profiled instead of waited on. It is **entirely recording, and recording is entirely the two camera renders**:
+
+| component | per raw frame |
+|---|---|
+| `mj_step` + `mj_forward` | **0.091 ms** |
+| `get_latest_rgb_image` (free cam + `gripper_camera`) | **13.68 ms** |
+| full `_record_step` (renders + msg + jpeg + buffer) | **16.13 ms** |
+
+⇒ recording is **99.4%** of a frame, and raw frames/episode went 402 (dt=0.15) → 2496 (dt=0.005). That product is the whole slowdown. Two things make it un-tunable by any other means: render cost is **per-call, not per-pixel** (640×480 = 7.78 ms, 224×224 = 7.90 ms — it is `mjr_render` at 5.2 ms plus renderer overhead, while `mjv_updateScene` is 0.004 ms), and **the slow arm itself is free** (0.25 s/episode of physics). So the only lever is fewer render calls, and the frames to drop are the ones `--skip` was going to delete anyway.
+
+**The two decimations are exactly equivalent, not approximately.** The transform pairs `state[t]` with `state[t + skip]` in *recorded* frames (`offset = skip - 1` at `transform_skip_dataset.py:474`, and the collector's action is the next recorded state), so a delta spans `record_every × skip` raw steps and the frame stride matches. Verified end-to-end on the real code path: the same seed run at `record_every=1` and `record_every=5` takes the identical 1730 mj-steps, and the decimated run's recorded frames are **bit-identical to frames 0, 5, 10, … of the undecimated one** (max abs qpos difference 0.0). Same images, same deltas, same grasp-window frame count.
+
+**5 rather than 10** because the plan's own contingencies stay cheap: check 3 routes a coarse descent to "drop to skip 5–6, **transform**", and check 5 routes a degenerate grasp window to frame duplication. At `record_every=5` both remain re-transforms (`--skip 1` → net 5); at 10 they become re-collects. The extra ~3.5 s/episode buys that.
+
+Measured effect on the grasp phase (go_home + `grasp_at`, ~1730 of an episode's ~2500 mj-steps): **23.1 s → 5.2 s, 4.4×**. Projected per episode: ~40 s → ~8 s, against ~6.5 s for the old fast arm — so collection ends up ~1.3× its pre-slowdown cost rather than ~7×, and writes ~1000 jpeg sidecars per episode instead of ~5000.
+
+Landed as `Ar4Mk3InterfaceConfig.record_every` (default from `COLLECTION_RECORD_EVERY`), written into episode metadata, echoed by `convert_data_to_lerobot` — which **refuses to build a dataset from episodes recorded at mixed strides** — and reported as a deploy rate by `transform_skip_dataset`, whose output repo name now carries the *net* decimation so `skip10_delta` keeps meaning "deploy at `n_substeps=10`".
 
 ### X2. Where the slow-arm IK values live
 `IKConfig.integration_dt` / `max_steps` (`ar4_mk3_interface_config.py:16,19`) are shared by every consumer of the scripted expert (collection, `demo_pick_and_place`, `sweep_ik_params`, future DAgger). **Decided: change the dataclass defaults** — the slow arm is now the definition of the demonstrated behaviour, and a collection-only override would silently leave `demo_pick_and_place` (the thing used to eyeball demos) on the old timescale.
@@ -137,7 +157,7 @@ holding the *collection* values as the single definition: `reward_type="sparse"`
 
 ### C7. ✅ LANDED (`59f4577`) — depth recording off (per X1)
 * `record_depth: bool = False` in `Ar4Mk3InterfaceConfig`, gating `ar4_mk3_robot_interface.py:241-245`. Halves the per-frame render calls and removes the ~1 GB/episode RAM spike; downstream is unaffected (`convert_data_to_lerobot.py:213-215` already ignores depth).
-* `record_every` decimation is **not** implemented now. If the 10-episode batch shows the wall-clock or disk is untenable, add `record_every: int = 1` to the same config plus a counter in `_record_step`, record it in the episode metadata, and propagate the `n_substeps = record_every × skip` invariant to the transform log and `CONTROL_RATE_SPEC.md`.
+* ~~`record_every` decimation is **not** implemented now.~~ **✅ LANDED 05.08.2026 — `record_every: int = 5`** in the same config, one counter in `_record_step` shared by all four call sites, the value in episode metadata, and the `n_substeps = record_every × skip` invariant propagated to the transform log line and `CONTROL_RATE_SPEC.md`. See the X1 addendum above for the profile that motivated it and the equivalence check. **The transform invocation is now `--skip 2`, not `--skip 10`.**
 
 ---
 
@@ -172,7 +192,7 @@ Measured on `16_06` (episode 0, hand-traced): the close ramp survives as jaw qpo
 Note the sizing is genuinely tight: a close ramp travels ~0.15 mm/frame at skip3 and ~0.35 mm at skip10, while an open jaw jitters ~0.1–0.2 mm/frame against its limit stop — signal and noise floor nearly overlap. Another reason (a) is the right call for this run, with (b) as the correct behaviour whenever the filter *is* used.
 
 ### T2. ✅ PINNED in the runbook (no code change)
-`--skip 10`, `--binarize-gripper`, **no `--min-action-delta`** (see T3), no `--image-aug` / `--state-aug` (doc item 6). Grasp-window duplication/weighting is **contingent on check 5 failing** — do not build it up front.
+`--skip 2` (net 10 against `record_every=5` — see the X1 addendum), `--binarize-gripper`, **no `--min-action-delta`** (see T3), no `--image-aug` / `--state-aug` (doc item 6). Grasp-window duplication/weighting is **contingent on check 5 failing** — do not build it up front.
 
 ---
 
@@ -353,4 +373,5 @@ binarization threshold.
 * **The descent-resolution regression is designed-in** (doc §Conclusion): a near-uniform velocity profile gives the descent the same 2.4–3.0 mm step as transit, vs 0.6–0.8 mm today, against a ±7 mm `pinch_tol`. V-3 is the check; the remedy is skip 5–6, which then drags `n_substeps` with it (E3).
 * **C6 changes the eval env for existing checkpoints** — any comparison against `16_06`-trained checkpoints after this lands is not apples-to-apples (their data starts with jaws closed). Record the break in `NOTES.md`.
 * **E4 changes the meaning of an existing config field**; a stale pickled/JSON `GraspEngageConfig` with the old `close_depth_tol` would be silently misread. Renaming the field makes that a loud failure instead.
-* **X1 is a scaling decision, not a code detail** — at 8× frames the full 2855-episode collect is a materially different job (render time, RAM per episode, disk). Measure on the 10-episode batch before committing to the full run.
+* ~~**X1 is a scaling decision, not a code detail**~~ — resolved by `record_every=5` (X1 addendum): the full collect is back to ~1.3× the pre-slowdown job rather than ~7×. Still confirm wall-clock and disk on the 10-episode batch before committing to 2855.
+* **`--skip` alone is no longer the deploy rate.** Anything that reads a dataset's skip and sets `n_substeps` from it — a stale runbook, a half-remembered command, `--output-repo-suffix` typed by hand — will now be wrong by 5×. The guards are the transform's rate log line, the net-decimation repo naming, and `convert_data_to_lerobot` refusing mixed strides; none of them help someone who passes `--n_substeps` explicitly from memory.

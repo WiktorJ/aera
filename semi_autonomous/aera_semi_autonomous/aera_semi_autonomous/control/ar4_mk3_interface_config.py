@@ -3,6 +3,7 @@ import typing
 from dataclasses import field
 
 from aera.autonomous.envs.kinematic_grasp import GraspEngageConfig
+from aera.autonomous.envs.task_env_factory import COLLECTION_RECORD_EVERY
 
 
 @dataclasses.dataclass
@@ -86,6 +87,22 @@ class Ar4Mk3InterfaceConfig:
     # depth, and it is half the per-frame render cost plus a ~1.2 GB/episode RAM
     # spike at the slow arm's frame counts. See _record_step.
     record_depth: bool = False
+    # Record one frame every N mj-steps instead of every one. Recording is ~99%
+    # of a frame's cost (measured: 13.7 ms for the two camera renders against
+    # 0.09 ms for mj_step + mj_forward, and the renders are per-call cost, not
+    # per-pixel — 640x480 costs the same as 224x224), so collection wall-clock is
+    # essentially raw_frames * 2 renders. The slow arm runs ~2500 mj-steps per
+    # episode where the fast one ran ~400, and the transform's --skip then
+    # discards most of them, so recording every step renders ~5x the frames that
+    # reach the dataset.
+    #
+    # This is NOT a rate change: decimating here and decimating at transform are
+    # exactly equivalent, and the deploy invariant absorbs it as
+    # n_substeps == record_every * skip (see task_env_factory, CONTROL_RATE_SPEC).
+    # 5 rather than 10 so the plan's own contingency stays cheap — if the batch
+    # shows the descent is too coarse, re-transforming at --skip 1 gives a 10 ms
+    # dataset without re-collecting.
+    record_every: int = COLLECTION_RECORD_EVERY
     ik: IKConfig = field(default_factory=IKConfig)
     actuation: ActuationConfig = field(default_factory=ActuationConfig)
     # Gate for the kinematic grasp lock. Default permissive (old 5cm snap); the

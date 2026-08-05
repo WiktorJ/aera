@@ -499,6 +499,96 @@ class TestTrajectoryDataCollector(unittest.TestCase):
 
         self.assertNotIn("record_every", self.collector.current_episode_data)
 
+    def test_synchronize_all_data_without_depth(self):
+        """Frames still sync when depth was never recorded.
+
+        Regression: the interface's record_depth defaults to False, so
+        depth_buffers stays empty for a whole run. An unconditional depth
+        requirement dropped every frame and wrote empty episodes while the
+        collection log still reported the trajectories as successful.
+        """
+        self.collector.start_episode("test sync no depth")
+
+        timestamps = [10.0, 11.0, 12.0]
+        for i, ts in enumerate(timestamps):
+            self.collector.joint_state_buffer[ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "arm_joint_positions": [0.1 * i, 0.2 * i, 0.3 * i],
+                "arm_joint_velocities": [0.05, 0.1, 0.15],
+                "gripper_joint_positions": [0.01 * i, 0.01 * i],
+                "gripper_joint_velocities": [0.001, 0.001],
+                "prompt": f"prompt_{i}",
+            }
+            if "cam1" not in self.collector.rgb_buffers:
+                self.collector.rgb_buffers["cam1"] = SortedDict()
+            self.collector.rgb_buffers["cam1"][ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "rgb_bytes": f"rgb_data_{i}".encode(),
+                "data_type": "rgb",
+            }
+            self.collector.pose_buffer[ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "pose_type": "end_effector",
+                "position": {"x": 0.5 + 0.1 * i, "y": 0.0, "z": 0.3},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            }
+
+        self.assertEqual(self.collector.depth_buffers, {})
+
+        synced_data = self.collector._synchronize_all_data()
+
+        self.assertEqual(len(synced_data), 2)
+        self.assertEqual(synced_data[0]["observations"]["depth_images"], {})
+        self.assertIn("cam1", synced_data[0]["observations"]["rgb_images"])
+
+    def test_synchronize_all_data_missing_depth_frame(self):
+        """A frame missing depth is still dropped when depth IS being recorded."""
+        self.collector.start_episode("test sync partial depth")
+
+        timestamps = [10.0, 11.0, 12.0]
+        for i, ts in enumerate(timestamps):
+            self.collector.joint_state_buffer[ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "arm_joint_positions": [0.1 * i, 0.2 * i, 0.3 * i],
+                "arm_joint_velocities": [0.05, 0.1, 0.15],
+                "gripper_joint_positions": [0.01 * i, 0.01 * i],
+                "gripper_joint_velocities": [0.001, 0.001],
+                "prompt": f"prompt_{i}",
+            }
+            if "cam1" not in self.collector.rgb_buffers:
+                self.collector.rgb_buffers["cam1"] = SortedDict()
+            self.collector.rgb_buffers["cam1"][ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "rgb_bytes": f"rgb_data_{i}".encode(),
+                "data_type": "rgb",
+            }
+            self.collector.pose_buffer[ts] = {
+                "timestamp": time.time(),
+                "ros_timestamp": ts,
+                "pose_type": "end_effector",
+                "position": {"x": 0.5 + 0.1 * i, "y": 0.0, "z": 0.3},
+                "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+            }
+
+        # Depth recorded, but only for a timestamp far outside sync_tolerance of
+        # any joint state, so no frame finds a match.
+        self.collector.depth_buffers["cam1"] = SortedDict()
+        self.collector.depth_buffers["cam1"][100.0] = {
+            "timestamp": time.time(),
+            "ros_timestamp": 100.0,
+            "depth_array": np.zeros((4, 4), dtype=np.float32),
+            "data_type": "depth",
+        }
+
+        synced_data = self.collector._synchronize_all_data()
+
+        self.assertEqual(len(synced_data), 0)
+
     def test_synchronize_all_data_missing_data(self):
         """Test synchronization with missing data."""
         self.collector.start_episode("test sync")

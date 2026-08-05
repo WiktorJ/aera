@@ -594,3 +594,117 @@ The deep-dive analyses + decisions for the fixes to apply before the next traini
   * **Batched-fixes decision:** no cheap re-transform — fix everything → re-collect → train.
 
 (Still to discuss and append there: noDR-is-OOD, DR-eval prompt string, grasp-phase oversampling / more episodes.)
+
+## Verification batch (05.08.2026) — [verification_gate.md](./verification_gate.md) stages 1–3
+
+First real run of the gate against collected data, after all implementation-plan
+code items landed. Two defects found, one fixed here; the headline gate passes.
+
+### Result
+
+Stage 1: 7/10 episodes collected, 0 `Grasp not locked`, 3 IK aborts.
+Stage 2: 4818 recorded frames → 2327 dataset frames at `record_every=5 × --skip 2` (net 10, 50 Hz).
+Stage 3: **6 of 7 checks pass.**
+
+| check | measured | vs `16_06` | verdict |
+|---|---|---|---|
+| 2 delta distribution | median 2.21 mm, p99 5.61, near-static 37.9%, max:median 3.1 | 3.28 / 25.6 / 40% / 9.2 | FAIL |
+| 3 descent resolution | median 3.01 mm, max 4.43 | 0.78 / 11.4 | PASS |
+| 4 **normalized output range** | **descent 92.0%** | **5.3%** | PASS |
+| 5 grasp window | 3–4 frames/ep, 0 without a close | 4–5 | PASS |
+| 6 binarization | 2 levels `{-0.014, 0}`, 0 leading-closed, state 97 values | 251 levels, 8–57 leading | PASS |
+| 7 no recovery | 0 extra cycles | 3/3 with extra cycles | PASS |
+
+**Check 4 at 92.0% (from 5.3%) is the whole point of the timescale change, and it
+landed.** Checks 6 and 7 confirm C6 (jaws-open at reset) and C3 (no recovery) in
+the built dataset rather than just in the code.
+
+### Defect 1 — C7 (depth off) made every episode record zero frames. FIXED.
+
+`TrajectoryDataCollector._synchronize_all_data` required a depth match for
+*every* frame. With `record_depth=False` the depth buffers are empty, so the
+guard dropped all of them: 9 episodes, `trajectory_data: []`, 36 KB on disk.
+
+C7's commit (`59f4577`) touched only the interface config and the robot
+interface. Its "nothing downstream reads depth" check looked at
+`convert_data_to_lerobot` — but the collector's own synchronizer sits *upstream*
+of the converter, and had required depth since `a3c038a` (Nov 2025).
+
+Confirmed three ways: `record_depth=True` positive control (3803/3804 frames
+synchronized), a unit-level call on a hand-built collector, and the git history.
+Fixed by making the depth requirement conditional on depth being recorded at
+all; two regression tests cover both sides.
+
+**The gate did not catch this** — `Successfully collected 10/10` counts the
+physical task, not recorded frames, and Stage 2 exited 0 while writing
+`total_frames: 0`. It surfaced at Stage 3 as an HF 404, which looks like an auth
+problem. Gate now greps `Synchronized`.
+
+### Defect 2 — the actuation perturbation blows the IK budget on the slow arm. OPEN.
+
+30% of episodes abort with `Max steps ... reached` / `could not move above
+target`, always on the pre-grasp descent, with 57–283 mm of residual error
+against a full budget.
+
+`_apply_actuation` low-passes the arm ctrl (`applied += α(commanded − applied)`,
+`α ∈ [0.2, 0.8]`), while the IK re-commands **relative to actual qpos** every
+step. Once the arm tracks `applied`, progress per step is `α·Δ` — a permanent
+`1/α` step-count multiplier, up to 5×. At `dt=0.15` this was invisible: `Δ` was
+0.225 rad, far beyond one 2 ms servo step, so physics was the rate limit and α
+barely mattered. At `dt=0.005`, `Δ ≤ 7.5 mrad` is inside one step, so α becomes
+binding. `ActuationPerturbation`'s docstring still justifies its ranges by "the
+IK's 700-step budget" — the *old* arm's budget.
+
+Attribution: 0 aborts in 3/3 with `--no-perturb-actuation` (3235–4727 mj-steps)
+vs 3 aborts and 3015–7228 mj-steps with it; the unperturbed harness runs
+2469–3366.
+
+This is also what fails check 2: `dwell` puts only 6–8% of frames on gripper
+parking, so the near-static mass is arm creep. It inflates the collect cost too
+(episodes run 1.5–2× the necessary steps). **Fix before the full collect.**
+
+### Defect 3 — `--seed` does not reproduce a batch. OPEN.
+
+`collect_trajectories.py:243` calls `env.reset()` with no seed, so block
+positions, object yaw and goal placement come from Gymnasium's `self.np_random`
+(OS entropy). `np.random.seed(cfg.seed)` covers only DR config + perturbation
+draws.
+
+Cost: two 7-episode batches of the same configuration measured near-static
+**37.9%** vs **71.9%**, because they drew episodes averaging 3441 vs 5128 raw
+mj-steps. Check 2 cannot be tuned against until scenes are seeded.
+
+### Runbook fix — `--exclude-prompts "go home"` was missing from Stage 2
+
+`go_home` is an interpolated joint-space move, not IK; it sprints, and its
+deltas alone set the q01/q99 span everything else is normalized against.
+Dropping those 93 frames (2.5%) moves check 4 from **14.6% (FAIL) to 99.2%
+(PASS)** and check 2's p99 from 36.76 to 3.68 mm. Every earlier dataset is named
+`_no_go_home`; the flag was simply absent from the runbook.
+
+### X1 — `record_every=5` measured
+
+| | `record_every=1` | `record_every=5` |
+|---|---|---|
+| wall clock, 10 episodes | ~25 min | **3 min 45 s** |
+| disk | 1.4 GB | **209 MB** |
+| per episode | ~2.1 min / 217 MB | **~22 s / ~30 MB** |
+
+6.6× faster, 6.8× smaller ⇒ **~17 h and ~86 GB** for 2855 episodes, from ~100 h
+and ~620 GB. Both figures still carry defect 2's 1.5–2× step inflation.
+
+**Keep `record_every=5`, do not go to 10.** Check 3's descent median is 3.01 mm
+against a 3.5 mm ceiling — 16% headroom on 7 episodes. If the full collect
+crosses it, the remedy is a finer net rate: at 5 that is `--skip 1` (net 5), free;
+at 10 the finest reachable rate is net 10, where we already are, so the only
+remedy would be re-collecting everything.
+
+### Note on running this outside the ROS container
+
+Collection imports `geometry_msgs` / `cv_bridge` at module scope. The vendored
+`ros_msg_stubs` cover the message classes but `CvBridge` deliberately raises. In
+the sim path it only does a `bgr8` numpy→`Image`→numpy round trip, so a
+numpy-only `CvBridge` on `PYTHONPATH` (via `sitecustomize.py`) runs the whole
+pipeline on a plain venv. Verified bit-identical on the round trip, with zero
+`Failed to record RGB` lines across 30+ episodes. Everything above is physics and
+bookkeeping, unaffected by it.

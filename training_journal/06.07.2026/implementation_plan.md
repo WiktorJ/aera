@@ -375,3 +375,76 @@ binarization threshold.
 * **E4 changes the meaning of an existing config field**; a stale pickled/JSON `GraspEngageConfig` with the old `close_depth_tol` would be silently misread. Renaming the field makes that a loud failure instead.
 * ~~**X1 is a scaling decision, not a code detail**~~ — resolved by `record_every=5` (X1 addendum): the full collect is back to ~1.3× the pre-slowdown job rather than ~7×. Still confirm wall-clock and disk on the 10-episode batch before committing to 2855.
 * **`--skip` alone is no longer the deploy rate.** Anything that reads a dataset's skip and sets `n_substeps` from it — a stale runbook, a half-remembered command, `--output-repo-suffix` typed by hand — will now be wrong by 5×. The guards are the transform's rate log line, the net-decimation repo naming, and `convert_data_to_lerobot` refusing mixed strides; none of them help someone who passes `--n_substeps` explicitly from memory.
+
+---
+
+## Found by the verification batch (05.08.2026) — two items still open
+
+Full write-up in [NOTES.md](./NOTES.md); measured numbers and routing in
+[verification_gate.md](./verification_gate.md). The gate's stages 1–3 now pass
+6 of 7 checks, including check 4 at **92.0%** (from `16_06`'s 5.3%).
+
+### C8. **The actuation perturbation blows the IK budget on the slow arm** — OPEN, fix before the full collect
+
+**30% of episodes abort** (`Max steps ... reached` → `could not move above
+target`), always on the pre-grasp descent, with 57–283 mm of residual error
+against a full step budget.
+
+`_apply_actuation` low-passes the arm ctrl (`applied += α(commanded − applied)`,
+`α = command_lag_alpha ∈ [0.2, 0.8]`), while the IK loop re-commands **relative
+to actual qpos** every step (`ar4_mk3_robot_interface.py:522`). Once the arm
+tracks `applied`, progress per step is `α·Δ` rather than `Δ` — a permanent
+`1/α` step-count multiplier, up to 5×.
+
+This is a regime change from C1, not a pre-existing bug. At `dt=0.15`,
+`Δ = max_update_norm × dt` was 0.225 rad — far beyond what the servo covers in
+one 2 ms mj-step — so physics was the rate limit and α was a transient. At
+`dt=0.005`, `Δ ≤ 7.5 mrad` is *inside* one servo step, so α becomes the binding
+constraint. `ActuationPerturbation`'s docstring still justifies its ranges with
+"the arm's high position gains plus the IK's **700-step budget** absorb mild
+lag" — the old arm's budget, never re-derived.
+
+Note the existing C1 budget note covers the *wrong* term: `apply_speed_perturbation`
+scales `max_steps/s` and is self-correcting; the aborts appear at both fast
+(`max_steps=2192`) and slow (`4009`) draws, so `s` is not what is binding.
+
+Attribution measured:
+
+| run | episodes | IK aborts | mj-steps/episode |
+|---|---|---|---|
+| `measure_scripted_arm` (unperturbed) | 3 | 0 | 2469–3366 |
+| full stack, `--no-perturb-actuation` | 3 | 0 | 3235–4727 |
+| full stack | 9 | 3 | 3015–7228 |
+
+It is also what fails **check 2**: `dwell` attributes only 6–8% of frames to
+gripper parking, so the near-static mass is arm creep, not the timescale and not
+`gripper_action_steps`. And it inflates the collect cost — episodes run 1.5–2×
+the necessary steps.
+
+Candidate fixes (not yet chosen): scale the IK budget by `1/α` where the
+`ActuationConfig` is sampled, mirroring what `apply_speed_perturbation` already
+does for `s`; raise `command_lag_alpha_range`'s floor; or command the IK
+absolutely rather than relative to live qpos.
+
+### C9. **`--seed` does not reproduce a collection batch** — OPEN
+
+`collect_trajectories.py:243` calls `env.reset()` with **no seed**, so block
+positions (`ar4_mk3_base._reset_sim:1176-1188`), object yaw (`:1142`) and goal
+placement (`_sample_goal:1296+`) all draw from Gymnasium's `self.np_random`,
+seeded from OS entropy. `np.random.seed(cfg.seed)` reaches only the DR config
+generator and the perturbation draws, which use the global numpy RNG.
+
+Consequence: a failing verification batch cannot be re-run, and check 2 cannot be
+tuned against. Two 7-episode batches of the same configuration measured
+near-static **37.9%** vs **71.9%**, because they happened to draw episodes
+averaging 3441 vs 5128 raw mj-steps. Seeding `env.reset()` is a prerequisite for
+any work on check 2.
+
+### C7 addendum — depth-off wrote empty episodes (FIXED)
+
+`TrajectoryDataCollector._synchronize_all_data` required a depth match per frame,
+so `record_depth=False` dropped **every** frame. X1(a)'s "nothing downstream
+reads depth" verified `convert_data_to_lerobot`, but the collector's own
+synchronizer is upstream of it. Fixed + two regression tests. The gate now greps
+`Synchronized`, because `Successfully collected 10/10` counts the physical task
+and stayed green throughout.

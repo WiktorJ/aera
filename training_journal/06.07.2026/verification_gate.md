@@ -94,12 +94,28 @@ Then read the log — these are warnings, not errors, so they scroll past silent
 grep -c "Grasp not locked"                     /tmp/collect_verify.log   # want 0
 grep -cE "Max steps .* reached|could not move" /tmp/collect_verify.log   # want 0
 grep    "Successfully collected"               /tmp/collect_verify.log   # want 10/10
+grep    "Synchronized"                         /tmp/collect_verify.log   # want NON-ZERO on every line
 ```
 
 | check | expect | failure routes to |
 |---|---|---|
 | 8 — lock engaged | ≥95% of episodes, i.e. 0 `Grasp not locked` | **re-collect** (C4/C5/F1) |
 | 1 — IK budget | 0 `Max steps` / `could not move`, 10/10 collected | **re-collect** (C1 `max_steps`) |
+| 0 — data actually recorded | every `Synchronized N` line has `N > 0` | **fix the collector, then re-collect** |
+
+### The `Synchronized 0` check is not redundant — it is the one that caught a real failure (added 05.08.2026)
+
+`Successfully collected 10/10` counts the *physical* task (did the block reach
+the target), **not** whether a single training frame was written. When
+`record_depth` first went off (C7), `_synchronize_all_data` still required a
+depth match for every frame, so every episode wrote `trajectory_data: []` — and
+**the whole gate stayed green**: 0 `Grasp not locked`, 10/10 collected, and
+Stage 2 exiting 0 while building `total_frames: 0`. The failure only surfaced at
+Stage 3, as a `RepositoryNotFoundError` 404 (LeRobot finds no local parquet and
+falls back to the hub), which reads like an auth problem and sends you chasing
+the wrong thing entirely.
+
+Whenever a recording knob changes, check the frame count, not the success count.
 
 Also record **wall-clock per episode** and **disk per episode** (`du -sh data/verify_batch`), and sanity-check the recorded frame count: at `record_every=5` an episode should hold **~500** frames, not ~2500. If it holds ~2500 the decimation is not in effect and collection will run ~5× slower than it needs to.
 
@@ -121,11 +137,28 @@ python semi_autonomous/aera_semi_autonomous/scripts/convert_data_to_lerobot.py \
 python -m aera.autonomous.openpi.scripts.transform_skip_dataset \
     --repo-id Purple69/aera_semi_pnp_dr_<DDMMYYYY>_verify \
     --skip 2 --delta-actions --binarize-gripper \
+    --exclude-prompts "go home" \
     --output-repo-suffix skip10_delta_verify
 # -> Purple69/aera_semi_pnp_dr_<DDMMYYYY>_verify_skip10_delta_verify
 ```
 
-Three notes:
+Four notes:
+* **`--exclude-prompts "go home"` is load-bearing for check 4, not cosmetic.**
+  `go_home` is an interpolated joint-space move, not IK: it sprints, and its
+  deltas alone set the q01/q99 span every other frame is normalized against.
+  Measured 05.08.2026 on the same 7-episode batch, dropping **93 frames
+  (2.5% of the dataset)**:
+
+  | | without the flag | with it |
+  |---|---|---|
+  | check 2 p99 | 36.76 mm | 3.68 mm |
+  | check 2 max | 53.72 mm | 4.35 mm |
+  | check 2 max:median | 32.4 | 2.6 |
+  | **check 4 descent** | **14.6% — FAIL** | **99.2% — PASS** |
+
+  Every earlier dataset carries `_no_go_home` in its name for this reason; the
+  flag was simply missing from this runbook. Without it the headline gate reads
+  as a catastrophic failure when the data is fine.
 * **`--skip 2`, not 10.** Collection records every 5th mj-step
   (`COLLECTION_RECORD_EVERY`), so the net decimation is `5 × 2 = 10` and the
   deploy rate is unchanged at `n_substeps=10` / 50 Hz. The transform prints the
@@ -159,6 +192,49 @@ python -m aera.autonomous.openpi.scripts.measure_action_dynrange \
 | 5 grasp window | ≥3 frames/episode spanning open→closed, expect 5–8 | 4–5 | **transform** — duplicate / weight grasp-window frames |
 | 6 binarization | 2 action values, 0 leading-closed frames, state continuous | 251 levels, 8–57 leading | **transform** (flags) or **re-collect** (C6 jaws-open) |
 | 7 no recovery | 1 grasp cycle per episode | 3/3 with extra cycles | **re-collect** (C3) |
+
+### Measured on the first real verification batch (05.08.2026, `record_every=5 × --skip 2`)
+
+7 episodes / 2327 frames. **6 of 7 checks pass, including the headline.**
+
+| check | measured | verdict |
+|---|---|---|
+| 2 delta distribution | median 2.21 mm, p99 5.61, near-static **37.9%**, max:median 3.1 | **FAIL** |
+| 3 descent resolution | median 3.01 mm, max 4.43 | PASS |
+| 4 normalized output range | **descent 92.0%**, all-frames 91.7% | PASS |
+| 5 grasp window | 3–4 frames/ep, 0 episodes without a close | PASS |
+| 6 binarization | 2 levels `{-0.014, 0}`, 0 leading-closed, state 97 values | PASS |
+| 7 no recovery | 0 extra cycles | PASS |
+
+Check 4 going 5.3% → 92.0% is the timescale change delivering what it was for.
+Checks 6 and 7 confirm C6 and C3 at the dataset level.
+
+**Check 2 is the one open item**, and it fails on two terms that point the same
+way: median 2.21 (below the 2.4–3.0 target) and near-static 37.9%. `dwell`
+attributes almost none of that to gripper parking (`parked` 0.06–0.081,
+`parked_gripper_idle` 0.03–0.041, i.e. at the Stage 0 targets), so it is genuine
+arm creep — see the actuation-lag finding in
+[implementation_plan.md](./implementation_plan.md). Do **not** reach for a
+coarser skip first: checks 2 and 3 are now actively pulling against each other
+(check 2 wants coarser, check 3's descent median sits at 3.01 against a 3.5
+ceiling), which the runbook's own note calls a finding about the velocity
+profile rather than a threshold to tune.
+
+### Check 2 cannot be resolved at n=10 — the batch is not reproducible
+
+`collect_trajectories.py` calls `env.reset()` **without a seed**, so block
+positions (`ar4_mk3_base._reset_sim`), object yaw and goal placement all draw
+from Gymnasium's `self.np_random`, seeded from OS entropy.
+`np.random.seed(cfg.seed)` governs only the DR config and the perturbation
+draws. **`--seed 42` therefore reproduces the randomization parameters but not
+the scene**, and a failing batch cannot be re-run.
+
+Measured cost of this: two 7-episode batches of the *same* configuration
+reported near-static **37.9%** and **71.9%** — because they drew episodes
+averaging 3441 vs 5128 raw mj-steps, i.e. different actuation-lag severity.
+Treat "check 2 fails" as established across both, and any single number as
+noise. Seeding `env.reset()` is the prerequisite for tuning against check 2 at
+all.
 
 **Check 4 is the headline gate.** It is the entire reason for the timescale change: if the descent still commands a small fraction of the normalized output span, the re-collect did not buy what it was for and the training should not start.
 

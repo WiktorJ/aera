@@ -760,3 +760,12 @@ pi0.5 normalizes the scale away (check 4 reads 92/87/88% across the sweep). The
 original 0.15 → 0.005 change mattered because it changed *shape* (max:median
 9.2 → 2.4). What this recalibration buys is physical realism, episode yield and
 a shorter deploy horizon — not a better-conditioned learning problem.
+
+Stage 0 re-run at the landed defaults (07.08.2026): camera parameterization
+4/4, close-sweep locks at the scripted full close, `timing` 20–24 cm/s with
+`lock_engaged` 3/3. `dwell` thresholds were rescaled (`parked` ≤0.15,
+`parked_gripper_idle` ≤0.08) — the gripper close is a fixed mj-step count, so
+its share of the episode rises with `integration_dt` (0.06–0.081 at dt=0.005 →
+0.102–0.135 at 0.009) without the dataset getting worse: the figure that reaches
+training went 2.8% → 5.2%, against check 2's 0.10 limit. These thresholds move
+with any future `integration_dt` change; they are not properties of the arm.

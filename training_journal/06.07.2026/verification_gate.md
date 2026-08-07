@@ -33,11 +33,11 @@ python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
 
 | expect | if not |
 |---|---|
-| nominal arm at `dt=0.009` runs FASTER than the 12–15 target — that is expected. The target applies to the arm as COLLECTED (DR on), measured 13.1 cm/s. Compare harness-to-harness only. | C1 — retune `integration_dt` / `max_steps` |
+| `sim_time_s` 3.0–4.0, `avg_speed_cm_s` 20–24, `raw_frames` 1450–2000. **This is the NOMINAL arm and it is meant to read faster than the 12–15 cm/s target** — that target applies to the arm as COLLECTED (DR on), measured 13.1 cm/s. Compare harness-to-harness only. | C1 — retune `integration_dt` / `max_steps` |
 | **`lock_engaged=True`** on every seed | C4/C5/F1 — the close never reaches the block. **This is the failure that produced the last run.** |
 | `close-sweep`: `pad_contacts > 0`, `pinching=True`, `lock=True` at the scripted target | F1 — the depth model still disagrees with the pad geometry |
 | collection and eval camera rows agree under DR offsets | F2/E2 — eval is sampling an OOD camera distribution |
-| `dwell`: `parked` ≤0.08, `parked_gripper_idle` ≤0.04 | see the dead-time note below — remedy is `gripper_action_steps` |
+| `dwell`: `parked` ≤0.15, `parked_gripper_idle` ≤0.08 (measured 0.102–0.135 / 0.051–0.068 at `dt=0.009`) | see the dead-time note below. **Check the dataset number first** — Stage 3's `parked_below_0.05x_median` is what reaches training, and it reads 5.2%. Only if *that* is high is `gripper_action_steps` the remedy. |
 
 ### Gripper-close dead time — measure it, it doubled with C5 (added 04.08.2026)
 
@@ -71,12 +71,30 @@ mj-step count, unaffected by `integration_dt`. In sim-time *proportion* the
 close shrank (the intended dilution, ~20% of frames → ~3%), but in absolute
 terms it doubled, and it is now a hard freeze surrounded by smooth slow motion.
 
+**This is why the `dwell` thresholds are dt-dependent and were rescaled on
+07.08.2026.** Because the count is fixed in mj-steps while the arm around it
+speeds up, the parked *share* rises with `integration_dt`: measured `parked`
+0.06–0.081 at `dt=0.005` and 0.102–0.135 at 0.009. Any future change to
+`integration_dt` moves these thresholds with it — they are not absolute
+properties of the arm. The dataset-level figure is the one that gates training,
+and it stayed benign across the same change (2.8% → 5.2% below 0.05 × median,
+against check 2's 0.10 limit on the 0.25 × term).
+
 **If it needs trimming, the lever is `gripper_action_steps` (or the `* 2` budget
 multiplier), NOT `gripper_pos_tolerance`.** Loosening the tolerance would
 restore the early exit that C5 removed on purpose, and the jaws would stop short
 of the block again — the exact failure that produced the last run. Dropping the
 multiplier from `2 ×` to ~`1.3 ×` cuts the dead half while still delivering the
 full ramp. Do not tune it before Stage 3 says it matters.
+
+### Stage 0 measured at the landed defaults (07.08.2026, `dt=0.009`)
+
+| check | measured | |
+|---|---|---|
+| `timing` | 2.98–3.96 s, 20.2–24.0 cm/s, `lock_engaged` **3/3** | PASS |
+| `close-sweep` | full close → 8 pad contacts, `pinching=True`, `lock=True` | PASS |
+| `check_camera_parameterization` | **4/4 poses agree** | PASS |
+| `dwell` | `parked` 0.102–0.135, `parked_gripper_idle` 0.051–0.068 | PASS (rescaled) |
 
 Baseline for comparison, measured 02.08.2026 on unfixed code: `dt=0.15` → 0.69–0.75 s, 103–107 cm/s, **`lock_engaged=False`**; `dt=0.005` → 4.81–6.61 s, 12.1–14.9 cm/s, **`lock_engaged=False`**.
 

@@ -384,7 +384,7 @@ Full write-up in [NOTES.md](./NOTES.md); measured numbers and routing in
 [verification_gate.md](./verification_gate.md). The gate's stages 1–3 now pass
 6 of 7 checks, including check 4 at **92.0%** (from `16_06`'s 5.3%).
 
-### C8. **The actuation perturbation blows the IK budget on the slow arm** — OPEN, fix before the full collect
+### C8. **The IK budget is exhausted by throttled tracking** — RESOLVED 06.08.2026 by recalibrating `integration_dt`
 
 **30% of episodes abort** (`Max steps ... reached` → `could not move above
 target`), always on the pre-grasp descent, with 57–283 mm of residual error
@@ -448,3 +448,108 @@ reads depth" verified `convert_data_to_lerobot`, but the collector's own
 synchronizer is upstream of it. Fixed + two regression tests. The gate now greps
 `Synchronized`, because `Successfully collected 10/10` counts the physical task
 and stayed green throughout.
+
+---
+
+## C8 / C9 resolution and a correction to check 2 (06.08.2026)
+
+Both open items are closed. The A/B that closed them also invalidated the
+reasoning that produced C8's name, so the correction is recorded here rather
+than quietly edited into the section above.
+
+### C8's knob was arm-dynamics DR, not `command_lag_alpha`
+
+The mechanism in C8 is right — a throttled follower turns into a `1/f`
+multiplier on the step budget — but the dominant throttle is the **randomized
+actuator dynamics**, not the command filter. Measured over 10-episode batches at
+a fixed seed (so every arm sees identical scenes):
+
+| arm | aborts | median | fraction < 2 mm |
+|---|---|---|---|
+| baseline (full stack) | 2/10 | 1.28 mm | 75.6% |
+| `command_lag_alpha` floor 0.2 → 0.5 | 1/10 | 1.30 | 75.8% |
+| no speed perturbation | 2/9 | 1.55 | 80.9% |
+| **no arm-dynamics DR** | **0/9** | **1.93** | **53.6%** |
+| all physics perturbation off | 0/8 | 2.68 | 25.0% |
+
+Raising the α floor barely moved anything; removing arm-dynamics DR removed the
+aborts outright. The DR is biased toward a *slower* arm — `_ARM_FORCE_SCALE` is
+reduce-only, `frictionloss` additive from 0, `damping` additive 0–1.5,
+`armature` up to 1.8×, six draws compounding — so the collected arm is
+systematically slower than the nominal one C1 was calibrated against.
+
+### Commanding the IK absolutely (the obvious fix) does not work
+
+Integrating the command forward instead of re-basing it on live `qpos` removes
+the throttle — and also removes the slow arm. **`integration_dt` rate-limits
+only because the command is re-issued from the measured pose each step.**
+Decoupled, the servo runs at its own speed: Stage 0 measured 55–61 cm/s against
+the 12–15 target, undoing C1 entirely. Any fix that decouples command from
+tracking will do this. Rejected at Stage 0; not committed.
+
+### Resolution: calibrate `integration_dt` against the arm that is collected
+
+`integration_dt: 0.005 → 0.009`, **paired with `SpeedPerturbation.factor_range:
+(0.7, 1.4) → (0.85, 1.15)`**. The two are one constraint: the speed factor
+multiplies `integration_dt` per episode and `perturb_ik_config` adds ±10%, so
+the effective dt is `base × s × (1 ± 0.1)`. At the old base of 0.005 the whole
+perturbed range sat inside the usable window and the coupling never showed;
+raising the base without narrowing the factor pushed episodes to an effective
+0.012–0.015 and broke check 3.
+
+The DR'd arm measured 7.5 cm/s at 0.005 and 13.1 cm/s at 0.009. `0.010` passed a
+12-episode ik_noise-only batch but failed check 3 on a 30-episode
+`collect_mixed` batch (descent max 7.36 mm against the ±7 mm `pinch_tol`);
+0.009 leaves the margin that absorbs the speed factor.
+
+**Stage 0's harness measures nominal dynamics, i.e. a configuration that never
+appears in a dataset.** That is why this was invisible: the nominal arm hits
+12–15 cm/s at `dt=0.005` and the collected one does not.
+
+### The correction: `dt` is a no-op for the policy, and check 2 was mismeasuring
+
+Within 0.005–0.012, `integration_dt` is close to a pure rescaling. The
+distribution's *shape* is invariant (max:median 2.3–2.5, p99:median 2.0–2.2
+throughout) and pi0.5 quantile-normalizes the scale away — check 4 reads 92 /
+87 / 88% of span across the sweep. So this recalibration buys physical realism,
+episode yield and a shorter deploy horizon, and **not** a better-conditioned
+learning problem.
+
+Check 2's old `near_static < 2 mm ≤ 10%` term was a fixed ruler against a
+stretching distribution: 82% at dt=0.005, 18% at dt=0.012, while the
+scale-invariant fraction below 0.25 × median stayed at 3–9%. Its gloss — "the
+imitation loss learning to sit still" — required a do-nothing mode that does not
+exist: the distribution is unimodal and tight (q10 = 0.53 × median). Rewritten
+to gate on ratios, with the genuinely parked mass (gripper close, 3–7%) reported
+rather than gated. `16_06`'s "40% near-static" was largely the same artefact;
+its real defects were the tail ratio (max:median 9.2) and check 4.
+
+### C9 — landed (`43ab658`)
+
+Per-episode `np.random.seed(cfg.seed + i)` plus `env.reset(seed=...)`. Verified
+bit-identical across two runs. This is what made the A/B above a paired
+comparison rather than a fight with scene-draw noise.
+
+### A second measurement-space error: the ratio terms were in EEF
+
+Check 2's tail terms were computed on end-effector millimetres. The action is a
+6-D joint delta and openpi normalizes per action dimension, so a threshold about
+consuming the normalized output range has to be joint-space. EEF is that motion
+through a configuration-dependent Jacobian, and ill-conditioned poses inflate a
+typical joint step into a large Cartesian one. On the final 29-episode batch:
+
+| | EEF | joint |
+|---|---|---|
+| p99 : median | 2.52 (fail) | **2.16 (pass)** |
+| max : median | 4.1 (fail) | **2.76 (pass)** |
+
+Ratios now gate in joint space; the EEF median stays as the timescale gate;
+`eef_max_mm` is reported, since ~50 cm/s of instantaneous tool speed matters for
+hardware even though it says nothing about the action distribution. Cartesian
+overshoot where it actually costs a grasp is still gated by check 3 against
+`pinch_tol`.
+
+**Validation:** the rewritten check still fails `16_06` on checks 2, 3, 4, 6 and
+7. In joint space `16_06` shows a genuine do-nothing mode — 30% below 0.25 ×
+median against 6% in the new data — which the old absolute term could not see:
+it scored the new data (82%) as worse than `16_06` (40%), an inverted ordering.

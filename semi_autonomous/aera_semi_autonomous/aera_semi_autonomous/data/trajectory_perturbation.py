@@ -168,13 +168,13 @@ class SpeedPerturbation:
     factor > 1 = faster/coarser moves; < 1 = slower/finer. The factor scales the
     IK step size up and the interpolation step counts down; IK max_steps scales
     inversely so slow episodes still have the budget to converge.
-
-    factor_range is kept moderate: too fast and the IK overshoots / fails to
-    converge, too slow and long moves exhaust the (scaled) step budget — either
-    way costing usable demos.
     """
 
-    factor_range: tuple = (0.7, 1.4)
+    # Bounded by the arm's timescale window, since this multiplies
+    # IKConfig.integration_dt (and perturb_ik_config adds a further +-10%):
+    # effective dt must stay within [0.009, 0.011] or the descent coarsens past
+    # check 3's limit, against a +-7 mm pinch_tol.
+    factor_range: tuple = (0.85, 1.15)
 
 
 @dataclass

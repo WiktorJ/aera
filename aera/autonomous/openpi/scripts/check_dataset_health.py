@@ -93,10 +93,15 @@ def parse_args() -> argparse.Namespace:
     t = p.add_argument_group("thresholds")
     t.add_argument("--delta-med-mm", type=float, nargs=2, default=[2.4, 3.0],
                    metavar=("MIN", "MAX"))
-    t.add_argument("--delta-p99-max-mm", type=float, default=5.0)
+    # Ratios, not millimetres: an absolute threshold here re-measures the median
+    # through a fixed ruler and reports arm speed as a data-quality defect.
+    t.add_argument("--p99-over-med-max", type=float, default=2.5,
+                   help="max p99:median (tail heaviness, scale-invariant)")
+    t.add_argument("--near-static-frac", type=float, default=0.25,
+                   help="'near-static' means below this fraction of the median")
     t.add_argument("--near-static-max", type=float, default=0.10,
-                   help="max fraction of frames moving < 2 mm")
-    t.add_argument("--max-over-med-max", type=float, default=2.0)
+                   help="max fraction of frames below --near-static-frac x median")
+    t.add_argument("--max-over-med-max", type=float, default=3.0)
     t.add_argument("--descent-med-max-mm", type=float, default=3.5)
     t.add_argument("--descent-max-mm", type=float, default=7.0)
     t.add_argument("--dynrange-min-pct", type=float, default=50.0)
@@ -258,29 +263,70 @@ def profile_all(actions, states, episodes, n, heights, eps) -> list[EpisodeProfi
 # --- checks ---------------------------------------------------------------
 
 
-def check_delta_distribution(eef_mm: np.ndarray, args) -> CheckResult:
+def joint_steps_rad(actions, states, n, absolute) -> np.ndarray:
+    """Per-policy-step joint-space command size, in radians.
+
+    This is the space the policy acts in and the space openpi normalizes in
+    (q01/q99 are per action dimension), so ratio thresholds belong here. The
+    EEF equivalent is the same motion through a configuration-dependent
+    Jacobian, which adds a tail that says nothing about the action distribution.
+    """
+    delta = actions[:, :n] - states[:, :n] if absolute else actions[:, :n]
+    return np.linalg.norm(delta, axis=1)
+
+
+def check_delta_distribution(eef_mm: np.ndarray, joint_rad: np.ndarray, args) -> CheckResult:
+    """Two questions, each measured in the space that can answer it.
+
+    The EEF median in mm is a timescale gate: does the collected arm move at the
+    intended physical speed. Only EEF can answer that.
+
+    The ratio terms ask whether the action distribution has a tail that eats the
+    normalized output range, so they are JOINT-space: openpi's q01/q99 are per
+    action dimension, and the action dimensions are joint deltas. The same
+    motion in EEF carries a Jacobian-driven tail (ill-conditioned poses turn a
+    typical joint step into a large Cartesian one) that says nothing about the
+    action distribution.
+
+    Reported, not gated: `parked_...` (the gripper close, whose only lever is
+    gripper_action_steps -- cross-check against `measure_scripted_arm dwell`)
+    and `eef_max_mm` / `eef_max_over_median` (instantaneous tool speed, a
+    kinematics property; where Cartesian overshoot actually costs a grasp is
+    gated by check 3 against pinch_tol).
+    """
     med = float(np.median(eef_mm))
-    p99 = float(np.percentile(eef_mm, 99))
-    near_static = float((eef_mm < 2).mean())
-    ratio = float(eef_mm.max() / med) if med else float("inf")
+    jmed = float(np.median(joint_rad))
+    jp99 = float(np.percentile(joint_rad, 99))
+    ratio = float(joint_rad.max() / jmed) if jmed else float("inf")
+    p99_ratio = jp99 / jmed if jmed else float("inf")
+    near_static = float((joint_rad < args.near_static_frac * jmed).mean()) if jmed else 1.0
+    parked = float((joint_rad < 0.05 * jmed).mean()) if jmed else 1.0
+    eef_ratio = float(eef_mm.max() / med) if med else float("inf")
     lo, hi = args.delta_med_mm
     passed = (
         lo <= med <= hi
-        and p99 <= args.delta_p99_max_mm
+        and p99_ratio <= args.p99_over_med_max
         and near_static <= args.near_static_max
         and ratio <= args.max_over_med_max
     )
     return CheckResult(
         2, "delta distribution", passed,
-        {"median_mm": round(med, 2), "p99_mm": round(p99, 2),
-         "max_mm": round(float(eef_mm.max()), 2),
-         "near_static_lt2mm": round(near_static, 3),
-         "max_over_median": round(ratio, 1)},
-        f"median in [{lo}, {hi}] mm, p99 <= {args.delta_p99_max_mm}, "
-        f"near-static <= {args.near_static_max}, max:median <= {args.max_over_med_max}",
-        "a fat tail spends the normalized output range on sprint steps the "
-        "descent never uses; near-static mass is the imitation loss learning "
-        "to sit still",
+        {"eef_median_mm": round(med, 2),
+         "joint_median_rad": round(jmed, 5),
+         f"below_{args.near_static_frac:g}x_median": round(near_static, 3),
+         "p99_over_median": round(p99_ratio, 2),
+         "max_over_median": round(ratio, 2),
+         "parked_below_0.05x_median": round(parked, 3),
+         "eef_max_mm": round(float(eef_mm.max()), 2),
+         "eef_max_over_median": round(eef_ratio, 1)},
+        f"EEF median in [{lo}, {hi}] mm (timescale); joint-space "
+        f"p99:median <= {args.p99_over_med_max}, "
+        f"below {args.near_static_frac:g}x median <= {args.near_static_max}, "
+        f"max:median <= {args.max_over_med_max}",
+        "EEF median is the physical timescale (route a failure to "
+        "integration_dt); the joint-space ratios are what survives quantile "
+        "normalization, so a fat tail there spends the normalized range on "
+        "sprint steps the descent never uses",
     )
 
 
@@ -415,12 +461,13 @@ def main() -> None:
     span = q99 - q01
 
     eef_mm = eef_steps_mm(actions, states, n, args.scene, args.absolute_actions)
+    joint_rad = joint_steps_rad(actions, states, n, args.absolute_actions)
     heights = grip_heights_m(states, n, args.scene)
     profiles = profile_all(actions, states, episodes, n, heights, args.gripper_state_eps)
     descent = descent_indices(actions, episodes, n)
 
     results = [
-        check_delta_distribution(eef_mm, args),
+        check_delta_distribution(eef_mm, joint_rad, args),
         check_descent_resolution(eef_mm, descent, args),
         check_dynamic_range(actions, descent, span, n, args),
         check_grasp_window(profiles, args),

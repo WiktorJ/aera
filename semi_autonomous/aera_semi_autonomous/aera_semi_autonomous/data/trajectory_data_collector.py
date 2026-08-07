@@ -559,10 +559,8 @@ class TrajectoryDataCollector:
             )
 
             # Skip if we don't have essential data. Depth is essential only when
-            # it is being recorded at all: the interface's record_depth defaults
-            # to False (nothing downstream consumes depth), which leaves
-            # depth_buffers empty, and an unconditional requirement here then
-            # drops every frame and writes an empty episode.
+            # it is being recorded at all: record_depth defaults off, which
+            # leaves depth_buffers empty and would otherwise drop every frame.
             if (
                 not rgb_images_data
                 or (self.depth_buffers and not depth_images_data)

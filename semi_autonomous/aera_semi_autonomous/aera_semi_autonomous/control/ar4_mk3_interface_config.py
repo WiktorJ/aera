@@ -14,14 +14,15 @@ class IKConfig:
     regularization_threshold: float = 1e-5
     regularization_strength: float = 1e-4
     max_update_norm: float = 1.5
-    # The demonstrated arm's timescale. 0.15 ran the whole pick-and-place in
-    # ~0.7 s at ~104 cm/s EEF — 5-20x a realistic collaborative arm — which left
-    # the grasp descent commanding ~5% of the model's normalized output range.
-    # 0.005 lands at 4.8-6.6 s / 12-15 cm/s. The response is strongly sublinear
-    # (integration_dt only rate-limits while the max_update_norm clamp binds),
-    # so this is ~30x the parameter for ~8x the time; measure, don't
-    # extrapolate. EEF path length is unchanged, so only the timing shifts.
-    integration_dt: float = 0.005
+    # Timescale of the demonstrated arm. Calibrate against the arm as COLLECTED
+    # (arm-dynamics DR on), which runs slower than the nominal arm Stage 0
+    # measures: ~13 cm/s here versus 7.5 at 0.005. Bounded above by check 3's
+    # descent resolution, against a +-7 mm pinch_tol, once
+    # SpeedPerturbation.factor_range and perturb_ik_config's +-10% are applied
+    # on top. Within this window the delta distribution's shape is unchanged and
+    # pi0.5 normalizes the scale away, so this sets physical speed, episode
+    # length and IK abort rate — not the normalized learning problem.
+    integration_dt: float = 0.009
     pos_gain: float = 0.95
     orientation_gain: float = 1.1
     # Must scale with the slower dt or every episode aborts ("could not move

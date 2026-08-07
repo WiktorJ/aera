@@ -708,3 +708,55 @@ numpy-only `CvBridge` on `PYTHONPATH` (via `sitecustomize.py`) runs the whole
 pipeline on a plain venv. Verified bit-identical on the round trip, with zero
 `Failed to record RGB` lines across 30+ episodes. Everything above is physics and
 bookkeeping, unaffected by it.
+
+### Gate green (07.08.2026) — calibration, and two measurement-space bugs in check 2
+
+`check_dataset_health` exits 0 on a 29-episode batch at the new defaults.
+Details and thresholds in [verification_gate.md](./verification_gate.md); the
+short version:
+
+**Landed:** `integration_dt 0.005 → 0.009`, `SpeedPerturbation.factor_range
+(0.7, 1.4) → (0.85, 1.15)`, check 2 rewritten.
+
+| check | measured | |
+|---|---|---|
+| 1 (Stage 1) | 29/30 collected, 1 abort (3.3%), 0 unlocked, 0 empty | ✅ |
+| 2 delta distribution | EEF median 2.41 mm; joint below-0.25× 0.060, p99:med 2.16, max:med 2.76 | ✅ |
+| 3 descent resolution | 3.14 / 6.73 mm | ✅ |
+| 4 normalized output range | descent **88.2%** (16_06: 5.3%) | ✅ |
+| 5 grasp window | min 3, median 4, max 6 | ✅ |
+| 6 binarization | 2 levels, 0 leading-closed | ✅ |
+| 7 no recovery | 0 extra cycles | ✅ |
+
+Avg EEF speed 13.1 cm/s, in the 12–15 target C1 was aimed at.
+
+**Why the calibration was wrong.** Stage 0's harness measures *nominal*
+dynamics; collection always runs arm-dynamics DR, which is biased toward a
+slower arm (force scale reduce-only, friction additive from 0). The collected
+arm was running at 7.5 cm/s while the harness reported 12–15. Calibrating
+against the arm actually collected is the fix, and it also cut IK aborts from
+~30% to ~3% — the C8 abort problem was this, not `command_lag_alpha`.
+
+**Two measurement-space bugs in check 2, same family.** Both made the gate red
+on data that was fine:
+
+1. *Fixed ruler.* `near_static < 2 mm ≤ 10%` measured arm speed, not data
+   quality: across a dt sweep it swung 82% → 18% while the scale-invariant
+   fraction below 0.25 × median stayed at 3–9%. Its gloss ("the imitation loss
+   learning to sit still") needed a do-nothing mode that does not exist — the
+   distribution is unimodal, q10 = 0.53 × median.
+2. *Wrong space.* The tail ratios were EEF; the action is a joint delta and
+   openpi normalizes per action dim. In joint space p99:median 2.16 and
+   max:median 2.76 pass, where EEF read 2.52 and 4.1. The EEF tail is Jacobian
+   conditioning, i.e. kinematics, not action distribution.
+
+The rewrite is not just permissive: it still fails `16_06` on 2/3/4/6/7, and it
+*inverts a wrong ordering* — the old term scored the new data (82%) worse than
+`16_06` (40%), the new one scores `16_06` at 30% against 6%.
+
+**The other thing worth carrying forward:** `integration_dt` within 0.005–0.012
+is close to a no-op for the policy. The distribution's shape is invariant and
+pi0.5 normalizes the scale away (check 4 reads 92/87/88% across the sweep). The
+original 0.15 → 0.005 change mattered because it changed *shape* (max:median
+9.2 → 2.4). What this recalibration buys is physical realism, episode yield and
+a shorter deploy horizon — not a better-conditioned learning problem.

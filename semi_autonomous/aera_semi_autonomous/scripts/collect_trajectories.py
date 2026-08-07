@@ -221,12 +221,10 @@ def main():
         logger.info(f"--- Starting trajectory {i + 1}/{cfg.num_trajectories} ---")
         env = None
         try:
-            # Re-seed PER EPISODE rather than once for the run. Seeding only at
-            # startup does not make episode i reproducible: _maybe_jitter_step
-            # draws from the global stream once per IK step, so an episode that
-            # aborts early consumes fewer draws and shifts the domain
-            # randomization of every episode after it. Deriving each episode's
-            # seed from its index makes episode i depend on nothing but i.
+            # Per-episode seed, not one seed for the run: _maybe_jitter_step
+            # draws from the global stream once per IK step, so seeding only at
+            # startup leaves episode i dependent on how many steps every earlier
+            # episode took.
             episode_seed = None if cfg.seed == -1 else cfg.seed + i
             if episode_seed is not None:
                 np.random.seed(episode_seed)
@@ -250,12 +248,9 @@ def main():
                 render_mode="human" if cfg.render else None,
                 config=env_config,
             )
-            # Seed the ENV rng too, not just numpy's global one. Block
-            # positions (_reset_sim), object yaw and goal placement all draw
-            # from Gymnasium's self.np_random, which seeds itself from OS
-            # entropy when reset() is called bare — so before this, --seed
-            # reproduced the DR config and the perturbation draws but not the
-            # scene, and a failing batch could not be re-run.
+            # Seed the env RNG too: block positions, object yaw and goal
+            # placement come from Gymnasium's self.np_random, which seeds from
+            # OS entropy when reset() is called bare, not from np.random.
             _, _ = env.reset(seed=episode_seed)
 
             interface_config = cfg.interface

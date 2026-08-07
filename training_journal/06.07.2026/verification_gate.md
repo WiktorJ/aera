@@ -17,23 +17,23 @@ Catches the "0% locked grasps" class of failure *before* spending a collection r
 ```bash
 # timing: does the slow arm land where it should, and does the lock engage?
 python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
-    timing --dt 0.005 --max-steps 3000 --seeds 0 1 2
+    timing --dt 0.009 --max-steps 3000 --seeds 0 1 2
 
 # close depth: does the scripted close actually reach the block?
 python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
-    close-sweep --dt 0.005 --max-steps 3000 --seeds 0
+    close-sweep --dt 0.009 --max-steps 3000 --seeds 0
 
 # camera parameterization: does eval draw from collection's distribution?  (needs F2)
 python semi_autonomous/aera_semi_autonomous/scripts/check_camera_parameterization.py
 
 # dead time: how much of the episode is the arm parked with nothing happening?
 python semi_autonomous/aera_semi_autonomous/scripts/measure_scripted_arm.py \
-    dwell --dt 0.005 --max-steps 3000 --seeds 0 1 2
+    dwell --dt 0.009 --max-steps 3000 --seeds 0 1 2
 ```
 
 | expect | if not |
 |---|---|
-| `sim_time_s` 4.8–6.6, `avg_speed_cm_s` 12–15, `raw_frames` 2400–3300 | C1 — retune `integration_dt` / `max_steps` |
+| nominal arm at `dt=0.009` runs FASTER than the 12–15 target — that is expected. The target applies to the arm as COLLECTED (DR on), measured 13.1 cm/s. Compare harness-to-harness only. | C1 — retune `integration_dt` / `max_steps` |
 | **`lock_engaged=True`** on every seed | C4/C5/F1 — the close never reaches the block. **This is the failure that produced the last run.** |
 | `close-sweep`: `pad_contacts > 0`, `pinching=True`, `lock=True` at the scripted target | F1 — the depth model still disagrees with the pad geometry |
 | collection and eval camera rows agree under DR offsets | F2/E2 — eval is sampling an OOD camera distribution |
@@ -82,34 +82,44 @@ Baseline for comparison, measured 02.08.2026 on unfixed code: `dt=0.15` → 0.69
 
 ---
 
-## Stage 1 — collect 10 episodes
+## Stage 1 — collect 30 episodes
 
 ```bash
-./semi_autonomous/aera_semi_autonomous/scripts/collect_mixed.sh 10 data/verify_batch 42 2>&1 | tee /tmp/collect_verify.log
+./semi_autonomous/aera_semi_autonomous/scripts/collect_mixed.sh 30 data/verify_batch 42 2>&1 | tee /tmp/collect_verify.log
 ```
+
+**30, not 10.** Several checks are extreme-value statistics — check 3's descent
+`max`, check 2's `max:median`, check 5's `min` frames — so they are set by the
+single most extreme episode, and each episode contributes exactly one draw of
+the per-episode speed factor. With `s ~ U(0.85, 1.15)`, `E[max of n]` is 1.123
+at n=10 against 1.140 at n=30 (true max 1.15), so ten episodes systematically
+under-samples the tail. Measured cost of that: two 10-episode batches of the
+same configuration reported `max:median` 2.4 and 3.8. Thirty also samples the
+90/10 `collect_mixed` split properly rather than giving `offset_approach` a
+single episode. At ~22 s/episode this is ~11 minutes.
 
 Then read the log — these are warnings, not errors, so they scroll past silently:
 
 ```bash
 grep -c "Grasp not locked"                     /tmp/collect_verify.log   # want 0
 grep -cE "Max steps .* reached|could not move" /tmp/collect_verify.log   # want 0
-grep    "Successfully collected"               /tmp/collect_verify.log   # want 10/10
+grep    "Successfully collected"               /tmp/collect_verify.log   # want 27/27 + 3/3
 grep    "Synchronized"                         /tmp/collect_verify.log   # want NON-ZERO on every line
 ```
 
 | check | expect | failure routes to |
 |---|---|---|
 | 8 — lock engaged | ≥95% of episodes, i.e. 0 `Grasp not locked` | **re-collect** (C4/C5/F1) |
-| 1 — IK budget | 0 `Max steps` / `could not move`, 10/10 collected | **re-collect** (C1 `max_steps`) |
+| 1 — IK budget | ≤1 `Max steps` / `could not move` in 30; measured 3.3% | **re-collect** (C1 `max_steps`) |
 | 0 — data actually recorded | every `Synchronized N` line has `N > 0` | **fix the collector, then re-collect** |
 
 ### The `Synchronized 0` check is not redundant — it is the one that caught a real failure (added 05.08.2026)
 
-`Successfully collected 10/10` counts the *physical* task (did the block reach
+`Successfully collected N/N` counts the *physical* task (did the block reach
 the target), **not** whether a single training frame was written. When
 `record_depth` first went off (C7), `_synchronize_all_data` still required a
 depth match for every frame, so every episode wrote `trajectory_data: []` — and
-**the whole gate stayed green**: 0 `Grasp not locked`, 10/10 collected, and
+**the whole gate stayed green**: 0 `Grasp not locked`, all collected, and
 Stage 2 exiting 0 while building `total_frames: 0`. The failure only surfaced at
 Stage 3, as a `RepositoryNotFoundError` 404 (LeRobot finds no local parquet and
 falls back to the hub), which reads like an auth problem and sends you chasing
@@ -186,59 +196,147 @@ python -m aera.autonomous.openpi.scripts.measure_action_dynrange \
 
 | check | expect | `16_06` was | failure routes to |
 |---|---|---|---|
-| 2 delta distribution | median 2.4–3.0 mm, p99 ≤5, near-static ≤10%, max:median ≤2 | 3.28 / 25.6 / 40% / 9.2 | **transform** — adjust skip |
+| 2 delta distribution | median 2.4–3.0 mm (timescale); below-0.25×-median ≤10%, p99:median ≤2.5, max:median ≤3 | 3.28 mm / 9.2 max:median | median → **re-collect** (`integration_dt`); ratios → **transform** (skip) |
 | 3 descent resolution | median ≤3.5 mm, max ≤7 mm | 0.78 / 11.4 | **transform** — drop to skip 5–6 (deploy `n_substeps` follows) |
 | 4 **normalized output range** | descent ≥50% of span | **5.3%** | **transform** (skip) or **re-collect** (dt), depending which term is off |
 | 5 grasp window | ≥3 frames/episode spanning open→closed, expect 5–8 | 4–5 | **transform** — duplicate / weight grasp-window frames |
 | 6 binarization | 2 action values, 0 leading-closed frames, state continuous | 251 levels, 8–57 leading | **transform** (flags) or **re-collect** (C6 jaws-open) |
 | 7 no recovery | 1 grasp cycle per episode | 3/3 with extra cycles | **re-collect** (C3) |
 
-### Measured on the first real verification batch (05.08.2026, `record_every=5 × --skip 2`)
+### Check 2 was measuring arm speed with a fixed ruler (rewritten 06.08.2026)
 
-7 episodes / 2327 frames. **6 of 7 checks pass, including the headline.**
+Check 2 used to gate on `near_static = fraction of frames moving < 2 mm`, with a
+≤10% threshold, glossed as "near-static mass is the imitation loss learning to
+sit still". **That term was an artefact and has been replaced.**
+
+`integration_dt` is very close to a *pure rescaling* of the delta distribution.
+Over a 0.005 / 0.007 / 0.009 / 0.012 sweep (12 perturbed episodes each, seeded
+so the scenes are identical):
+
+| | 0.005 | 0.007 | 0.009 | 0.012 |
+|---|---|---|---|---|
+| median (mm) | 1.45 | 1.87 | 2.37 | 3.10 |
+| **fraction < 2 mm** | **0.822** | **0.550** | **0.325** | **0.184** |
+| fraction < 0.25 × median | 0.034 | 0.056 | 0.070 | 0.089 |
+| p99 : median | 1.97 | 2.13 | 2.15 | 2.19 |
+| max : median | 2.4 | 2.5 | 2.5 | 2.4 |
+
+Every ratio is flat; only the absolute scale moves. And pi0.5
+quantile-normalizes actions by q01/q99, so that scale is divided straight back
+out — check 4 reads 92 / 87 / 88% of span across the same sweep. The old term
+swung 82% → 18% purely because 2 mm is a fixed ruler against a stretching
+distribution.
+
+The distribution is also **unimodal and tight** (at dt=0.010: q10 = 0.53×,
+q25 = 0.79×, q75 = 1.33×, q99 = 2.17× the median), so there is no "do nothing"
+mode for a policy to alias onto — which is what would actually have justified
+the original gloss. The genuinely parked mass is the **gripper close**: 3–7% of
+frames sit below 0.05 × median, matching `measure_scripted_arm dwell`'s
+independent attribution (`parked` 0.06–0.081). That number is now **reported but
+not gated**, since its remedy is `gripper_action_steps`, not skip or dt.
+
+### The ratio terms are measured in JOINT space, the median in EEF
+
+A second measurement-space error, same family as the ruler. The ratios ask
+whether the action distribution has a tail that eats the normalized output
+range — and openpi's q01/q99 are **per action dimension**, which here are joint
+deltas. EEF millimetres are that same motion through a configuration-dependent
+Jacobian, so ill-conditioned poses inflate a typical joint step into a large
+Cartesian one. Measured on the same 29-episode batch:
+
+| | EEF | joint |
+|---|---|---|
+| p99 : median | 2.52 | **2.16** |
+| max : median | 4.1 | **2.76** |
+| below 0.25 × median | 0.077 | **0.060** |
+
+The EEF tail is real but it is a *kinematics* fact, not an action-distribution
+fact. It stays **reported** (`eef_max_mm`, `eef_max_over_median`) because a
+10 mm step in 20 ms is ~50 cm/s of instantaneous tool speed and that matters for
+hardware. Where Cartesian overshoot actually costs a grasp is already gated in
+EEF by **check 3**, against `pinch_tol`.
+
+Consequences for reading this check:
+* **The EEF median is a timescale calibration, not a learning gate.** It
+  answers "does the arm we collected move at the intended physical speed".
+  Route a median failure to `integration_dt`, never to skip. Note the band
+  `[2.4, 3.0] mm` only encodes "12–15 cm/s" *at a 20 ms decision interval* — at
+  a different net rate it must be rescaled, or read `avg EEF speed` instead.
+* **The joint-space ratios are the learning-relevant terms** — they are what
+  survives normalization. A fat tail there really does spend the normalized
+  range on sprint steps the descent never uses; that is the `16_06` pathology.
+* `16_06`'s "40% near-static" was largely the ruler artefact. But it does have a
+  genuine do-nothing mode, which only the scale-invariant metric shows:
+  **30% below 0.25 × median, against 6% in the new data.** The old absolute term
+  ranked the new data (82%) as *worse* than `16_06` (40%) — an inverted
+  ordering the rewrite corrects.
+
+### `integration_dt` and `SpeedPerturbation.factor_range` are one constraint, not two
+
+The speed perturbation multiplies `integration_dt` per episode, and
+`perturb_ik_config` adds a further ±10%, so the *effective* dt an episode runs
+at is `base_dt × s × (1 ± 0.1)`. The usable window is narrow (below), so the two
+have to be chosen together:
+
+| base dt | `factor_range` | effective dt |
+|---|---|---|
+| 0.005 | (0.7, 1.4) | 0.0032 – 0.0077 |
+| 0.010 | (0.7, 1.4) | 0.0063 – **0.0154** ← past the ceiling |
+| 0.010 | (0.85, 1.15) | 0.0077 – 0.0127 |
+| **0.009** | **(0.85, 1.15)** | **0.0069 – 0.0114** |
+
+At `dt=0.005` the whole perturbed range sat inside the window, so this coupling
+never showed. Raising the base dt without narrowing `factor_range` pushed
+episodes to an effective 0.012–0.015, and a 30-episode batch then failed check 3
+on descent `max` (7.17 mm against the ±7 mm `pinch_tol`) — a physical limit, not
+a tunable threshold.
+
+### Calibrate `integration_dt` against the arm you COLLECT
+
+C1 set `integration_dt=0.005` from `measure_scripted_arm`, which runs **nominal
+dynamics**. Collection always runs with arm-dynamics DR on, and that
+randomization is biased toward a *slower* arm — `_ARM_FORCE_SCALE` is
+reduce-only `(0.6, 1.0)`, `frictionloss` is additive from 0, `damping` adds
+0–1.5 on top of a 0.7–1.5 scale, `armature` reaches 1.8×, all compounding.
+
+Measured: the DR'd arm at `dt=0.005` runs at **7.5 cm/s**, half the 12–15 cm/s
+C1 was chosen to deliver. Stage 0's harness cannot see this, because it measures
+a configuration that never appears in the dataset.
+
+`integration_dt=0.009` puts the collected arm at **13.1 cm/s** and drops IK
+aborts to ~3%. `0.012` is the hard ceiling — it breaks check 3 (descent median
+3.73 against a 3.5 limit). `0.010` looked fine on a 12-episode ik_noise-only
+batch but failed check 3 on a 30-episode `collect_mixed` batch (descent max
+7.36 mm against the ±7 mm `pinch_tol`), because the speed perturbation stacks
+on top; 0.009 leaves the margin that absorbs it.
+
+### Measured at the calibrated defaults (07.08.2026, `dt=0.009`, `record_every=5 × --skip 2`)
+
+29 episodes / 9268 frames, collected via `collect_mixed.sh 30`. **All six checks
+pass; `check_dataset_health` exits 0.**
 
 | check | measured | verdict |
 |---|---|---|
-| 2 delta distribution | median 2.21 mm, p99 5.61, near-static **37.9%**, max:median 3.1 | **FAIL** |
-| 3 descent resolution | median 3.01 mm, max 4.43 | PASS |
-| 4 normalized output range | **descent 92.0%**, all-frames 91.7% | PASS |
-| 5 grasp window | 3–4 frames/ep, 0 episodes without a close | PASS |
-| 6 binarization | 2 levels `{-0.014, 0}`, 0 leading-closed, state 97 values | PASS |
+| 2 delta distribution | EEF median 2.41 mm; joint below-0.25× 0.060, p99:median 2.16, max:median 2.76 | PASS |
+| 3 descent resolution | median 3.14 mm, max 6.73 | PASS |
+| 4 normalized output range | **descent 88.2%**, all-frames 92.8 | PASS |
+| 5 grasp window | min 3, median 4, max 6; 0 episodes without a close | PASS |
+| 6 binarization | 2 levels `{-0.014, 0}`, 0 leading-closed, state 279 values | PASS |
 | 7 no recovery | 0 extra cycles | PASS |
 
-Check 4 going 5.3% → 92.0% is the timescale change delivering what it was for.
-Checks 6 and 7 confirm C6 and C3 at the dataset level.
+Stage 1 alongside: 29/30 collected, 1 IK abort (3.3%), 0 `Grasp not locked`,
+0 empty episodes. Reported diagnostics: avg EEF speed 13.1 cm/s, parked-frame
+fraction 5.2%, `eef_max_mm` 9.92.
 
-**Check 2 is the one open item**, and it fails on two terms that point the same
-way: median 2.21 (below the 2.4–3.0 target) and near-static 37.9%. `dwell`
-attributes almost none of that to gripper parking (`parked` 0.06–0.081,
-`parked_gripper_idle` 0.03–0.041, i.e. at the Stage 0 targets), so it is genuine
-arm creep — see the actuation-lag finding in
-[implementation_plan.md](./implementation_plan.md). Do **not** reach for a
-coarser skip first: checks 2 and 3 are now actively pulling against each other
-(check 2 wants coarser, check 3's descent median sits at 3.01 against a 3.5
-ceiling), which the runbook's own note calls a finding about the velocity
-profile rather than a threshold to tune.
-
-### Check 2 cannot be resolved at n=10 — the batch is not reproducible
-
-`collect_trajectories.py` calls `env.reset()` **without a seed**, so block
-positions (`ar4_mk3_base._reset_sim`), object yaw and goal placement all draw
-from Gymnasium's `self.np_random`, seeded from OS entropy.
-`np.random.seed(cfg.seed)` governs only the DR config and the perturbation
-draws. **`--seed 42` therefore reproduces the randomization parameters but not
-the scene**, and a failing batch cannot be re-run.
-
-Measured cost of this: two 7-episode batches of the *same* configuration
-reported near-static **37.9%** and **71.9%** — because they drew episodes
-averaging 3441 vs 5128 raw mj-steps, i.e. different actuation-lag severity.
-Treat "check 2 fails" as established across both, and any single number as
-noise. Seeding `env.reset()` is the prerequisite for tuning against check 2 at
-all.
+Check 4 going 5.3% → 86.7% is the timescale change delivering what it was for.
+Checks 6 and 7 confirm C6 and C3 at the dataset level. Reported alongside:
+parked-frame fraction 5.7%, avg EEF speed 13.5 cm/s.
 
 **Check 4 is the headline gate.** It is the entire reason for the timescale change: if the descent still commands a small fraction of the normalized output span, the re-collect did not buy what it was for and the training should not start.
 
-Checks 2 and 3 pull in opposite directions — coarser skip raises the median toward the target but coarsens the descent. If they cannot be satisfied together, that is a real finding about the velocity profile, not a threshold to tune away.
+Checks 2 and 3 pull in opposite directions — a coarser net rate raises the median toward the target but coarsens the descent. If they cannot be satisfied together, that is a real finding about the velocity profile, not a threshold to tune away. Measured at `record_every=5 × skip=2` over 29-episode batches: `integration_dt=0.009` gives median 2.41 mm with descent 3.14 / 6.73 mm; 0.010 gives median 2.65 but descent 3.60 / 7.36, over the limit. The usable window is `dt ∈ [0.009, 0.010)` once `factor_range` is applied on top.
+
+Note the two are reached by *different* levers. `--skip` and `integration_dt` both scale the median, but only `integration_dt` changes the physical arm; skip changes only how the same motion is sampled. Prefer `integration_dt` when the median is off and the arm's measured speed is off with it, and skip when the arm is right but the sampling is not.
 
 ### Where the gripper-close dead time lands in the data
 
@@ -247,13 +345,14 @@ the **built dataset**, which is what actually reaches training. There is no
 dedicated check for it — it shows up split across two existing ones, so neither
 on its own makes it obvious:
 
-* **Check 2's near-static fraction** is where the parked frames land (threshold
-  ≤10%). **If check 2 fails on near-static specifically, get the attribution
-  before touching skip** — `dwell` says whether it is gripper parking (remedy:
-  `gripper_action_steps`) or genuine arm creep (remedy: skip). Adjusting skip
-  cannot remove parked frames: the parking is long in *time*, so decimation
-  keeps it proportionally. This is the same trap as the fast arm's 40%
-  near-static, which was also gripper ramps rather than timescale.
+* **Check 2's `parked_below_0.05x_median`** is where these frames land. It is
+  **reported, not gated** — deliberately, because its remedy is
+  `gripper_action_steps` and nothing else. Adjusting skip cannot remove them:
+  the parking is long in *time*, so decimation keeps it proportionally. Raising
+  `integration_dt` makes it *relatively worse* (measured 2.8% → 5.0% → 5.7%
+  across dt 0.005 / 0.009 / 0.010), because `gripper_action_steps` is a fixed
+  mj-step count while the arm around it speeds up. Cross-check the number
+  against `dwell` rather than against a threshold.
 * **Check 5's grasp-window count** is the same frames from the other side. A
   window at the high end of the expected 5–8 is partly this: ~86 of the 100
   close steps are near-identical parked images, all labelled "closed" once

@@ -553,3 +553,40 @@ overshoot where it actually costs a grasp is still gated by check 3 against
 7. In joint space `16_06` shows a genuine do-nothing mode — 30% below 0.25 ×
 median against 6% in the new data — which the old absolute term could not see:
 it scored the new data (82%) as worse than `16_06` (40%), an inverted ordering.
+
+### X1 revisited — full-collect cost at the landed defaults (07.08.2026)
+
+Measured on the 30-attempt verification batch (`dt=0.009`, `record_every=5`,
+one process, macOS CPU rendering), not extrapolated from the old figures:
+
+| | measured |
+|---|---|
+| wall clock | 616 s / 30 attempts = **20.5 s per attempt** |
+| yield | 29/30 = **96.7%** (3.3% IK abort) |
+| disk | 757 MB / 29 = **26.1 MB per collected episode** |
+| frames | ~660 recorded per episode |
+
+**Target 3000 collected episodes ⇒ 3103 attempts ⇒ ~17.7 h and ~76 GB, single
+process.** Parallel: 8.9 h at 2 processes, 4.4 h at 4, 2.2 h at 8.
+
+Two things worth knowing before planning around this:
+
+**Speeding the arm up bought almost no wall-clock.** `integration_dt` went
+0.005 → 0.009 (IK steps nearly 2× larger) but episode length fell only ~3–11%
+(688 → 666 recorded frames, and 612 at dt=0.010). Much of an episode is in
+phases with *fixed mj-step counts* that `integration_dt` does not touch —
+`gripper_action_steps` (×2 budget, ~100 steps per open/close),
+`go_home_interpolation_steps`, `_settle(120)`. The exact split is not measured,
+but the direction is clear: further raising `integration_dt` is not a
+wall-clock lever, and it is the same mechanism that pushed `dwell`'s parked
+share from 0.06–0.081 to 0.102–0.135. If collection wall-clock needs to come
+down, the levers are `record_every` (render cost, ~99% of a frame) and
+parallelism — not the arm's speed.
+
+**Parallelism is now safe to use.** With C9's per-episode seeding, splitting the
+run across N processes with disjoint seed ranges gives a reproducible,
+non-overlapping scene set — which was not true before, when `env.reset()` drew
+from OS entropy.
+
+These figures are for this machine's CPU rendering; re-measure on whatever
+actually runs the full collect before committing to a schedule.

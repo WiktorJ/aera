@@ -114,7 +114,7 @@ at n=10 against 1.140 at n=30 (true max 1.15), so ten episodes systematically
 under-samples the tail. Measured cost of that: two 10-episode batches of the
 same configuration reported `max:median` 2.4 and 3.8. Thirty also samples the
 90/10 `collect_mixed` split properly rather than giving `offset_approach` a
-single episode. At ~22 s/episode this is ~11 minutes.
+single episode. At ~20.5 s/attempt this is ~10 minutes.
 
 Then read the log — these are warnings, not errors, so they scroll past silently:
 
@@ -145,9 +145,9 @@ the wrong thing entirely.
 
 Whenever a recording knob changes, check the frame count, not the success count.
 
-Also record **wall-clock per episode** and **disk per episode** (`du -sh data/verify_batch`), and sanity-check the recorded frame count: at `record_every=5` an episode should hold **~500** frames, not ~2500. If it holds ~2500 the decimation is not in effect and collection will run ~5× slower than it needs to.
+Also record **wall-clock per attempt** and **disk per collected episode** (`du -sh data/verify_batch`), and sanity-check the recorded frame count: at `record_every=5` an episode should hold **~650** frames, not ~3300. If it holds ~3300 the decimation is not in effect and collection will run ~5× slower than it needs to.
 
-Expect ~8 s/episode and ~1000 jpeg sidecars per episode. That is the point of `record_every=5` — see the X1 note in [implementation_plan.md](./implementation_plan.md). If it comes in much higher, the profile to check first is the two camera renders in `_record_step`, which measured 13.7 ms against 0.09 ms of physics.
+Measured 07.08.2026 at the landed defaults (`dt=0.009`, `record_every=5`, one process): **20.5 s per attempt**, 96.7% yield, **26.1 MB per collected episode**, ~660 frames/episode. If wall-clock comes in much higher, the profile to check first is the two camera renders in `_record_step`, which measured 13.7 ms against 0.09 ms of physics.
 
 ---
 

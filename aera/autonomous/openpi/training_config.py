@@ -97,9 +97,7 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         )
 
 
-DEFAULT_TRAINING_DATA_REPO = (
-    "Purple69/aera_semi_pnp_dr_16_06_2026_skip3_delta_no_go_home_no_static_smoothed_v2"
-)
+DEFAULT_TRAINING_DATA_REPO = "Purple69/aera_semi_pnp_dr_08_08_2026_skip10_delta"
 
 
 _BASE_CONFIGS = [
@@ -222,7 +220,7 @@ _BASE_CONFIGS = [
         lr_schedule=_optimizer.CosineDecaySchedule(
             warmup_steps=2_000,
             peak_lr=5e-5,
-            decay_steps=300_000,
+            decay_steps=60_000,
             decay_lr=5e-5,
         ),
         optimizer=_optimizer.AdamW(clip_gradient_norm=1.0),
@@ -230,10 +228,10 @@ _BASE_CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader(
             "gs://openpi-assets/checkpoints/pi05_base/params"
         ),
-        num_train_steps=300_000,
+        num_train_steps=60_000,
         log_interval=400,
         save_interval=10_000,
-        keep_period=60_000,
+        keep_period=10_000,
         batch_size=32,
     ),
     openpi_config.TrainConfig(

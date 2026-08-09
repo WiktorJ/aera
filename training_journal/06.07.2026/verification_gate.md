@@ -392,6 +392,89 @@ python -m aera.autonomous.openpi.scripts.check_dataset_health --repo-id Purple69
 
 Ten episodes will not surface a rare IK abort or a block-preset-dependent problem, and this is the last cheap check before the expensive step. Check 4 needs the finalized `meta/stats.json`, so it can only be read once the dataset is built.
 
+### Ran 08–09.08.2026 — `aera_semi_pnp_dr_08_08_2026`, PASSED, training started
+
+Collected in parallel via the new `collect_parallel.sh` (8 shards, disjoint
+seed ranges, merged): **3100 attempts → 2959 episodes** (95.5% yield), 80 GB,
+1,989,958 recorded frames (mean 673/ep). Transformed to **955,278 frames /
+2959 episodes / 339 frames per episode**.
+
+Two collection notes worth carrying forward. **Set `MUJOCO_GL=egl`** — unset,
+MuJoCo picks GLFW, which can resolve to a software/integrated rasterizer:
+measured 11.05 ms per render against 0.48 ms, i.e. 29.5 s per attempt against
+9.2 s, with bit-identical frames at a fixed seed. And parallelism is
+GPU-render-bound, not CPU-bound: throughput peaked at 8 processes with the CPU
+still partly idle, turning a ~17 h single-process job into ~2 h.
+
+| stage 1 check | measured at scale | |
+|---|---|---|
+| 8 — lock engaged | **0** `Grasp not locked` in 3100 attempts | PASS |
+| 0 — data recorded | **0** `Synchronized 0`; 2959 sync lines = 2959 episodes | PASS |
+| 1 — IK budget | 141 aborts = **4.5%** (all `could not move above target` on the descent) | see below |
+
+The 4.5% is above the 30-episode batch's 3.3%, but that estimate had one draw;
+and aborted attempts write nothing (`stop_episode(success)`), so this costs
+yield only, not data quality.
+
+| stage 3 check | measured on ALL 2959 episodes | |
+|---|---|---|
+| 2 delta distribution | eef_median **2.40**, below-0.25× 0.061, p99:median 2.06, **max:median 3.43** | fails one term |
+| 3 descent resolution | median **3.26**, **max 10.78**, p99 6.96 | fails max |
+| 4 **normalized output range** | **descent 92.7%**, all-frames 94.4 | **PASS** |
+| 5 grasp window | median 4, **min 2**, 0 episodes without a close | fails min |
+| 6 binarization | 2 levels, **0** leading-closed, state 609 values | PASS |
+| 7 no recovery | **0** extra cycles in 2959 episodes | PASS |
+
+### The three failures are sample-size artefacts — checks 2/3/5 need percentile forms
+
+**Every failing term is an extreme value** (two maxima, one minimum), and the
+thresholds were calibrated on 29–30-episode batches. Subsampling this same
+dataset reproduces the "failure" as a pure function of episode count:
+
+| episodes | joint max:median | descent max mm |
+|---|---|---|
+| 29 | 2.50 | 7.20 |
+| 59 | 2.66 | 7.75 |
+| 300 | 3.17 | 8.94 |
+| 1000 | 3.40 | 9.73 |
+| **2959** | **3.43** | **10.78** |
+
+At 29 episodes this dataset reads 2.50 / 7.20 — the same as or better than the
+verification batch's 2.76 / 6.73. So **Stage 4 as written cannot pass these
+three thresholds at full scale regardless of data quality.** Read them as
+fractions instead, where the tails are small: **0.94%** of descent frames
+exceed ±7 mm (2.81% of episodes), and **31/2959 episodes (1.05%)** have a
+2-frame grasp window against a median of 4. If these checks are ever tightened,
+the fix is to gate on p99/p99.9 and a per-episode fraction, not on max/min.
+
+### Two measurement traps found while running this
+
+* **`check_dataset_health --max-frames` defaults to 20000 and `load_frames`
+  reads a PREFIX** (`range(count)`), not a sample. The first full-dataset run
+  therefore described episodes 0–58 and reported `eef_median` 2.27, below the
+  band — those 59 episodes read 2.26 while the rest of the dataset reads
+  2.38–2.45 and the true median is 2.40, inside it. Pass the full frame count,
+  or read the columns directly.
+* **Reading the checks off parquet instead of `ds[t]` turns hours into
+  minutes.** The checks need only `actions`, `state` and `episode_index`, all
+  plain columns; `ds[t]` decodes both images per frame (~10 ms), which is a
+  ~3-hour pass over 955k frames.
+
+### Verdict
+
+**PASS — training started.** Check 4, the headline gate and the whole reason
+for the timescale change, reads **92.7%** against `16_06`'s 5.3%. Checks 6 and
+7 confirm C6 and C3 across all 2959 episodes. The remaining tails are 1% of
+descent frames and 1% of episodes; the lever if they ever matter is a
+`--skip 1` re-transform (net 5, deploy `n_substeps=5`), which is the headroom
+`record_every=5` exists to preserve — a re-transform, not a re-collect.
+
+Landed alongside: `convert_data_to_lerobot` now writes `record_every` into the
+dataset's `meta/info.json` and `transform_skip_dataset` reads it from there
+(flag only overrides), so the deploy invariant travels with the data instead of
+in a flag someone has to remember. The transformed dataset carries
+`record_every=10`, i.e. its own deploy `n_substeps`.
+
 ---
 
 ## Stage 5 — eval config, before reading any eval number
@@ -399,8 +482,8 @@ Ten episodes will not surface a rare IK abort or a block-preset-dependent proble
 Not a data check, but the same class of silent error: an eval whose rate or scene distribution does not match the data reports a number about the wrong thing.
 
 - `n_substeps == skip` (10). A mismatch here silently rescales every commanded motion.
-- Eval env config == collection env config (F2/E2): cameras + geometric lookat + object yaw + prompt string.
-- `replan_steps=4` is a decision, not an inheritance — confirm with a 1–5 sweep on the first checkpoint (`eval_variance.py --replan-steps`).
+- Eval env config == collection env config (F2/E2): cameras + geometric lookat + object yaw + prompt string. Verified 09.08.2026: `check_camera_parameterization` 4/4, `test_task_env_factory` + `test_jaw_geometry` 18/18.
+- `replan_steps=4` is a decision, not an inheritance — confirm with a 1–5 sweep on the first checkpoint (`eval_variance.py --replan-steps`). **Still open** — it is the only Stage 5 item the 08.08 run could not close, since it needs a checkpoint.
 - The old `eval/dr/*` and `eval/nodr/*` mlflow series stop at this run (E1); `eval/...` is now the in-distribution number.
 
 ---

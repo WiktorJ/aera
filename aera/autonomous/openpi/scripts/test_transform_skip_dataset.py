@@ -1,13 +1,25 @@
 """Minimal tests for the crucial fixture-free helpers in transform_skip_dataset."""
 
+from unittest import mock
+
 import numpy as np
 
+from aera.autonomous.envs.task_env_factory import COLLECTION_RECORD_EVERY
 from aera.autonomous.openpi.scripts.transform_skip_dataset import (
     _binarize_gripper_action,
     _build_output_repo_id,
     _gripper_moved,
     _parse_image_from_sample,
+    _resolve_record_every,
 )
+
+
+def _meta_with(info):
+    """Patch LeRobotDatasetMetadata to return a stub carrying `info`."""
+    return mock.patch(
+        "aera.autonomous.openpi.scripts.transform_skip_dataset.LeRobotDatasetMetadata",
+        return_value=mock.Mock(info=info),
+    )
 
 
 def test_build_output_repo_id_naming():
@@ -30,6 +42,32 @@ def test_build_output_repo_id_names_the_net_decimation():
     assert _build_output_repo_id("org/name", 2, True, None, 5) == _build_output_repo_id(
         "org/name", 10, True, None, 1
     )
+
+
+def test_record_every_comes_from_the_dataset():
+    with _meta_with({"record_every": 5}):
+        assert _resolve_record_every("org/name", None) == 5
+
+
+def test_record_every_flag_overrides_the_dataset():
+    # A dataset built before the key existed has to be tellable.
+    with _meta_with({"record_every": 5}):
+        assert _resolve_record_every("org/name", 3) == 3
+
+
+def test_record_every_falls_back_when_the_dataset_predates_the_key():
+    with _meta_with({}):
+        assert _resolve_record_every("org/name", None) == COLLECTION_RECORD_EVERY
+
+
+def test_record_every_survives_an_unreadable_dataset():
+    # Resolution feeds a log line and a name; it must never fail the transform.
+    with mock.patch(
+        "aera.autonomous.openpi.scripts.transform_skip_dataset.LeRobotDatasetMetadata",
+        side_effect=FileNotFoundError("not cached"),
+    ):
+        assert _resolve_record_every("org/name", None) == COLLECTION_RECORD_EVERY
+        assert _resolve_record_every("org/name", 2) == 2
 
 
 def test_parse_image_float_chw_to_uint8_hwc():

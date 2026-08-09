@@ -27,7 +27,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
+from lerobot.datasets.utils import write_info
 
 from aera.autonomous.obs_augmentation import (
     apply_state_noise,
@@ -101,13 +102,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--record-every",
         type=int,
-        default=COLLECTION_RECORD_EVERY,
+        default=None,
         help=(
-            "The mj-step stride collection recorded at (Ar4Mk3InterfaceConfig."
-            "record_every, echoed by convert_data_to_lerobot). Not used to "
-            "transform anything — it only makes this script able to report the "
-            "deploy rate the output must be replayed at, which is "
-            "record_every * skip substeps, not skip."
+            "The mj-step stride collection recorded at. Not used to transform "
+            "anything — it only reports the deploy rate, which is "
+            "record_every * skip substeps, not skip. Leave unset: it is read "
+            "from the source dataset's meta/info.json. Pass it only to override "
+            "a dataset built before that key existed."
         ),
     )
     parser.add_argument(
@@ -268,6 +269,35 @@ def _to_numpy(value):
     if isinstance(value, np.ndarray):
         return value
     return np.asarray(value)
+
+
+def _resolve_record_every(repo_id: str, cli_value: int | None) -> int:
+    """Recording stride of the source dataset: its own metadata, else the flag,
+    else the constant. Never raises — it only feeds a log line and the name."""
+    stored = None
+    try:
+        stored = LeRobotDatasetMetadata(repo_id).info.get("record_every")
+    except Exception as exc:  # not cached yet, or an older LeRobot layout
+        logging.debug(f"Could not read record_every from {repo_id}: {exc}")
+
+    if cli_value is not None:
+        if stored is not None and stored != cli_value:
+            logging.warning(
+                f"--record-every {cli_value} contradicts the dataset's recorded "
+                f"stride ({stored}); using {cli_value}, deploy rate below is "
+                "wrong if the dataset is right."
+            )
+        return cli_value
+
+    if stored is not None:
+        logging.info(f"record_every={stored} (from {repo_id} meta/info.json)")
+        return int(stored)
+
+    logging.warning(
+        f"{repo_id} carries no readable record_every; assuming "
+        f"{COLLECTION_RECORD_EVERY}. Pass --record-every if that is wrong."
+    )
+    return COLLECTION_RECORD_EVERY
 
 
 def _build_output_repo_id(
@@ -783,9 +813,10 @@ def main():
     # Stated here because this is where --skip is chosen, and --skip alone is
     # NOT the deploy rate once collection decimates. Getting this wrong looks
     # like a bad policy rather than a rate bug; see CONTROL_RATE_SPEC.md.
-    deploy_n_substeps = args.record_every * args.skip
+    record_every = _resolve_record_every(args.repo_id, args.record_every)
+    deploy_n_substeps = record_every * args.skip
     logging.info(
-        f"Deploy rate: n_substeps = record_every({args.record_every}) * "
+        f"Deploy rate: n_substeps = record_every({record_every}) * "
         f"skip({args.skip}) = {deploy_n_substeps} substeps "
         f"= {deploy_n_substeps * MJ_TIMESTEP_S * 1000:.0f} ms "
         f"= {1.0 / (deploy_n_substeps * MJ_TIMESTEP_S):.0f} Hz"
@@ -802,7 +833,7 @@ def main():
         args.skip,
         args.delta_actions,
         args.output_repo_suffix,
-        args.record_every,
+        record_every,
     )
     logging.info(f"Output repo ID: {output_repo_id}")
 
@@ -867,6 +898,12 @@ def main():
             drop_leading_closed=args.drop_leading_closed,
         )
         output_dataset.finalize()
+
+        # The output's frames sit record_every * skip mj-steps apart, so that
+        # product is its own stride — and the n_substeps it deploys at.
+        output_dataset.meta.info["record_every"] = deploy_n_substeps
+        write_info(output_dataset.meta.info, output_dataset.meta.root)
+        logging.info(f"Wrote record_every={deploy_n_substeps} to output meta")
 
     # Optionally push to hub
     if args.push_to_hub:

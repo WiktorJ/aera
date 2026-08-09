@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 import tyro
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.utils import write_info
 from lerobot.utils.constants import HF_LEROBOT_HOME
 from tqdm import tqdm
 
@@ -267,6 +268,13 @@ def main(
             )
         dataset.save_episode()
         del episode_data, trajectory
+
+    # Persist the stride with the frames so downstream reads the deploy
+    # invariant (n_substeps == record_every * skip) off the data, not a flag.
+    # After the last save_episode, which rewrites info.json each time.
+    dataset.meta.info["record_every"] = record_every
+    write_info(dataset.meta.info, dataset.meta.root)
+    print(f"Wrote record_every={record_every} to {dataset.meta.root}/meta/info.json")
 
     if push_to_hub:
         dataset.finalize()

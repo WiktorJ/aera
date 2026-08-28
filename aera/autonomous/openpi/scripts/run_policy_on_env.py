@@ -439,7 +439,9 @@ def _log_funnel(agg: dict[str, float], prefix: str) -> None:
 
 def run_on_env(args: Args) -> None:
     """Runs the policy on the AR4 MK3 environment."""
-    logging.basicConfig(level=logging.INFO)
+    # force=True: openpi installs a root handler at import, which would otherwise
+    # make this a no-op and leave the root level at WARNING.
+    logging.basicConfig(level=logging.INFO, force=True)
     np.random.seed(args.seed)
     pathlib.Path(args.video_out_path).mkdir(parents=True, exist_ok=True)
 

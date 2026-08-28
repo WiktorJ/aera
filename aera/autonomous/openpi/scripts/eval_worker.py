@@ -214,7 +214,10 @@ def _eval_checkpoint(
 
 
 def run_worker(args: WorkerArgs) -> None:
-    logging.basicConfig(level=logging.INFO)
+    # force=True: importing openpi installs a root handler, which makes a plain
+    # basicConfig a no-op and leaves the root level at WARNING, dropping every
+    # log line below.
+    logging.basicConfig(level=logging.INFO, force=True)
     if args.mlflow_tracking_uri:
         mlflow.set_tracking_uri(args.mlflow_tracking_uri)
 

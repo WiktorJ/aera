@@ -79,7 +79,9 @@ class Args:
 
 
 def run_eval(args: Args) -> dict:
-    logging.basicConfig(level=logging.INFO)
+    # force=True: openpi installs a root handler at import, which would otherwise
+    # make this a no-op and leave the root level at WARNING.
+    logging.basicConfig(level=logging.INFO, force=True)
     ckpt_dir = pathlib.Path(args.checkpoint_dir)
     step = ckpt_dir.name if ckpt_dir.name.isdigit() else None
     suite_cfg = args.suite_config()

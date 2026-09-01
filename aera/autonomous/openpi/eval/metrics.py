@@ -30,6 +30,20 @@ the lock is active:
         height -- the same anisotropic axes the engage gate checks), so misses
         decompose into "off to the side" vs "in front" vs "too high", plus a
         close-depth check for half-hearted close commands.
+    grasp alignment     -- the same tool-frame offsets PLUS a yaw misalignment
+        are recorded for attempts that DO engage. The scripted expert always
+        grasps square: jaws centred on the block and parallel to its faces
+        (`get_object_pose` aligns the wrist to the block's yaw). A policy grasp
+        that engages while off-centre or skewed is therefore in a pose the
+        demonstrations never show a lift from, so alignment is a covariate to
+        correlate against post-grasp failure rather than a gate.
+    post-grasp stall    -- steps spent holding object0 while the arm joints
+        barely move. The demonstrations park the arm for the whole gripper-close
+        ramp (~6 frames of near-zero action at an observation otherwise
+        identical to the frame the lift starts on), so "grasped, then froze" is
+        a predicted imitation failure and needs to be visible as its own number:
+        `timeout_holding` alone does not separate a frozen arm from one that
+        wandered while holding.
     releases            -- with the lock, a drop can ONLY be a commanded
         release. Each held->released transition records where the object was
         let go (distance to goal, height, hold duration), separating premature
@@ -78,6 +92,17 @@ _ATTEMPT_RADIUS = 0.10
 # block's own weight, while a jaw touches the block, means the gripper is
 # pressing the block into the table rather than resting near it.
 _PRESS_FORCE_RATIO = 3.0
+# Per-env-step arm motion below which the arm counts as stalled (rad, L2 over
+# the 6 arm joints). At n_substeps=10 one env step is one dataset frame, where
+# the demonstrations' median joint step is ~14 mrad; the parked frames inside a
+# gripper-close ramp sit at 1e-6..2e-4 rad. 1 mrad is ~7% of a normal step and
+# ~5x the largest parked one, so it separates the two by an order of magnitude
+# at both ends.
+_STALL_JOINT_EPS = 1e-3
+# A stall run at least this many env steps long counts as "stuck" for the
+# episode-level rate. ~10% of the 1000-step budget, and 5x the ~6-step parked
+# window the demonstrations actually contain.
+_STALL_RUN_STEPS = 100
 
 # Why a failed grasp attempt missed, from the engage gate's own axes (see
 # GraspEngageConfig): evaluated at the attempt's closest-approach sample.
@@ -156,6 +181,14 @@ class EpisodeMetrics:
     max_table_press_ratio: float  # peak object->table force / block weight
     pushed_dist_pre_grasp: float  # how far the block was shoved before any grasp
 
+    # --- Post-grasp stall: "grabbed it, then froze". Measured over steps where
+    # object0 is held, on the 6 arm joints (the space the action deltas live
+    # in), so a stall is the arm not moving rather than the block not moving.
+    held_steps: int  # total env steps holding object0
+    stall_steps: int  # of those, steps with < _STALL_JOINT_EPS of joint motion
+    longest_stall_run: int  # longest consecutive such run
+    stalled: bool  # longest run >= _STALL_RUN_STEPS
+
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
@@ -220,6 +253,19 @@ class EpisodeTracker:
             and self._table_geom_id != -1
             and bool(self._jaw_geom_ids)
         )
+        self._obj_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object0")
+        # Arm joints, in the order the action's first six dims use
+        # (Ar4Mk3Env._set_action). Absent in scene variants without them, which
+        # just disables the stall metric.
+        arm_names = [f"joint_{i + 1}" for i in range(6)]
+        self._arm_joint_names = (
+            arm_names
+            if all(
+                mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n) != -1
+                for n in arm_names
+            )
+            else []
+        )
 
     # --- sim-state readers -------------------------------------------------
     def _object_pos(self) -> np.ndarray:
@@ -254,6 +300,57 @@ class EpisodeTracker:
         local = np.empty(3)
         mujoco.mju_rotVecQuat(local, self._object_pos() - self._grip_pos(), q_inv)
         return local
+
+    def _arm_qpos(self) -> np.ndarray | None:
+        """The 6 arm joint positions — the space the policy's action deltas are
+        expressed in, so "the arm did not move" is measured where it is
+        commanded, not through a Jacobian."""
+        if not self._arm_joint_names:
+            return None
+        return np.array(
+            [
+                self.env._utils.get_joint_qpos(self.env.model, self.env.data, name)[0]
+                for name in self._arm_joint_names
+            ]
+        )
+
+    def _grip_above_top(self, height: float) -> float | None:
+        """How far the grip site sits above the block's TOP face (m).
+
+        The raw tool-frame ``height`` is grip-to-block-CENTRE, so it carries the
+        block's half-height and is not comparable across the 19/22/24/27 mm
+        presets. Subtracting it gives the quantity the grasp actually depends
+        on. The scripted expert lands at +0.9 mm here on every episode, so this
+        is the axis on which "the jaws caught the top edge" shows up as a plain
+        positive number.
+        """
+        if self._block_half_height is None:
+            return None
+        return float(height - self._block_half_height)
+
+    def _yaw_misalign_deg(self) -> float | None:
+        """Angle between the gripper's pinch axis and the block's nearest
+        horizontal face normal, in degrees.
+
+        The blocks are square in cross-section (90-degree symmetric, which is
+        why ``object_yaw_range`` is capped at +-45 deg), so the angle reduces
+        into [0, 45]: 0 = jaws parallel to the faces, the only thing the
+        scripted expert ever demonstrates; 45 = jaws across the diagonal.
+        """
+        if self._obj_body_id == -1 or self._lock is None:
+            return None
+        grip_body = self.env.model.body(self._lock.gripper_body_name).id
+        # Column 0 of xmat is the body frame's x axis in world coords — the same
+        # axis _tool_frame_offset calls "pinch".
+        pinch_axis = self.env.data.xmat[grip_body].reshape(3, 3)[:, 0]
+        block_axis = self.env.data.xmat[self._obj_body_id].reshape(3, 3)[:, 0]
+        a, b = pinch_axis[:2], block_axis[:2]
+        na, nb = np.linalg.norm(a), np.linalg.norm(b)
+        if na < 1e-9 or nb < 1e-9:
+            # Both axes vertical — no meaningful yaw between them.
+            return None
+        ang = np.degrees(np.arctan2(a[0] * b[1] - a[1] * b[0], a @ b))
+        return float(abs((ang + 45.0) % 90.0 - 45.0))
 
     def _table_press(self) -> tuple[float, bool]:
         """(total object->table normal force, any jaw touching object0)."""
@@ -307,6 +404,12 @@ class EpisodeTracker:
         self._press_steps = 0
         self._max_press_ratio = 0.0
         self._pushed_pre_grasp = 0.0
+        # Post-grasp stall accounting (see _STALL_JOINT_EPS).
+        self._prev_arm_qpos = self._arm_qpos()
+        self._held_steps_total = 0
+        self._stall_steps = 0
+        self._stall_run = 0
+        self._longest_stall_run = 0
         # Command-state for cycle counting, seeded from the current command so
         # the settle-phase closed gripper doesn't count as a cycle. States:
         # "close" / "open" / None (in the hysteresis band).
@@ -324,8 +427,14 @@ class EpisodeTracker:
         if self._obj_geom_id != -1:
             size = self.env.model.geom_size[self._obj_geom_id]
             self._pinch_half_width = float(min(size[0], size[1]))
+            # Half-extent along the tool approach axis, used to turn the raw
+            # "height" offset into a block-size-invariant one (see
+            # _grip_above_top): eval mixes 19/22/24/27 mm presets, so raw
+            # grip->centre height is not comparable across episodes.
+            self._block_half_height = float(size[2])
         else:
             self._pinch_half_width = None
+            self._block_half_height = None
         obj_body_id = mujoco.mj_name2id(
             self.env.model, mujoco.mjtObj.mjOBJ_BODY, "object0"
         )
@@ -376,6 +485,25 @@ class EpisodeTracker:
                 self._pushed_pre_grasp,
                 float(np.linalg.norm(obj[:2] - self._spawn_xy)),
             )
+        # Arm motion this step, counted only while the block is held: the
+        # question is whether the arm froze *after* grabbing, and a stalled arm
+        # before the grasp is already covered by the funnel.
+        arm = self._arm_qpos()
+        if arm is not None:
+            if held and self._prev_arm_qpos is not None:
+                self._held_steps_total += 1
+                if np.linalg.norm(arm - self._prev_arm_qpos) < _STALL_JOINT_EPS:
+                    self._stall_steps += 1
+                    self._stall_run += 1
+                    self._longest_stall_run = max(
+                        self._longest_stall_run, self._stall_run
+                    )
+                else:
+                    self._stall_run = 0
+            else:
+                self._stall_run = 0
+            self._prev_arm_qpos = arm
+
         if held:
             self._ever_held = True
             self._held_steps += 1
@@ -442,6 +570,8 @@ class EpisodeTracker:
                         "pinch": float(local[0]),
                         "finger": float(local[1]),
                         "height": float(local[2]),
+                        "grip_above_top": self._grip_above_top(float(local[2])),
+                        "yaw": self._yaw_misalign_deg(),
                         "close_cmd": cmd,
                         "pinched": True,
                         "miss_reasons": [],
@@ -457,6 +587,8 @@ class EpisodeTracker:
                     "pinch": 0.0,
                     "finger": 0.0,
                     "height": 0.0,
+                    "grip_above_top": None,
+                    "yaw": None,
                     "close_cmd": cmd,
                     "pinched": False,
                     "miss_reasons": [],
@@ -468,6 +600,8 @@ class EpisodeTracker:
                     pinch=float(local[0]),
                     finger=float(local[1]),
                     height=float(local[2]),
+                    grip_above_top=self._grip_above_top(float(local[2])),
+                    yaw=self._yaw_misalign_deg(),
                     close_cmd=cmd,
                 )
             # Did the jaws ever physically pinch the block during the attempt?
@@ -588,6 +722,10 @@ class EpisodeTracker:
             press_steps=self._press_steps,
             max_table_press_ratio=self._max_press_ratio,
             pushed_dist_pre_grasp=self._pushed_pre_grasp,
+            held_steps=self._held_steps_total,
+            stall_steps=self._stall_steps,
+            longest_stall_run=self._longest_stall_run,
+            stalled=self._longest_stall_run >= _STALL_RUN_STEPS,
         )
 
 
@@ -679,6 +817,41 @@ def aggregate(episodes: list[EpisodeMetrics]) -> dict[str, float]:
             out[f"eval/miss/{axis}_offset_abs_mean"] = float(np.mean(np.abs(vals)))
             out[f"eval/miss/{axis}_offset_bias"] = float(np.mean(vals))
 
+    # Alignment of the grasps that DID engage. The scripted expert only ever
+    # demonstrates a square, centred grasp, so these say how far outside the
+    # demonstrated grasp manifold the policy is when it succeeds in closing —
+    # the covariate to correlate against what happens next.
+    engaged = [a for a in all_attempts if a["engaged"]]
+    if engaged:
+        for axis in ("pinch", "finger", "height"):
+            vals = np.array([a[axis] for a in engaged], dtype=float)
+            out[f"eval/grasp/{axis}_abs_mean"] = float(np.mean(np.abs(vals)))
+            out[f"eval/grasp/{axis}_bias"] = float(np.mean(vals))
+            out[f"eval/grasp/{axis}_abs_p90"] = float(np.percentile(np.abs(vals), 90))
+        dists = np.array([a["min_dist"] for a in engaged], dtype=float)
+        out["eval/grasp/offset_dist_mean"] = float(np.mean(dists))
+        out["eval/grasp/offset_dist_p90"] = float(np.percentile(dists, 90))
+        # Block-size-invariant height (expert baseline: +0.0009 m).
+        tops = np.array(
+            [
+                a["grip_above_top"]
+                for a in engaged
+                if a.get("grip_above_top") is not None
+            ],
+            dtype=float,
+        )
+        if tops.size:
+            out["eval/grasp/grip_above_top_mean"] = float(np.mean(tops))
+            out["eval/grasp/grip_above_top_p90"] = float(np.percentile(tops, 90))
+        yaws = np.array(
+            [a["yaw"] for a in engaged if a.get("yaw") is not None], dtype=float
+        )
+        if yaws.size:
+            out["eval/grasp/yaw_deg_mean"] = float(np.mean(yaws))
+            out["eval/grasp/yaw_deg_p50"] = float(np.percentile(yaws, 50))
+            out["eval/grasp/yaw_deg_p90"] = float(np.percentile(yaws, 90))
+            out["eval/grasp/yaw_deg_max"] = float(np.max(yaws))
+
     # Release anatomy: with the kinematic lock every drop is a commanded
     # release, so premature releases *are* the drop failure mode.
     out["eval/premature_release_count_mean"] = float(
@@ -715,6 +888,19 @@ def aggregate(episodes: list[EpisodeMetrics]) -> dict[str, float]:
     pushed = np.array([e.pushed_dist_pre_grasp for e in episodes], dtype=float)
     out["eval/pushed_dist_pre_grasp_mean"] = float(np.mean(pushed))
     out["eval/pushed_dist_pre_grasp_p90"] = float(np.percentile(pushed, 90))
+
+    # Post-grasp stall. Rates are over episodes that held the block at all, so
+    # the number answers "given it grasped, did it then freeze" rather than
+    # being diluted by episodes that never got there.
+    holders = [e for e in episodes if e.held_steps > 0]
+    if holders:
+        out["eval/stall/rate"] = float(np.mean([e.stalled for e in holders]))
+        runs = np.array([e.longest_stall_run for e in holders], dtype=float)
+        out["eval/stall/longest_run_mean"] = float(np.mean(runs))
+        out["eval/stall/longest_run_p90"] = float(np.percentile(runs, 90))
+        out["eval/stall/held_frac_mean"] = float(
+            np.mean([e.stall_steps / e.held_steps for e in holders])
+        )
 
     return out
 

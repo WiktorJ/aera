@@ -60,7 +60,8 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 
 import numpy as np
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, Quaternion
+from scipy.spatial.transform import Rotation
 
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     ActuationConfig,
@@ -187,6 +188,30 @@ class HoverHeightPerturbation:
 
 
 @dataclass
+class GraspPoseJitter:
+    """Per-episode, zero-centred jitter of the grasp target so demos show the
+    arm completing the task from imperfect grasps, not just the one exact pose.
+
+    Offsets are in the gripper tool frame. Only the finger offset leaves a
+    lasting held offset (the jaws don't recentre along their length); pinch and
+    yaw self-correct as the jaws close on the free block, so their signal is the
+    jittered approach, not the endpoint. A grasp too crooked to complete is
+    dropped by the collector rather than saved — the jitter can only lower
+    yield, never inject a failure.
+
+    Ranges are sized for the worst graspable preset (19-24 mm blocks; 23 mm pad;
+    28.8 mm open jaw gap) so no clamping is needed: finger keeps most of the pad
+    on the smallest block, pinch stays inside the widest block's open-jaw
+    descent clearance so a jaw never comes down on the block top.
+    """
+
+    finger_offset_max: float = 0.007  # +-m along the jaws; >=60% pad on the 19 mm block
+    yaw_deg_max: float = 12.0         # +-deg about the approach axis; self-corrects
+    pinch_offset_max: float = 0.0015  # +-m across the jaws; < 24 mm block's 2.4 mm clearance
+    height_up_max: float = 0.002      # m higher only (0..max); lower would hit the table
+
+
+@dataclass
 class RecoveryPerturbation:
     """Per-episode grasp-time failure + recovery (sim2real plan #1+#2).
 
@@ -307,6 +332,11 @@ class PerturbationConfig:
     # the whole run; A/B by collecting twice.
     perturb_recovery: bool = False
     recovery: RecoveryPerturbation = field(default_factory=RecoveryPerturbation)
+
+    # Grasp-pose DR (composable). Jitters the grasp target per episode so the
+    # policy sees successful lifts from imperfect grasps. See GraspPoseJitter.
+    perturb_grasp_pose: bool = False
+    grasp_pose: GraspPoseJitter = field(default_factory=GraspPoseJitter)
 
 
 def generate_offset_approach(target_pose: Pose, config: PerturbationConfig) -> list:
@@ -553,6 +583,53 @@ def apply_hover_height_perturbation(
     hover height (``above_target_offset``)."""
     offset = float(np.random.uniform(*noise.offset_range))
     return replace(interface_config, above_target_offset=offset)
+
+
+def _sym_uniform(half_width: float) -> float:
+    """Draw from ``Uniform(-half_width, +half_width)``; exactly 0 when off."""
+    if half_width <= 0.0:
+        return 0.0
+    return float(np.random.uniform(-half_width, half_width))
+
+
+def _one_sided_uniform(upper: float) -> float:
+    """Draw from ``Uniform(0, upper)``; exactly 0 when off."""
+    if upper <= 0.0:
+        return 0.0
+    return float(np.random.uniform(0.0, upper))
+
+
+def apply_grasp_pose_jitter(object_pose: Pose, cfg: GraspPoseJitter) -> Pose:
+    """Copy of ``object_pose`` with the grasp jitter applied.
+
+    Pinch/finger are tool-frame offsets rotated into the world so they track the
+    jaws regardless of block yaw (x = pinch, y = finger, matching the engage
+    gate). Yaw turns the whole gripper about the approach axis. Height is world
+    +z (the top-down approach axis is world -z, so "higher" is unambiguous).
+    """
+    dx = _sym_uniform(cfg.pinch_offset_max)
+    dy = _sym_uniform(cfg.finger_offset_max)
+    dyaw_deg = _sym_uniform(cfg.yaw_deg_max)
+    up = _one_sided_uniform(cfg.height_up_max)
+
+    grasp_rot = Rotation.from_quat(
+        [
+            object_pose.orientation.x,
+            object_pose.orientation.y,
+            object_pose.orientation.z,
+            object_pose.orientation.w,
+        ]
+    )
+    jittered_rot = Rotation.from_euler("z", dyaw_deg, degrees=True) * grasp_rot
+    lateral = jittered_rot.apply([dx, dy, 0.0])
+
+    out = copy.deepcopy(object_pose)
+    out.position.x += float(lateral[0])
+    out.position.y += float(lateral[1])
+    out.position.z += float(lateral[2]) + up
+    q = jittered_rot.as_quat()
+    out.orientation = Quaternion(x=float(q[0]), y=float(q[1]), z=float(q[2]), w=float(q[3]))
+    return out
 
 
 def go_home_perturbed(robot: Ar4Mk3RobotInterface, config: PerturbationConfig) -> bool:

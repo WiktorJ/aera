@@ -31,6 +31,7 @@ from aera_semi_autonomous.data.pick_and_place_helpers import (
 from aera_semi_autonomous.data.trajectory_data_collector import TrajectoryDataCollector
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
+    apply_grasp_pose_jitter,
     apply_hover_height_perturbation,
     apply_speed_perturbation,
     generate_waypoints,
@@ -128,10 +129,17 @@ def run_pick_and_place_and_collect(
         if full_close_grasp
         else get_object_grasp_gripper_pos(env, logger=logger)
     )
+    # Jitter the grasp target only; object_pose stays true for the place height
+    # below and any recovery injection above.
+    grasp_pose = object_pose
+    if perturbation_config.perturb_grasp_pose:
+        grasp_pose = apply_grasp_pose_jitter(
+            object_pose, perturbation_config.grasp_pose
+        )
     if perturbation_config.perturb_pick:
         for wp in generate_waypoints(object_pose, perturbation_config):
             robot.move_to(wp)
-    if not robot.grasp_at(object_pose, gripper_pos=grasp_gripper_pos):
+    if not robot.grasp_at(grasp_pose, gripper_pos=grasp_gripper_pos):
         logger.error("Failed to pick up object")
         return False
 
@@ -204,6 +212,17 @@ def main():
         logger.warning(
             "!!! full_close_grasp is OFF: the grasp closes to a width-derived "
             "target. Expect far fewer locked grasps; A/B use only."
+        )
+    if cfg.perturbation.perturb_grasp_pose:
+        gj = cfg.perturbation.grasp_pose
+        logger.info(
+            "Grasp-pose DR ON (tool-frame): finger +-%.1f mm, yaw +-%.1f deg, "
+            "pinch +-%.1f mm (all zero-centred), height +%.1f mm (higher only). "
+            "Only successful lifts are saved; failed jittered grasps are dropped.",
+            gj.finger_offset_max * 1000.0,
+            gj.yaw_deg_max,
+            gj.pinch_offset_max * 1000.0,
+            gj.height_up_max * 1000.0,
         )
 
     script_dir = os.path.dirname(os.path.abspath(__file__))

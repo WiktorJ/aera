@@ -37,6 +37,7 @@ import logging
 import os
 import sys
 
+import mujoco
 import numpy as np
 
 
@@ -71,6 +72,10 @@ from aera_semi_autonomous.control.ar4_mk3_robot_interface import (  # noqa: E402
 from aera_semi_autonomous.data.pick_and_place_helpers import (  # noqa: E402
     get_object_grasp_gripper_pos,
     get_object_pose,
+)
+from aera_semi_autonomous.data.trajectory_perturbation import (  # noqa: E402
+    GraspPoseJitter,
+    apply_grasp_pose_jitter,
 )
 
 from aera.autonomous.envs.jaw_geometry import GRIPPER_FULL_CLOSE  # noqa: E402
@@ -479,6 +484,102 @@ def _close_probe(seed: int, dt: float, max_steps: int, close_target: float) -> d
         env.close()
 
 
+def cmd_grasp_jitter(args) -> None:
+    """Report how much of a commanded grasp-pose jitter survives the close.
+
+    Runs the real grasp path with a GraspPoseJitter and, at engage (jaws closed,
+    before the lift), prints the achieved tool-frame offset (pinch / finger /
+    grip-above-top / yaw — the axes eval's grasp metrics use) and whether the
+    lock engaged. ``locked=False`` is an episode a real collect would drop.
+    """
+    jitter = GraspPoseJitter(
+        finger_offset_max=args.finger_mm / 1000.0,
+        yaw_deg_max=args.yaw_deg,
+        pinch_offset_max=args.pinch_mm / 1000.0,
+        height_up_max=args.height_mm / 1000.0,
+    )
+    print(
+        f"jitter: finger+-{args.finger_mm}mm yaw+-{args.yaw_deg}deg "
+        f"pinch+-{args.pinch_mm}mm height+{args.height_mm}mm(up)  "
+        f"full_close={args.full_close}",
+        flush=True,
+    )
+    n_locked = 0
+    for seed in args.seeds:
+        res = _grasp_jitter_probe(seed, args.dt, args.max_steps, jitter, args.full_close)
+        if res is None:
+            print(f"seed={seed}: FAILED (script aborted before close)", flush=True)
+            continue
+        n_locked += int(res["locked"])
+        res = {"seed": seed, **res}
+        print(json.dumps(res) if args.json else _fmt(res), flush=True)
+    print(f"locked {n_locked}/{len(args.seeds)}", flush=True)
+
+
+def _grasp_jitter_probe(
+    seed: int, dt: float, max_steps: int, jitter: GraspPoseJitter, full_close: bool
+) -> dict | None:
+    """One jittered grasp, inspected in the tool frame at engage (between close
+    and lift, before the weld pins the pose)."""
+    env = _build_env(seed, randomize_object_yaw=True)
+    base = Ar4Mk3InterfaceConfig()
+    robot = Ar4Mk3RobotInterface(
+        env,
+        config=dataclasses.replace(
+            base, ik=dataclasses.replace(base.ik, integration_dt=dt, max_steps=max_steps)
+        ),
+    )
+    grip_site_id = env.model.site("grip").id
+    obj_body_id = env.model.body("object0").id
+    obj_geom_id = env.model.geom("object0").id
+    grip_body_id = env.model.body(robot._grasp_lock.gripper_body_name).id
+    half_h = float(env.model.geom_size[obj_geom_id][2])
+    block_mm = round(2000.0 * float(min(env.model.geom_size[obj_geom_id][:2])), 1)
+
+    snap: dict = {}
+    original_engage = robot._engage_kinematic_grasp
+
+    def probed_engage(*a, **kw):
+        q_inv = np.empty(4)
+        mujoco.mju_negQuat(q_inv, env.data.xquat[grip_body_id])
+        local = np.empty(3)
+        mujoco.mju_rotVecQuat(
+            local, env.data.xpos[obj_body_id] - env.data.site_xpos[grip_site_id], q_inv
+        )
+        pinch_axis = env.data.xmat[grip_body_id].reshape(3, 3)[:, 0]
+        block_axis = env.data.xmat[obj_body_id].reshape(3, 3)[:, 0]
+        av, bv = pinch_axis[:2], block_axis[:2]
+        ang = np.degrees(np.arctan2(av[0] * bv[1] - av[1] * bv[0], av @ bv))
+        snap.update(
+            block_mm=block_mm,
+            pinch_mm=round(float(local[0]) * 1000, 2),
+            finger_mm=round(float(local[1]) * 1000, 2),
+            grip_above_top_mm=round((float(local[2]) - half_h) * 1000, 2),
+            yaw_deg=round(float(abs((ang + 45.0) % 90.0 - 45.0)), 2),
+        )
+        result = original_engage(*a, **kw)
+        snap["locked"] = bool(robot._grasp_lock.is_held)
+        return result
+
+    robot._engage_kinematic_grasp = probed_engage
+
+    try:
+        if not robot.go_home():
+            return None
+        object_pose = get_object_pose(env, logging.getLogger(__name__))
+        if object_pose is None:
+            return None
+        grasp_pose = apply_grasp_pose_jitter(object_pose, jitter)
+        close_target = GRIPPER_FULL_CLOSE if full_close else get_object_grasp_gripper_pos(env)
+        ok = robot.grasp_at(grasp_pose, close_target)
+        if not snap:  # grasp_at bailed before the close
+            return None
+        snap["script_ok"] = bool(ok)
+        return snap
+    finally:
+        env.close()
+
+
 def cmd_dwell(args) -> None:
     """Where the near-static frames come from: arm parked during a gripper ramp
     vs parked with the gripper idle (IK convergence tails / settles)."""
@@ -553,6 +654,15 @@ def main() -> None:
                    default=[-12.0, -11.6, -11.5, -11.0, -10.5, 0.0],
                    help="commanded jaw targets in mm (0 = full close)")
     p.set_defaults(func=cmd_close_sweep)
+
+    p = common(sub.add_parser("grasp-jitter", help="achieved held offset + yield under grasp-pose DR"))
+    p.add_argument("--finger-mm", type=float, default=7.0, help="+-finger jitter (mm)")
+    p.add_argument("--yaw-deg", type=float, default=12.0, help="+-yaw jitter (deg)")
+    p.add_argument("--pinch-mm", type=float, default=0.0, help="+-pinch jitter (mm)")
+    p.add_argument("--height-mm", type=float, default=0.0, help="one-sided UP height jitter (mm, grasp higher)")
+    p.add_argument("--width-derived-close", dest="full_close", action="store_false",
+                   default=True, help="close to the width-derived target instead of full close")
+    p.set_defaults(func=cmd_grasp_jitter)
 
     p = common(sub.add_parser("dwell", help="near-static frame attribution"))
     p.set_defaults(func=cmd_dwell)

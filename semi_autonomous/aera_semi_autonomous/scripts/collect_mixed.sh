@@ -2,8 +2,8 @@
 # Collect pick-and-place trajectories with a mixed perturbation strategy.
 #
 # Every segment runs the full non-visual lever stack (camera + arm-dynamics +
-# object-yaw randomization, plus home / hover / speed / actuation perturbation);
-# the segments differ only in the trajectory MODE:
+# object-yaw randomization, plus home / hover / speed / actuation / grasp-pose
+# perturbation); the segments differ only in the trajectory MODE:
 #
 #   90%  all levers, ik_noise mode         (the clean working bulk)
 #   10%  all levers, offset_approach mode  (varied approach paths)
@@ -65,6 +65,7 @@ COMMON=(
   --perturbation.perturb-hover-height
   --perturbation.perturb-speed
   --perturbation.perturb-actuation
+  --perturbation.perturb-grasp-pose
 )
 
 echo "============================================"
@@ -73,6 +74,7 @@ echo "  Total:            $TOTAL"
 echo "  ik_noise:         $NOISE_N  (90%)"
 echo "  offset_approach:  $OFFSET_N  (10%)"
 echo "  recovery:         none"
+echo "  grasp-pose DR:    on"
 echo "  ik_noise frac:    $IK_NOISE_FRACTION"
 echo "  Save dir:         $SAVE_DIR"
 echo "  Seed:             $SEED"

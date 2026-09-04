@@ -103,6 +103,21 @@ unfrozen episodes now fail as `grasp_missed` / `dropped_early` instead, which is
 what the two-cause model predicts — this releases the arm, it does not fix the
 bad grasp that caused the stall.
 
+### Replan sweep result (02.09) — decision: do NOT adopt replan=10
+
+Filled the gap (replan=4 = the two runs in the table above; 5–9 fresh, 40 eps
+each; 10 the run above). **Flat across 4–9 on every freeze metric, then a cliff
+at 10 (= full `action_horizon`):** stall_rate 0.38→**0.08**, `timeout_holding`
+32%→**22%**, longest frozen run ~150→**29** frames; success flat 57–62%
+throughout. So replan has to execute the *whole* chunk to clear the dwell —
+there is no intermediate knee, because the lift sits at chunk positions 7–10 and
+anything short re-plans from a near-identical stuck observation. Not adopting it:
+the current policy gains ~nothing (success flat, and 200 ms open-loop is a real
+cost), and the proper fix is filtering the near-static frames at transform
+(item 2) so the dwell the freeze imitates is not in the data to begin with. The
+residual near-static run length *after* filtering then sets replan (a touch above
+it), instead of pinning it at the full horizon. Runs: `eval_results/…/50000_replan{5..9}`.
+
 ## Code change
 
 `aera/autonomous/openpi/eval/metrics.py` only, so the failure is visible in
@@ -137,12 +152,48 @@ Results: `eval_results/pi05_ar4_mk3_2026-08-27_09-47-05/{50000_alignment,
 
 ## Next, in cost order
 
-1. **Raise `replan_steps`** (free). Sweep 4–10 properly; 10 is one run.
+1. ~~**Raise `replan_steps`** (free). Sweep 4–10 properly; 10 is one run.~~
+   **DONE (02.09), not adopted** — see the replan-sweep result above. Flat 4–9,
+   cliff at 10, success flat; the freeze is better killed at the data (item 2).
 2. **Drop the parked ramp frames in the transform** — re-transform only, no
    re-collect. Removes the zero-action block that the freeze imitates. Check it
    against check 5's grasp-window floor, which counts those same frames.
+   **VALIDATED SAFE (02.09), build deferred to land with #3** — see below.
 3. **Jitter the grasp pose during collection** (yaw and lateral offset, inside
    the engage gate's bounds) so the data shows the arm lifting from an imperfect
    grasp. Needs a re-collect: ~17.7 h single process, ~2.2 h at 8 shards.
 
 1 and 2 attack the freeze; only 3 attacks its cause.
+
+### Item 2 validation (02.09) — filter is `--min-action-delta 0.0005 --gripper-eps 0.0002`
+
+Replayed the transform's static filter on all 2959 episodes and built a 200-ep
+from-raw subset to confirm against the real pipeline. Config locked:
+`--min-action-delta 0.0005 --gripper-eps 0.0002` (rest of the runbook unchanged).
+
+- **What it removes:** ~3% of frames, all genuinely frozen — the largest dropped
+  frame is 6.1% of the median step (11.5 mrad), and **0** dropped frames sit
+  between two moving neighbours. It collapses the longest imitable dwell from
+  **9→4** (median) / **11→7** (max). `min_action_delta` is insensitive over
+  0.0005–0.004 (parked ~0.2 mrad vs median 11.5 → a clean gap).
+- **Check 5 untouched:** filtered vs unfiltered on the same 200 eps, both the
+  official tool and a per-episode diff give **median 4, min 2, 0 close-less**.
+  Filtering trims ≤1 frame from 9/200 windows, pushes none below 3, and creates
+  zero close-less episodes. `gripper_eps` is the delicate knob (1 mm → min 1;
+  2 mm → 33 grasps lost); 0.2 mm is the safe point, below the ~0.35 mm/frame
+  close travel and above the ~0.1 mm jaw jitter.
+- **Equal-time-interval worry (06.07 arc-length rejection) does not bite:** every
+  dropped frame is zero-displacement in both channels, so nothing is compressed
+  into a deploy step and `n_substeps=skip` holds.
+- **"2 rounds vs 1 pass" is a non-issue:** from-raw filtered ≡ filter-on-skip10 ≡
+  replay, proven **byte-identical** (frame counts and delta-actions, 200/200 eps).
+  So re-transform old data **from raw** with the filter and it shares the exact
+  single-pass path #3's new data will use.
+
+Decision: **no #2-only retrain.** Build the filtered dataset once, from raw, in
+the same pass as the #3 grasp-jitter re-collect (same `integration_dt`, skip and
+filter params), so old and #3 data share one time distribution. Residual dwell
+after the filter is tightly concentrated — p50/p75 = 4, p90/p99 = 5, lone max 7 —
+so the next policy's `replan` only needs to clear the typical run, not the max:
+**~5–6** (a touch above p75/p90) already covers p99, and closed-loop replanning
+handles the rare long one. No reason to pin it at the full horizon.

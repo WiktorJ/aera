@@ -43,6 +43,7 @@ from aera_semi_autonomous.data.pick_and_place_helpers import (
 )
 from aera_semi_autonomous.data.trajectory_perturbation import (
     PerturbationConfig,
+    apply_grasp_pose_jitter,
     apply_hover_height_perturbation,
     apply_speed_perturbation,
     generate_waypoints,
@@ -286,11 +287,17 @@ def main():
         )
         logger.info(f"Grasp gripper_pos: {gripper_pos:.4f}")
 
+        # Jitter the grasp target only (mirrors collection); object_pose stays
+        # true for the place height below.
+        grasp_pose = object_pose
+        if cfg.perturbation.perturb_grasp_pose:
+            grasp_pose = apply_grasp_pose_jitter(object_pose, cfg.perturbation.grasp_pose)
+
         if cfg.perturbation.perturb_pick:
             for wp in generate_waypoints(object_pose, cfg.perturbation):
                 robot.move_to(wp)
 
-        if not robot.grasp_at(object_pose, gripper_pos):
+        if not robot.grasp_at(grasp_pose, gripper_pos):
             logger.error("Failed to pick up object")
             return False
         logger.info("Successfully picked up object")

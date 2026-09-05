@@ -84,6 +84,9 @@ class Ar4Mk3InterfaceConfig:
     # stacked errors that left every scripted close short of first contact.
     gripper_pos_tolerance: float = 1e-4
     render_steps: bool = False
+    # Render one frame every N mj-steps instead of every one. Only applies when
+    # render_steps is on; purely a viewing knob, it touches no sim state.
+    render_every: int = 1
     # Record the depth cameras alongside RGB. Off: nothing downstream consumes
     # depth, and it is half the per-frame render cost plus a ~1.2 GB/episode RAM
     # spike at the slow arm's frame counts. See _record_step.

@@ -50,6 +50,10 @@ class Ar4Mk3RobotInterface(RobotInterface):
         # interface per trajectory, so this is already per-episode.
         self._record_call_count = 0
 
+        # Same idea for _maybe_render, on its own counter so the render stride
+        # is independent of the record stride.
+        self._render_call_count = 0
+
         # Home pose for the robot (will be set after environment initialization)
         self.home_pose = self._initialize_home_pose()
         self.joint_names = [f"joint_{i}" for i in range(1, 7)]
@@ -153,8 +157,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
         for _ in range(steps):
             self._step_simulation()
             self._record_step()
-            if self.config.render_steps:
-                self.env.render()
+            self._maybe_render()
 
     def _engage_kinematic_grasp(self, max_distance: Optional[float] = None) -> None:
         """Lock the closest known object + jaw qpos to the gripper (delegated).
@@ -227,6 +230,20 @@ class Ar4Mk3RobotInterface(RobotInterface):
         img_msg = self.cv_bridge.cv2_to_imgmsg(image_array, encoding=encoding)
         img_msg.header = header
         return img_msg
+
+    def _maybe_render(self):
+        """Renders the viewer if render_steps is on, throttled by render_every.
+
+        Counting before the render_steps check keeps the stride tied to
+        mj-steps. One counter for the whole interface, shared by all four call
+        sites, so the stride stays uniform across an episode.
+        """
+        step_index = self._render_call_count
+        self._render_call_count += 1
+        if step_index % self.config.render_every:
+            return
+        if self.config.render_steps:
+            self.env.render()
 
     def _record_step(self):
         """Records a single step of simulation data if a data collector is set.
@@ -388,8 +405,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
 
                 self._step_simulation()
                 self._record_step()
-                if self.config.render_steps:
-                    self.env.render()
+                self._maybe_render()
 
             # Verify final position
             final_gripper_qpos = self.env.data.qpos[gripper_qpos_indices]
@@ -569,8 +585,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 failure_reason = f"IK step moved gripper below minimum height ({new_site_xpos[2]} < {self.config.ik.min_height})"
                 break
 
-            if self.config.render_steps:
-                self.env.render()
+            self._maybe_render()
         else:
             success = False
             failure_reason = f"Max steps ({self.config.ik.max_steps}) reached"
@@ -681,8 +696,7 @@ class Ar4Mk3RobotInterface(RobotInterface):
                 self.env.data.ctrl[actuator_ids] = interpolated_qpos
                 self._step_simulation()
                 self._record_step()
-                if self.config.render_steps:
-                    self.env.render()
+                self._maybe_render()
 
             # Verify final joint positions
             final_qpos = self.env.data.qpos[qpos_indices]

@@ -97,7 +97,7 @@ class Ar4Mk3DataConfig(openpi_config.DataConfigFactory):
         )
 
 
-DEFAULT_TRAINING_DATA_REPO = "Purple69/aera_semi_pnp_dr_08_08_2026_skip10_delta"
+DEFAULT_TRAINING_DATA_REPO = "Purple69/aera_semi_pnp_dr_05_09_2026_skip10_delta_no_go_home"
 
 
 _BASE_CONFIGS = [

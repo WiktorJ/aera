@@ -494,26 +494,61 @@ def cmd_grasp_jitter(args) -> None:
     """
     jitter = GraspPoseJitter(
         finger_offset_max=args.finger_mm / 1000.0,
+        finger_offset_sigma=args.finger_sigma_mm / 1000.0,
         yaw_deg_max=args.yaw_deg,
+        yaw_deg_sigma=args.yaw_sigma_deg,
         pinch_offset_max=args.pinch_mm / 1000.0,
+        pinch_offset_sigma=args.pinch_sigma_mm / 1000.0,
         height_up_max=args.height_mm / 1000.0,
+        height_up_sigma=args.height_sigma_mm / 1000.0,
     )
     print(
-        f"jitter: finger+-{args.finger_mm}mm yaw+-{args.yaw_deg}deg "
-        f"pinch+-{args.pinch_mm}mm height+{args.height_mm}mm(up)  "
+        f"jitter (truncated Gaussian): "
+        f"finger+-{args.finger_mm}mm(s={args.finger_sigma_mm}) "
+        f"yaw+-{args.yaw_deg}deg(s={args.yaw_sigma_deg}) "
+        f"pinch+-{args.pinch_mm}mm(s={args.pinch_sigma_mm}) "
+        f"height+{args.height_mm}mm(up,s={args.height_sigma_mm})  "
         f"full_close={args.full_close}",
         flush=True,
     )
     n_locked = 0
+    # Achieved (held, at engage) tool-frame offsets, for the overshoot summary.
+    achieved: dict[str, list[float]] = {
+        "pinch_mm": [], "finger_mm": [], "yaw_deg": [], "grip_above_top_mm": []
+    }
     for seed in args.seeds:
         res = _grasp_jitter_probe(seed, args.dt, args.max_steps, jitter, args.full_close)
         if res is None:
             print(f"seed={seed}: FAILED (script aborted before close)", flush=True)
             continue
         n_locked += int(res["locked"])
+        for k in achieved:
+            if k in res:
+                achieved[k].append(res[k])
         res = {"seed": seed, **res}
         print(json.dumps(res) if args.json else _fmt(res), flush=True)
     print(f"locked {n_locked}/{len(args.seeds)}", flush=True)
+
+    # Overshoot check: |achieved| vs the commanded truncation bound per axis.
+    # finger/yaw persist so achieved should track the commanded tail; pinch/yaw
+    # self-correct so achieved is usually well inside. The point is that no axis
+    # sails past its bound (a sign the truncation or sigma is wrong).
+    bounds = {
+        "pinch_mm": args.pinch_mm, "finger_mm": args.finger_mm,
+        "yaw_deg": args.yaw_deg, "grip_above_top_mm": None,
+    }
+    for k, vals in achieved.items():
+        if not vals:
+            continue
+        a = np.abs(np.array(vals))
+        bound = bounds[k]
+        over = "" if bound is None else f" bound={bound}  over={int((a > bound + 1e-9).sum())}/{len(a)}"
+        print(
+            f"  {k:>18}: max={a.max():.2f}  "
+            f"p50={np.percentile(a, 50):.2f}  p90={np.percentile(a, 90):.2f}  "
+            f"p99={np.percentile(a, 99):.2f}{over}",
+            flush=True,
+        )
 
 
 def _grasp_jitter_probe(
@@ -656,10 +691,16 @@ def main() -> None:
     p.set_defaults(func=cmd_close_sweep)
 
     p = common(sub.add_parser("grasp-jitter", help="achieved held offset + yield under grasp-pose DR"))
-    p.add_argument("--finger-mm", type=float, default=7.0, help="+-finger jitter (mm)")
-    p.add_argument("--yaw-deg", type=float, default=12.0, help="+-yaw jitter (deg)")
-    p.add_argument("--pinch-mm", type=float, default=0.0, help="+-pinch jitter (mm)")
-    p.add_argument("--height-mm", type=float, default=0.0, help="one-sided UP height jitter (mm, grasp higher)")
+    # Defaults mirror the shipped GraspPoseJitter (truncation bound + sigma), so
+    # the bare subcommand measures exactly what a collect would draw.
+    p.add_argument("--finger-mm", type=float, default=7.0, help="+-finger truncation bound (mm)")
+    p.add_argument("--finger-sigma-mm", type=float, default=3.5, help="finger Gaussian sigma (mm)")
+    p.add_argument("--yaw-deg", type=float, default=12.0, help="+-yaw truncation bound (deg)")
+    p.add_argument("--yaw-sigma-deg", type=float, default=4.0, help="yaw Gaussian sigma (deg)")
+    p.add_argument("--pinch-mm", type=float, default=1.5, help="+-pinch truncation bound (mm)")
+    p.add_argument("--pinch-sigma-mm", type=float, default=0.6, help="pinch Gaussian sigma (mm)")
+    p.add_argument("--height-mm", type=float, default=2.0, help="one-sided UP height truncation bound (mm)")
+    p.add_argument("--height-sigma-mm", type=float, default=0.8, help="height half-Gaussian sigma (mm)")
     p.add_argument("--width-derived-close", dest="full_close", action="store_false",
                    default=True, help="close to the width-derived target instead of full close")
     p.set_defaults(func=cmd_grasp_jitter)

@@ -62,6 +62,7 @@ from typing import TYPE_CHECKING, Dict, List, Literal, Tuple
 import numpy as np
 from geometry_msgs.msg import Pose, Quaternion
 from scipy.spatial.transform import Rotation
+from scipy.stats import truncnorm
 
 from aera_semi_autonomous.control.ar4_mk3_interface_config import (
     ActuationConfig,
@@ -189,15 +190,30 @@ class HoverHeightPerturbation:
 
 @dataclass
 class GraspPoseJitter:
-    """Per-episode, zero-centred jitter of the grasp target so demos show the
+    """Per-episode, zero-peaked jitter of the grasp target so demos show the
     arm completing the task from imperfect grasps, not just the one exact pose.
 
-    Offsets are in the gripper tool frame. Only the finger offset leaves a
-    lasting held offset (the jaws don't recentre along their length); pinch and
-    yaw self-correct as the jaws close on the free block, so their signal is the
-    jittered approach, not the endpoint. A grasp too crooked to complete is
-    dropped by the collector rather than saved — the jitter can only lower
-    yield, never inject a failure.
+    Each axis draws from a zero-mean (height: half-normal) Gaussian with the
+    given ``*_sigma``, truncated to ``+-*_max``. The mode is therefore a *perfect*
+    grasp — the spread is a covered tail, not the norm — so the policy keeps a
+    precise grasp as its default while still seeing the imperfect ones. (Uniform,
+    the old shape, made a moderately-off grasp as common as a perfect one, which
+    an expressive action head can reproduce as habitual sloppiness.)
+
+    Offsets are in the gripper tool frame, and the axes differ in what the shape
+    protects:
+      - finger leaves a lasting *held* offset (the jaws don't recentre along
+        their length), so the Gaussian both supplies recovery demos and keeps the
+        held grasp aimed true;
+      - yaw and pinch self-correct as the jaws close on the free block (PLA-on-
+        PLA: the aligning torque beats rotational friction at small offsets), so
+        the held endpoint is aligned regardless and the signal is the jittered
+        *approach* — the Gaussian keeps the typical approach aligned so the policy
+        learns "commit to the close when slightly off" without adopting a
+        habitually-yawed approach. Sigmas are set so ``*_max`` is a soft ~2.5-3
+        sigma tail, so the exact truncation bound is not load-bearing.
+    A grasp too crooked to complete is dropped by the collector rather than
+    saved — the jitter can only lower yield, never inject a failure.
 
     Ranges are sized for the worst graspable preset (19-24 mm blocks; 23 mm pad;
     28.8 mm open jaw gap) so no clamping is needed: finger keeps most of the pad
@@ -205,10 +221,18 @@ class GraspPoseJitter:
     descent clearance so a jaw never comes down on the block top.
     """
 
-    finger_offset_max: float = 0.007  # +-m along the jaws; >=60% pad on the 19 mm block
-    yaw_deg_max: float = 12.0         # +-deg about the approach axis; self-corrects
-    pinch_offset_max: float = 0.0015  # +-m across the jaws; < 24 mm block's 2.4 mm clearance
-    height_up_max: float = 0.002      # m higher only (0..max); lower would hit the table
+    finger_offset_max: float = 0.007    # +-m along the jaws; >=60% pad on the 19 mm block
+    finger_offset_sigma: float = 0.0035  # m; mode at a perfect grasp, but a fat enough tail
+                                         # to keep ~11% in the >5 mm stall band (~340/3000 eps)
+                                         # as held-crooked recovery demos. This is the one axis
+                                         # whose *job* is the tail (finger persists), so it runs
+                                         # a wider sigma than the self-correcting axes below.
+    yaw_deg_max: float = 12.0           # +-deg about the approach axis; self-corrects
+    yaw_deg_sigma: float = 4.0          # deg; ~3 sigma to the bound, typical approach aligned
+    pinch_offset_max: float = 0.0015    # +-m across the jaws; < 24 mm block's 2.4 mm clearance
+    pinch_offset_sigma: float = 0.0006  # m; ~2.5 sigma to the bound
+    height_up_max: float = 0.002        # m higher only (0..max); lower would hit the table
+    height_up_sigma: float = 0.0008     # m; half-normal peaked at the nominal depth
 
 
 @dataclass
@@ -585,18 +609,26 @@ def apply_hover_height_perturbation(
     return replace(interface_config, above_target_offset=offset)
 
 
-def _sym_uniform(half_width: float) -> float:
-    """Draw from ``Uniform(-half_width, +half_width)``; exactly 0 when off."""
-    if half_width <= 0.0:
+def _sym_truncnorm(half_width: float, sigma: float) -> float:
+    """Draw from a zero-mean normal with std ``sigma``, truncated to
+    ``[-half_width, +half_width]``; exactly 0 when either is non-positive.
+
+    Zero-peaked, so the mode is a perfect grasp while the tail still reaches the
+    bound. Uses numpy's global RNG (via scipy), so ``np.random.seed`` in the
+    collector controls it exactly as it did the old uniform draws."""
+    if half_width <= 0.0 or sigma <= 0.0:
         return 0.0
-    return float(np.random.uniform(-half_width, half_width))
+    b = half_width / sigma
+    return float(truncnorm.rvs(-b, b, loc=0.0, scale=sigma))
 
 
-def _one_sided_uniform(upper: float) -> float:
-    """Draw from ``Uniform(0, upper)``; exactly 0 when off."""
-    if upper <= 0.0:
+def _one_sided_truncnorm(upper: float, sigma: float) -> float:
+    """Draw from a half-normal (``|N(0, sigma)|``) truncated to ``[0, upper]``;
+    exactly 0 when either is non-positive. Peaked at 0 (the nominal value)."""
+    if upper <= 0.0 or sigma <= 0.0:
         return 0.0
-    return float(np.random.uniform(0.0, upper))
+    b = upper / sigma
+    return float(truncnorm.rvs(0.0, b, loc=0.0, scale=sigma))
 
 
 def apply_grasp_pose_jitter(object_pose: Pose, cfg: GraspPoseJitter) -> Pose:
@@ -607,10 +639,10 @@ def apply_grasp_pose_jitter(object_pose: Pose, cfg: GraspPoseJitter) -> Pose:
     gate). Yaw turns the whole gripper about the approach axis. Height is world
     +z (the top-down approach axis is world -z, so "higher" is unambiguous).
     """
-    dx = _sym_uniform(cfg.pinch_offset_max)
-    dy = _sym_uniform(cfg.finger_offset_max)
-    dyaw_deg = _sym_uniform(cfg.yaw_deg_max)
-    up = _one_sided_uniform(cfg.height_up_max)
+    dx = _sym_truncnorm(cfg.pinch_offset_max, cfg.pinch_offset_sigma)
+    dy = _sym_truncnorm(cfg.finger_offset_max, cfg.finger_offset_sigma)
+    dyaw_deg = _sym_truncnorm(cfg.yaw_deg_max, cfg.yaw_deg_sigma)
+    up = _one_sided_truncnorm(cfg.height_up_max, cfg.height_up_sigma)
 
     grasp_rot = Rotation.from_quat(
         [
